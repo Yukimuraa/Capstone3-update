@@ -1,0 +1,135 @@
+/* Custom styles for CHMSU BAO System */
+
+/* Color variables */
+:root {
+    --primary-blue: #00008b; /* Dark blue */
+    --primary-green: #006400; /* Dark green */
+    --accent-yellow: #ffd700; /* Gold/Yellow */
+    --button-blue: #1e40af; /* Button blue */
+    --hover-blue: #1e3a8a; /* Darker blue for hover */
+    --text-white: #ffffff;
+    --text-light: #f3f4f6;
+    --text-dark: #1f2937;
+  }
+  
+  /* Global styles */
+  body {
+    font-family: "Arial", sans-serif;
+  }
+  
+  /* Custom button styles */
+  .btn-chmsu-primary {
+    background-color: var(--button-blue);
+    color: var(--text-white);
+    transition: background-color 0.2s;
+  }
+
+  
+  .btn-chmsu-primary:hover {
+    background-color: var(--hover-blue);
+  }
+  
+  .btn-chmsu-outline {
+    border: 1px solid var(--button-blue);
+    color: var(--button-blue);
+    background-color: transparent;
+    transition: background-color 0.2s;
+  }
+  
+  .btn-chmsu-outline:hover {
+    background-color: rgba(30, 64, 175, 0.1);
+  }
+  
+  /* Header and navigation */
+  .header-chmsu {
+    background-color: var(--primary-green);
+    color: var(--text-white);
+  }
+  
+  /* Sidebar */
+  .sidebar-chmsu {
+    background-color: var(--primary-blue);
+    color: var(--text-white);
+  }
+  
+  .sidebar-link {
+    transition: background-color 0.2s;
+  }
+  
+  .sidebar-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .sidebar-link.active {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-left: 3px solid var(--accent-yellow);
+  }
+  
+  /* Cards and containers */
+  .card-chmsu {
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background-color: white;
+  }
+  
+  /* Status badges */
+  .badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+  
+  .badge-approved {
+    background-color: #d1fae5;
+    color: #065f46;
+  }
+  
+  .badge-rejected {
+    background-color: #fee2e2;
+    color: #b91c1c;
+  }
+  
+  .badge-completed {
+    background-color: #dbeafe;
+    color: #1e40af;
+  }
+  
+  /* Form elements */
+  .input-chmsu {
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  
+  .input-chmsu:focus {
+    border-color: var(--button-blue);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.2);
+    outline: none;
+  }
+  
+  /* Footer */
+  .footer-chmsu {
+    background-color: var(--primary-blue);
+    color: var(--text-white);
+  }
+  input[type=text], input[type=email], input[type=password], input[type=number], select, textarea {
+    width: 100%;
+    padding: 5px;
+    border-radius: 0.375rem;
+    border: 1px solid #d1d5db;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .sidebar-chmsu {
+      transform: translateX(-100%);
+    }
+  
+    .sidebar-chmsu.open {
+      transform: translateX(0);
+    }
+  }
+  
+  
