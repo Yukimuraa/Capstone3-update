@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            // Handle sizes for specific clothing items
            $sizes = null;
-           $sizingItems = ['BSIT OJT - Shirt', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'NSTP Shirt - ROTC', 'P.E - Pants', 'P.E T-Shirt'];
+           $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
            $needs_sizes = false;
            
            foreach ($sizingItems as $item) {
@@ -38,7 +38,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                }
            }
            
-           if ($needs_sizes && isset($_POST['sizes']) && !empty($_POST['sizes'])) {
+           if ($needs_sizes) {
+               // For clothing items, use the selected sizes from checkboxes
+               if (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
+                   $sizes = json_encode($_POST['sizes']);
+               } else {
+                   // If no sizes selected, set to empty array
+                   $sizes = json_encode([]);
+               }
+           } elseif (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                $sizes = json_encode($_POST['sizes']);
            }
            
@@ -81,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            // Handle sizes for specific clothing items
            $sizes = null;
-           $sizingItems = ['BSIT OJT - Shirt', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'NSTP Shirt - ROTC', 'P.E - Pants', 'P.E T-Shirt'];
+           $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
            $needs_sizes = false;
            
            foreach ($sizingItems as $item) {
@@ -91,7 +99,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                }
            }
            
-           if ($needs_sizes && isset($_POST['sizes']) && !empty($_POST['sizes'])) {
+           if ($needs_sizes) {
+               // For clothing items, use the selected sizes from checkboxes
+               if (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
+                   $sizes = json_encode($_POST['sizes']);
+               } else {
+                   // If no sizes selected, set to empty array
+                   $sizes = json_encode([]);
+               }
+           } elseif (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                $sizes = json_encode($_POST['sizes']);
            }
            
@@ -757,12 +773,11 @@ $stats = $conn->query($stats_query)->fetch_assoc();
 
    // Add the JavaScript for size options display
    const sizingItems = [
-       'BSIT OJT - Shirt', 
-       'NSTP Shirt - CWTS', 
-       'NSTP Shirt - LTS', 
-       'NSTP Shirt - ROTC',
-       'P.E - Pants',
-       'P.E T-Shirt'
+       'NSTP-ROTC TSHIRT',
+       'NSTP Shirt - CWTS',
+       'NSTP Shirt - LTS',
+       'P.E PANTS',
+       'P.E T-SHIRT'
    ];
    
    // For the add item form

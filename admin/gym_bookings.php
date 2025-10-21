@@ -815,6 +815,17 @@ $users_result = $conn->query($users_query);
                 fetch(`get_gym_availability.php?date=${encodeURIComponent(dayISO)}`)
                     .then(r => r.json())
                     .then(data => {
+                        // If this day is effectively fully booked (whole day booked and no partial sessions available),
+                        // skip rendering any "Available" chips to avoid contradictions
+                        const hasWholeDayBooking = data.sessions && data.sessions.some(session => 
+                            session.type === 'whole_day' && !session.available
+                        );
+                        const hasAvailableSessions = data.sessions && data.sessions.some(session => 
+                            session.type !== 'whole_day' && session.available
+                        );
+                        if (hasWholeDayBooking && !hasAvailableSessions) {
+                            return; // already marked above as FULLY BOOKED
+                        }
                         console.log('Availability data for', dayISO, ':', data);
                         const dayId = `events-${dayISO}`;
                         const slot = document.getElementById(dayId);
@@ -836,27 +847,42 @@ $users_result = $conn->query($users_query);
                             let currentTime = dayStart;
                             bookedTimes.forEach(booking => {
                                 if (currentTime < booking.start) {
-                                    // Show available slot
-                                    const availChip = document.createElement('div');
-                                    availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
-                                    availChip.style.backgroundColor = '#dcfce7';
-                                    availChip.style.color = '#166534';
-                                    availChip.style.border = '1px solid #bbf7d0';
-                                    availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${booking.start.substring(0,5)}`;
-                                    slot.appendChild(availChip);
+                                    // Calculate time difference in minutes
+                                    const [startHr, startMin] = currentTime.split(':').map(Number);
+                                    const [endHr, endMin] = booking.start.split(':').map(Number);
+                                    const diffMinutes = (endHr * 60 + endMin) - (startHr * 60 + startMin);
+                                    
+                                    // Only show slots that are at least 1 hour (60 minutes)
+                                    if (diffMinutes >= 60) {
+                                        const availChip = document.createElement('div');
+                                        availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
+                                        availChip.style.backgroundColor = '#dcfce7';
+                                        availChip.style.color = '#166534';
+                                        availChip.style.border = '1px solid #bbf7d0';
+                                        availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${booking.start.substring(0,5)}`;
+                                        slot.appendChild(availChip);
+                                    }
                                 }
                                 currentTime = booking.end;
                             });
                             
                             // Check if there's time after last booking
                             if (currentTime < dayEnd) {
-                                const availChip = document.createElement('div');
-                                availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
-                                availChip.style.backgroundColor = '#dcfce7';
-                                availChip.style.color = '#166534';
-                                availChip.style.border = '1px solid #bbf7d0';
-                                availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${dayEnd.substring(0,5)}`;
-                                slot.appendChild(availChip);
+                                // Calculate time difference in minutes
+                                const [startHr, startMin] = currentTime.split(':').map(Number);
+                                const [endHr, endMin] = dayEnd.split(':').map(Number);
+                                const diffMinutes = (endHr * 60 + endMin) - (startHr * 60 + startMin);
+                                
+                                // Only show slots that are at least 1 hour (60 minutes)
+                                if (diffMinutes >= 60) {
+                                    const availChip = document.createElement('div');
+                                    availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
+                                    availChip.style.backgroundColor = '#dcfce7';
+                                    availChip.style.color = '#166534';
+                                    availChip.style.border = '1px solid #bbf7d0';
+                                    availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${dayEnd.substring(0,5)}`;
+                                    slot.appendChild(availChip);
+                                }
                             }
                         } else {
                             // No bookings - show full day available

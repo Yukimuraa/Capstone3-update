@@ -34,51 +34,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($booking_date < $today) {
                 $error_message = "Booking date must be in the future.";
             } 
-            // Validate time (end time must be after start time)
-            elseif ($start_time >= $end_time) {
+			// Validate time (end time must be after start time)
+			elseif ($start_time >= $end_time) {
                 $error_message = "End time must be after start time.";
-            } 
+			} 
+			// Block lunch break 12:00 PM - 1:00 PM for partial bookings; allow full-day 08:00-18:00
+			elseif (!(($start_time === '08:00' || $start_time === '08:00:00') && ($end_time === '18:00' || $end_time === '18:00:00'))
+				&& $start_time < '13:00:00' && $end_time > '12:00:00') {
+				$error_message = "The gymnasium is unavailable from 12:00 PM to 1:00 PM.";
+			}
             // Check if the gym is already booked for that date
             else {
-                $check_query = "SELECT * FROM bookings WHERE facility_type = 'gym' AND date = ? AND 
-                               ((start_time <= ? AND end_time > ?) OR 
-                                (start_time < ? AND end_time >= ?) OR
-                                (start_time >= ? AND end_time <= ?))
-                               AND status != 'rejected'";
-                $check_stmt = $conn->prepare($check_query);
-                $check_stmt->bind_param("sssssss", $date, $end_time, $start_time, $end_time, $start_time, $start_time, $end_time);
+				// Use half-open interval overlap: existing.start < new.end AND existing.end > new.start
+				// This allows adjacent bookings that touch at boundaries (e.g., 09:30 following 08:30–09:30)
+				$check_query = "SELECT 1 FROM bookings 
+							WHERE facility_type = 'gym' 
+							  AND date = ? 
+							  AND status IN ('pending','confirmed')
+							  AND (start_time < ? AND end_time > ?)";
+				$check_stmt = $conn->prepare($check_query);
+				$check_stmt->bind_param("sss", $date, $end_time, $start_time);
                 $check_stmt->execute();
                 $check_result = $check_stmt->get_result();
                 
                 if ($check_result->num_rows > 0) {
                     $error_message = "The gymnasium is already booked for this time slot.";
                 } else {
-                    // Generate booking ID
-                    $year = date('Y');
-                    $count_query = "SELECT COUNT(*) as count FROM bookings WHERE facility_type = 'gym' AND YEAR(created_at) = ?";
-                    $count_stmt = $conn->prepare($count_query);
-                    $count_stmt->bind_param("i", $year);
-                    $count_stmt->execute();
-                    $count_result = $count_stmt->get_result();
-                    $count_row = $count_result->fetch_assoc();
-                    $count = $count_row['count'] + 1;
-                    
-                    $booking_id = "GYM-" . $year . "-" . str_pad($count, 3, '0', STR_PAD_LEFT);
-                    
-                    // Insert booking
-                    $stmt = $conn->prepare("INSERT INTO bookings (booking_id, user_id, facility_type, date, start_time, end_time, purpose, attendees, status, additional_info) VALUES (?, ?, 'gym', ?, ?, ?, ?, ?, 'pending', ?)");
-                    $additional_info = json_encode([
-                        'organization' => $organization,
-                        'contact_person' => $contact_person,
-                        'contact_number' => $contact_number
-                    ]);
-                    $stmt->bind_param("sissssis", $booking_id, $user_id, $date, $start_time, $end_time, $purpose, $attendees, $additional_info);
-                    
-                    if ($stmt->execute()) {
-                        $success_message = "Your gymnasium booking request has been submitted successfully. Booking ID: " . $booking_id;
-                    } else {
-                        $error_message = "Error submitting booking: " . $conn->error;
-                    }
+					// Generate a collision-resistant booking ID and retry on duplicates
+					$year = date('Y');
+					$additional_info = json_encode([
+						'organization' => $organization,
+						'contact_person' => $contact_person,
+						'contact_number' => $contact_number
+					]);
+					
+					$attempts = 0;
+					$maxAttempts = 3;
+					$success = false;
+					
+					while ($attempts < $maxAttempts && !$success) {
+						$attempts++;
+						// Find current max sequence for this year (positions: 'GYM-'(1-4) + YYYY(5-8) + '-'(9) + NNN(10-...))
+						$seq_query = "SELECT MAX(CAST(SUBSTRING(booking_id, 10) AS UNSIGNED)) AS max_seq 
+										FROM bookings 
+										WHERE facility_type = 'gym' AND SUBSTRING(booking_id, 5, 4) = ?";
+						$seq_stmt = $conn->prepare($seq_query);
+						$seq_stmt->bind_param("s", $year);
+						$seq_stmt->execute();
+						$seq_res = $seq_stmt->get_result();
+						$seq_row = $seq_res->fetch_assoc();
+						$next_seq = intval($seq_row['max_seq'] ?? 0) + 1;
+						$booking_id = "GYM-" . $year . "-" . str_pad((string)$next_seq, 3, '0', STR_PAD_LEFT);
+
+						$stmt = $conn->prepare("INSERT INTO bookings (booking_id, user_id, facility_type, date, start_time, end_time, purpose, attendees, status, additional_info) VALUES (?, ?, 'gym', ?, ?, ?, ?, ?, 'pending', ?)");
+						$stmt->bind_param("sissssis", $booking_id, $user_id, $date, $start_time, $end_time, $purpose, $attendees, $additional_info);
+						
+						try {
+							if ($stmt->execute()) {
+								$success = true;
+								$success_message = "Your gymnasium booking request has been submitted successfully. Booking ID: " . $booking_id;
+							}
+						} catch (mysqli_sql_exception $e) {
+							// Duplicate key, retry by recomputing next sequence
+							if ($e->getCode() !== 1062) {
+								$error_message = "Error submitting booking: " . $e->getMessage();
+								break;
+							}
+							// else: loop to try again
+						}
+					}
+
+					if (!$success && !isset($error_message)) {
+						$error_message = "Error submitting booking: Could not generate a unique booking ID.";
+					}
                 }
             }
         }
@@ -609,6 +637,48 @@ $bookings_result = $bookings_stmt->get_result();
                                         openBookingModal();
                                     });
                                     sessionsDiv.appendChild(btn);
+                                });
+                                
+                                // Additionally, compute dynamic free windows (like 14:30 - 18:00) and offer as custom slots
+                                const dayStart = '08:00:00';
+                                const dayEnd = '18:00:00';
+                                const bookedTimes = (data.booked || []).map(b => ({ start: b.start, end: b.end }))
+                                    .sort((a, b) => a.start.localeCompare(b.start));
+                                let currentTime = dayStart;
+                                const freeWindows = [];
+                                bookedTimes.forEach(booking => {
+                                    if (currentTime < booking.start) {
+                                        freeWindows.push({ start: currentTime, end: booking.start });
+                                    }
+                                    if (booking.end > currentTime) {
+                                        currentTime = booking.end;
+                                    }
+                                });
+                                if (currentTime < dayEnd) {
+                                    freeWindows.push({ start: currentTime, end: dayEnd });
+                                }
+                                // Render free windows of at least 60 minutes as selectable custom slots
+                                freeWindows.forEach(w => {
+                                    const [sh, sm] = w.start.split(':').map(Number);
+                                    const [eh, em] = w.end.split(':').map(Number);
+                                    const diffMinutes = (eh * 60 + em) - (sh * 60 + sm);
+                                    if (diffMinutes >= 60) {
+                                        const btn = document.createElement('button');
+                                        btn.type = 'button';
+                                        btn.className = 'py-3 px-4 rounded-lg text-sm bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition-colors';
+                                        btn.innerHTML = `
+                                            <div class="text-left">
+                                                <div class="font-semibold">Available Window</div>
+                                                <div class="text-xs opacity-75">${w.start.substring(0,5)} - ${w.end.substring(0,5)}</div>
+                                            </div>
+                                        `;
+                                        btn.addEventListener('click', () => {
+                                            document.getElementById('start_time').value = w.start.slice(0,5);
+                                            document.getElementById('end_time').value = w.end.slice(0,5);
+                                            openBookingModal();
+                                        });
+                                        sessionsDiv.appendChild(btn);
+                                    }
                                 });
                             }
                             

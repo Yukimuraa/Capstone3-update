@@ -40,6 +40,10 @@ if (!$item['in_stock']) {
   exit();
 }
 
+// Get pre-filled data from URL parameters (from quick order)
+$prefilled_quantity = isset($_GET['quantity']) ? intval($_GET['quantity']) : 1;
+$prefilled_size = isset($_GET['size']) ? sanitize_input($_GET['size']) : '';
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $quantity = intval($_POST['quantity']);
@@ -176,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <form method="POST" action="order_item.php?id=<?php echo $item_id; ?>" class="mt-6">
                                   <div class="space-y-4">
                                       <?php 
-                                      $sizingItems = ['BSIT OJT - Shirt', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'NSTP Shirt - ROTC', 'P.E - Pants', 'P.E T-Shirt'];
+                                      $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
                                       $needs_sizes = false;
                                       
                                       foreach ($sizingItems as $sizingItem) {
@@ -198,16 +202,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                   <option value="">Select Size</option>
                                                   <?php if (!empty($available_sizes)): ?>
                                                       <?php foreach ($available_sizes as $size): ?>
-                                                          <option value="<?php echo $size; ?>"><?php echo $size; ?></option>
+                                                          <option value="<?php echo $size; ?>" <?php echo ($prefilled_size === $size) ? 'selected' : ''; ?>><?php echo $size; ?></option>
                                                       <?php endforeach; ?>
                                                   <?php else: ?>
-                                                      <option value="XS">Extra Small (XS)</option>
-                                                      <option value="S">Small (S)</option>
-                                                      <option value="M">Medium (M)</option>
-                                                      <option value="L">Large (L)</option>
-                                                      <option value="XL">Extra Large (XL)</option>
-                                                      <option value="2XL">2XL</option>
-                                                      <option value="3XL">3XL</option>
+                                                      <option value="XS" <?php echo ($prefilled_size === 'XS') ? 'selected' : ''; ?>>Extra Small (XS)</option>
+                                                      <option value="S" <?php echo ($prefilled_size === 'S') ? 'selected' : ''; ?>>Small (S)</option>
+                                                      <option value="M" <?php echo ($prefilled_size === 'M') ? 'selected' : ''; ?>>Medium (M)</option>
+                                                      <option value="L" <?php echo ($prefilled_size === 'L') ? 'selected' : ''; ?>>Large (L)</option>
+                                                      <option value="XL" <?php echo ($prefilled_size === 'XL') ? 'selected' : ''; ?>>Extra Large (XL)</option>
+                                                      <option value="2XL" <?php echo ($prefilled_size === '2XL') ? 'selected' : ''; ?>>2XL</option>
+                                                      <option value="3XL" <?php echo ($prefilled_size === '3XL') ? 'selected' : ''; ?>>3XL</option>
                                                   <?php endif; ?>
                                               </select>
                                           </div>
@@ -226,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                       
                                       <div>
                                           <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
-                                          <input type="number" name="quantity" id="quantity" min="1" max="<?php echo $item['quantity']; ?>" value="1" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
+                                          <input type="number" name="quantity" id="quantity" min="1" max="<?php echo $item['quantity']; ?>" value="<?php echo $prefilled_quantity; ?>" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
                                       </div>
                                       
                                       <div class="pt-4 border-t border-gray-200">
@@ -248,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                           <a href="inventory.php" class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                                               Cancel
                                           </a>
-                                          <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                          <button type="button" id="submit-order-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                               Submit Order
                                           </button>
                                       </div>
@@ -282,6 +286,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </div>
 </div>
 
+<!-- Confirmation Modal -->
+<div id="confirmationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-triangle text-yellow-500 text-2xl"></i>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-lg font-medium text-gray-900">Confirm Order Submission</h3>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <p class="text-sm text-gray-600 mb-4">Are you sure you want to submit your order?</p>
+            
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-700">Item:</span>
+                    <span class="text-sm text-gray-900"><?php echo htmlspecialchars($item['name']); ?></span>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-700">Quantity:</span>
+                    <span class="text-sm text-gray-900" id="modal-quantity">1</span>
+                </div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-gray-700">Price per item:</span>
+                    <span class="text-sm text-gray-900">₱<?php echo number_format($item['price'], 2); ?></span>
+                </div>
+                <div class="flex justify-between items-center font-semibold text-lg pt-2 border-t border-gray-200">
+                    <span class="text-gray-900">Total:</span>
+                    <span class="text-blue-600" id="modal-total">₱<?php echo number_format($item['price'], 2); ?></span>
+                </div>
+            </div>
+            
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p class="text-xs text-blue-800">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Once submitted, you will need to proceed to the cashier for payment.
+                </p>
+            </div>
+        </div>
+        
+        <div class="flex justify-end space-x-3">
+            <button type="button" id="cancel-order" class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                Cancel
+            </button>
+            <button type="button" id="confirm-order" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i class="fas fa-check mr-2"></i>
+                Yes, Submit Order
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
   // Mobile menu toggle
   document.getElementById('menu-button').addEventListener('click', function() {
@@ -306,6 +364,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
       });
   }
+  
+  // Confirmation modal functionality
+  const submitOrderBtn = document.getElementById('submit-order-btn');
+  const confirmationModal = document.getElementById('confirmationModal');
+  const cancelOrderBtn = document.getElementById('cancel-order');
+  const confirmOrderBtn = document.getElementById('confirm-order');
+  const modalQuantity = document.getElementById('modal-quantity');
+  const modalTotal = document.getElementById('modal-total');
+  const orderForm = document.querySelector('form');
+  
+  // Show modal when submit button is clicked
+  if (submitOrderBtn) {
+      submitOrderBtn.addEventListener('click', function() {
+          // Update modal with current values
+          const currentQuantity = quantityInput ? parseInt(quantityInput.value) : 1;
+          const currentTotal = currentQuantity * itemPrice;
+          
+          if (modalQuantity) {
+              modalQuantity.textContent = currentQuantity;
+          }
+          if (modalTotal) {
+              modalTotal.textContent = '₱' + currentTotal.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+          }
+          
+          // Show modal
+          confirmationModal.classList.remove('hidden');
+      });
+  }
+  
+  // Hide modal when cancel is clicked
+  if (cancelOrderBtn) {
+      cancelOrderBtn.addEventListener('click', function() {
+          confirmationModal.classList.add('hidden');
+      });
+  }
+  
+  // Submit form when confirmed
+  if (confirmOrderBtn) {
+      confirmOrderBtn.addEventListener('click', function() {
+          if (orderForm) {
+              orderForm.submit();
+          }
+      });
+  }
+  
+  // Hide modal when clicking outside
+  confirmationModal.addEventListener('click', function(e) {
+      if (e.target === confirmationModal) {
+          confirmationModal.classList.add('hidden');
+      }
+  });
+  
+  // Hide modal with Escape key
+  document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !confirmationModal.classList.contains('hidden')) {
+          confirmationModal.classList.add('hidden');
+      }
+  });
 </script>
 
 <?php include '../includes/footer.php'; ?>

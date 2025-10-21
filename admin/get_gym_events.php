@@ -66,7 +66,6 @@ while ($row = $res->fetch_assoc()) {
 }
 
 echo json_encode($events);
-<?php
 
 
 

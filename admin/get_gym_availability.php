@@ -44,13 +44,20 @@ try {
     $bookings_stmt->execute();
     $bookings_result = $bookings_stmt->get_result();
 
-    $booked_slots = [];
+    // Real bookings from DB
+    $real_booked_slots = [];
     while ($booking = $bookings_result->fetch_assoc()) {
-        $booked_slots[] = [
+        $real_booked_slots[] = [
             'start' => $booking['start_time'],
             'end' => $booking['end_time']
         ];
     }
+    // For session availability and UI free-slot display, include lunch break as a pseudo booking
+    $session_blocked_slots = $real_booked_slots;
+    $session_blocked_slots[] = [
+        'start' => '12:00:00',
+        'end' => '13:00:00'
+    ];
 
     // Check availability for each session
     $sessions = [];
@@ -58,11 +65,11 @@ try {
         $is_available = true;
         
         if ($session['type'] === 'whole_day') {
-            // Whole day booking is only available if there are NO bookings for the entire day
-            $is_available = empty($booked_slots);
+            // Whole day booking is only available if there are NO REAL bookings for the entire day
+            $is_available = empty($real_booked_slots);
         } else {
             // Regular session - check if it conflicts with any existing booking
-            foreach ($booked_slots as $booked) {
+            foreach ($session_blocked_slots as $booked) {
                 if (($session['start'] < $booked['end'] && $session['end'] > $booked['start'])) {
                     $is_available = false;
                     break;
@@ -79,9 +86,9 @@ try {
         ];
     }
 
-    // Format booked slots for display
+    // Format booked slots for display (use session-blocked to reflect lunch in free-slot calc)
     $booked_display = [];
-    foreach ($booked_slots as $slot) {
+    foreach ($session_blocked_slots as $slot) {
         $booked_display[] = [
             'start' => $slot['start'],
             'end' => $slot['end']

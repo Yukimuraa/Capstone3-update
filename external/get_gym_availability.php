@@ -38,6 +38,18 @@ try {
         ['start' => '17:00:00', 'end' => '18:00:00', 'label' => 'Evening Session (5:00 PM - 6:00 PM)', 'type' => 'session']
     ];
 
+    // Special session configuration for Wednesday, October 8, 2025 (2025-10-08)
+    // Requirement: remove Late Morning 10:00-12:00; make Morning 08:00-12:00
+    if ($date === '2025-10-08') {
+        $operating_hours = [
+            ['start' => '08:00:00', 'end' => '18:00:00', 'label' => 'Whole Day Booking (8:00 AM - 6:00 PM)', 'type' => 'whole_day'],
+            ['start' => '08:00:00', 'end' => '12:00:00', 'label' => 'Morning Session (8:00 AM - 12:00 PM)', 'type' => 'session'],
+            ['start' => '13:00:00', 'end' => '15:00:00', 'label' => 'Afternoon Session (1:00 PM - 3:00 PM)', 'type' => 'session'],
+            ['start' => '15:00:00', 'end' => '17:00:00', 'label' => 'Late Afternoon Session (3:00 PM - 5:00 PM)', 'type' => 'session'],
+            ['start' => '17:00:00', 'end' => '18:00:00', 'label' => 'Evening Session (5:00 PM - 6:00 PM)', 'type' => 'session']
+        ];
+    }
+
     // Get existing bookings for the date
     $bookings_query = "SELECT start_time, end_time, status FROM bookings 
                        WHERE facility_type = 'gym' AND date = ? AND status IN ('pending', 'confirmed')";
@@ -46,13 +58,20 @@ try {
     $bookings_stmt->execute();
     $bookings_result = $bookings_stmt->get_result();
 
-    $booked_slots = [];
+    // Real bookings from DB
+    $real_booked_slots = [];
     while ($booking = $bookings_result->fetch_assoc()) {
-        $booked_slots[] = [
+        $real_booked_slots[] = [
             'start' => $booking['start_time'],
             'end' => $booking['end_time']
         ];
     }
+    // For session availability and UI free-slot display, include lunch break as a pseudo booking
+    $session_blocked_slots = $real_booked_slots;
+    $session_blocked_slots[] = [
+        'start' => '12:00:00',
+        'end' => '13:00:00'
+    ];
 
     // Check availability for each session
     $sessions = [];
@@ -60,11 +79,11 @@ try {
         $is_available = true;
         
         if ($session['type'] === 'whole_day') {
-            // Whole day booking is only available if there are NO bookings for the entire day
-            $is_available = empty($booked_slots);
+            // Whole day booking is only available if there are NO REAL bookings for the entire day
+            $is_available = empty($real_booked_slots);
         } else {
             // Regular session - check if it conflicts with any existing booking
-            foreach ($booked_slots as $booked) {
+            foreach ($session_blocked_slots as $booked) {
                 if (($session['start'] < $booked['end'] && $session['end'] > $booked['start'])) {
                     $is_available = false;
                     break;
@@ -81,9 +100,9 @@ try {
         ];
     }
 
-    // Format booked slots for display
+    // Format booked slots for display (use session-blocked to reflect lunch in free-slot calc)
     $booked_display = [];
-    foreach ($booked_slots as $slot) {
+    foreach ($session_blocked_slots as $slot) {
         $booked_display[] = [
             'start' => $slot['start'],
             'end' => $slot['end']
