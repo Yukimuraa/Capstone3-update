@@ -39,8 +39,9 @@ if ($size_result->num_rows > 0) {
     }
 }
 
-// Get admin name for 'Issued by'
-$admin_name = isset($_SESSION['user_sessions']['admin']['user_name']) ? $_SESSION['user_sessions']['admin']['user_name'] : 'Business Affairs Personnel';
+// Get admin/secretary name for 'Issued by'
+$active_type = isset($_SESSION['active_user_type']) ? $_SESSION['active_user_type'] : 'admin';
+$admin_name = isset($_SESSION['user_sessions'][$active_type]['user_name']) ? $_SESSION['user_sessions'][$active_type]['user_name'] : 'Business Affairs Personnel';
 
 // Use order fields for receipt
 $receipt_no = str_pad($order['id'], 6, '0', STR_PAD_LEFT);

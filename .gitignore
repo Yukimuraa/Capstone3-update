@@ -1,25 +1,87 @@
-# Dependencies
+# ===================================
+# CHMSU BAO System - Git Ignore
+# ===================================
+
+# === SENSITIVE FILES (NEVER COMMIT!) ===
+config/database.php
+config/email_config.php
+*.env
+.env
+
+# === NODE MODULES & DEPENDENCIES ===
 node_modules/
 vendor/
+composer.lock
+package-lock.json
 
-# Environment files
-.env
-.env.local
+# === USER UPLOADS (Large Files) ===
+uploads/
+uploads/*
+uploads/inventory/*
+uploads/profile_pics/*
 
-# IDE files
+# === TEMPORARY & TEST FILES ===
+test*.php
+check*.php
+fix*.php
+fix*.html
+verify*.php
+setup.html
+gmail_setup_guide.php
+
+# === DOCUMENTATION (Optional - Uncomment to exclude) ===
+# *.txt
+# *.md
+# !README.md
+
+# === DATABASE BACKUPS ===
+*.sql
+backup/
+backups/
+*.backup
+
+# === IDE & EDITOR FILES ===
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS files
+*.code-workspace
 .DS_Store
 Thumbs.db
 
-# Logs
+# === LOGS ===
 *.log
+logs/
+error_log
+debug.log
 
-# Temporary files
+# === TEMPORARY FILES ===
 *.tmp
 *.temp
+*.cache
+*.swp
+*.swo
+*~
 
+# === CYPRESS (Testing) ===
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+
+# === PHP ===
+*.php~
+.phpunit.result.cache
+
+# === SYSTEM FILES ===
+.htaccess.backup
+*.bak
+*.old
+*.orig
+
+# === DEPLOYMENT ===
+deploy.sh
+deploy.bat
+.deployment
+
+# Keep these files (override previous rules)
+!.gitignore
+!config/.gitkeep
+!uploads/.gitkeep

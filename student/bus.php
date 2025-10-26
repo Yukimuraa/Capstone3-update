@@ -71,21 +71,50 @@ function getBusIdByNumber($conn, $bus_number) {
 // LOCAL DISTANCE CALCULATION - No APIs required
 // Uses hardcoded coordinates for all Negros Occidental locations
 
-// Function to get distance between two locations (CHMSU as origin)
+// Function to get distance between two locations
 function getDistanceBetweenLocations($from, $to) {
-    // Always use CHMSU Talisay as origin
-    $destination = $to;
+    require_once '../includes/negros_occidental_locations.php';
     
-    // If "to" is CHMSU, use "from" as destination
-    if (stripos($to, 'chmsu') !== false || stripos($to, 'talisay') !== false) {
-        $destination = $from;
+    // Check if both are CHMSU campuses (campus to campus)
+    $fromIsCHMSU = (stripos($from, 'chmsu') !== false || stripos($from, 'carlos hilado') !== false);
+    $toIsCHMSU = (stripos($to, 'chmsu') !== false || stripos($to, 'carlos hilado') !== false);
+    
+    if ($fromIsCHMSU && $toIsCHMSU) {
+        // Both are CHMSU campuses - calculate distance between them
+        $fromLocation = NegrosOccidentalLocations::findLocation($from);
+        $toLocation = NegrosOccidentalLocations::findLocation($to);
+        
+        if ($fromLocation && $toLocation) {
+            $distance = NegrosOccidentalLocations::calculateDistance(
+                $fromLocation['lat'], 
+                $fromLocation['lon'],
+                $toLocation['lat'], 
+                $toLocation['lon']
+            );
+            return max($distance, 5); // Minimum 5km
+        }
     }
     
-    // Get distance from local database
-    $result = NegrosOccidentalLocations::getDistanceFromCHMSU($destination);
+    // If FROM is CHMSU Talisay, calculate to destination
+    if (stripos($from, 'talisay') !== false && $fromIsCHMSU) {
+        $result = NegrosOccidentalLocations::getDistanceFromCHMSU($to);
+        if ($result) {
+            return max($result['distance_km'], 5);
+        }
+    }
     
+    // If TO is CHMSU Talisay, calculate from origin
+    if (stripos($to, 'talisay') !== false && $toIsCHMSU) {
+        $result = NegrosOccidentalLocations::getDistanceFromCHMSU($from);
+        if ($result) {
+            return max($result['distance_km'], 5);
+        }
+    }
+    
+    // Default: use TO as destination from CHMSU Talisay
+    $result = NegrosOccidentalLocations::getDistanceFromCHMSU($to);
     if ($result) {
-        return max($result['distance_km'], 5); // Minimum 5km
+        return max($result['distance_km'], 5);
     }
     
     // Ultimate fallback
@@ -94,12 +123,18 @@ function getDistanceBetweenLocations($from, $to) {
 
 // Function to calculate billing statement
 function calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days) {
+    global $conn;
+    
     // Get distance between locations
     $distance_km = getDistanceBetweenLocations($from_location, $to_location);
     $total_distance_km = $distance_km * 2; // Round trip
     
-    // Default values
+    // Get current fuel rate from settings (default to 70.00 if not set)
     $fuel_rate = 70.00;
+    $fuel_rate_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = 'fuel_rate'");
+    if ($fuel_rate_query && $fuel_rate_query->num_rows > 0) {
+        $fuel_rate = floatval($fuel_rate_query->fetch_assoc()['setting_value']);
+    }
     
     // Cost calculations per vehicle
     $computed_distance = $distance_km; // 2Km/L rate
@@ -301,6 +336,14 @@ $stats_stmt->bind_param("i", $_SESSION['user_id']);
 $stats_stmt->execute();
 $stats_result = $stats_stmt->get_result();
 $stats = $stats_result->fetch_assoc();
+
+// Get all available buses
+$buses_query = "SELECT id, bus_number, vehicle_type, capacity, status FROM buses ORDER BY bus_number ASC";
+$buses_result = $conn->query($buses_query);
+$available_buses = [];
+while ($bus = $buses_result->fetch_assoc()) {
+    $available_buses[] = $bus;
+}
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -660,9 +703,13 @@ $stats = $stats_result->fetch_assoc();
                     <select id="bus_no" name="bus_no" required 
                             class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
                             onchange="checkBusAvailability()">
-                        <option value="1">Bus 1</option>
-                        <option value="2">Bus 2</option>
-                        <option value="3">Bus 3</option>
+                        <option value="">Select Bus</option>
+                        <?php foreach ($available_buses as $bus): ?>
+                            <option value="<?php echo htmlspecialchars($bus['bus_number']); ?>">
+                                Bus <?php echo htmlspecialchars($bus['bus_number']); ?> 
+                                (<?php echo htmlspecialchars($bus['vehicle_type']); ?> - <?php echo $bus['capacity']; ?> seats)
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                     <p class="text-xs text-gray-500 mt-1" id="bus-availability-hint">
                         <i class="fas fa-bus mr-1"></i>
@@ -1368,17 +1415,10 @@ async function updateDistance() {
     `;
     
     try {
-        // Determine destination (always from CHMSU to destination)
-        let destination = toLocation;
-        
-        // If "to" is CHMSU, use "from" as destination
-        if (toLocation.toLowerCase().includes('chmsu') || toLocation.toLowerCase().includes('talisay')) {
-            destination = fromLocation;
-        }
-        
-        // Call local PHP endpoint
+        // Call local PHP endpoint with BOTH locations for proper campus-to-campus calculation
         const formData = new FormData();
-        formData.append('destination', destination);
+        formData.append('from_location', fromLocation);
+        formData.append('to_location', toLocation);
         
         const response = await fetch('calculate_distance.php', {
             method: 'POST',
@@ -1419,7 +1459,7 @@ async function updateDistance() {
             <div class="mt-3 pt-2 border-t border-green-200 text-xs text-gray-700">
                 <div class="mb-2">
                     <i class="fas fa-university mr-1 text-blue-600"></i>
-                    <span class="font-semibold">From:</span> ${CHMSU_ORIGIN_NAME}
+                    <span class="font-semibold">From:</span> ${result.from_location || CHMSU_ORIGIN_NAME}
                 </div>
                 <div>
                     <i class="fas fa-map-marker-alt mr-1 text-green-600"></i>
@@ -1479,8 +1519,17 @@ function checkAvailability() {
             statusDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i>Only ${data.available_buses} buses available, but you requested ${vehicles}.`;
         }
 
-        // Update Bus Number select options (1,2,3) availability
-        const availabilityByNumber = { '1': true, '2': true, '3': true };
+        // Update Bus Number select options availability
+        const availabilityByNumber = {};
+        
+        // Initialize all buses as available
+        Array.from(busNoSelect.options).forEach(opt => {
+            if (opt.value) {
+                availabilityByNumber[opt.value] = true;
+            }
+        });
+        
+        // Mark unavailable buses from API response
         if (data.buses) {
             data.buses.forEach(bus => {
                 if (availabilityByNumber.hasOwnProperty(bus.bus_number)) {
@@ -1489,16 +1538,25 @@ function checkAvailability() {
             });
         }
 
-        // Enable/disable options
+        // Enable/disable options and update text
         Array.from(busNoSelect.options).forEach(opt => {
+            if (opt.value === "") return; // Skip the "Select Bus" option
+            
             const isAvail = availabilityByNumber[opt.value] !== false;
             opt.disabled = !isAvail;
-            opt.textContent = `Bus ${opt.value}${!isAvail ? ' (Not available)' : ''}`;
+            
+            // Get original bus info from option text
+            const busInfo = opt.getAttribute('data-original-text') || opt.textContent;
+            if (!opt.hasAttribute('data-original-text')) {
+                opt.setAttribute('data-original-text', opt.textContent);
+            }
+            
+            opt.textContent = busInfo + (!isAvail ? ' (Not available)' : '');
         });
 
         // If selected option becomes unavailable, switch to first available
         if (busNoSelect.options[busNoSelect.selectedIndex]?.disabled) {
-            const firstAvail = Array.from(busNoSelect.options).find(o => !o.disabled);
+            const firstAvail = Array.from(busNoSelect.options).find(o => !o.disabled && o.value);
             if (firstAvail) busNoSelect.value = firstAvail.value;
         }
 

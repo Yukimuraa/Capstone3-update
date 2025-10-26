@@ -358,8 +358,23 @@ class NegrosOccidentalLocations {
             'Valladolid' => ['lat' => 10.5092, 'lon' => 123.0872, 'type' => 'municipality'],
             
             // ========== LANDMARKS & INSTITUTIONS ==========
-            'CHMSU Talisay' => ['lat' => 10.7358, 'lon' => 122.9853, 'type' => 'school'],
+            // CHMSU Binalbagan Campus (list first to prioritize in search)
             'CHMSU Binalbagan' => ['lat' => 10.1906, 'lon' => 122.8608, 'type' => 'school'],
+            'CHMSU Binalbagan Campus' => ['lat' => 10.1906, 'lon' => 122.8608, 'type' => 'school'],
+            
+            // CHMSU Fortune Towne Campus
+            'CHMSU Fortune Towne' => ['lat' => 10.6812, 'lon' => 122.9510, 'type' => 'school'],
+            'CHMSU Fortune Towne Campus' => ['lat' => 10.6812, 'lon' => 122.9510, 'type' => 'school'],
+            
+            // CHMSU Alijis Campus
+            'CHMSU Alijis' => ['lat' => 10.6550, 'lon' => 122.9450, 'type' => 'school'],
+            'CHMSU Alijis Campus' => ['lat' => 10.6550, 'lon' => 122.9450, 'type' => 'school'],
+            
+            // CHMSU Talisay - Main Campus (list last, more specific entries)
+            'CHMSU Talisay' => ['lat' => 10.7358, 'lon' => 122.9853, 'type' => 'school'],
+            'CHMSU Talisay Campus' => ['lat' => 10.7358, 'lon' => 122.9853, 'type' => 'school'],
+            'CHMSU - Carlos Hilado Memorial State University, Talisay City' => ['lat' => 10.7358, 'lon' => 122.9853, 'type' => 'school'],
+            'Carlos Hilado Memorial State University, Talisay City' => ['lat' => 10.7358, 'lon' => 122.9853, 'type' => 'school'],
             'SM City Bacolod' => ['lat' => 10.6770, 'lon' => 122.9560, 'type' => 'landmark'],
             'Ayala Capitol Central' => ['lat' => 10.6745, 'lon' => 122.9510, 'type' => 'landmark'],
             'Robinsons Place Bacolod' => ['lat' => 10.6780, 'lon' => 122.9540, 'type' => 'landmark'],
@@ -390,21 +405,41 @@ class NegrosOccidentalLocations {
     }
     
     /**
-     * Find location by name (fuzzy search)
+     * Find location by name (fuzzy search with priority for specific matches)
      * @param string $search
      * @return array|null
      */
     public static function findLocation($search) {
         $locations = self::getAllLocations();
-        $search = strtolower(trim($search));
+        $searchOriginal = trim($search);
+        $search = strtolower($searchOriginal);
         
-        // Normalize search - remove extra words
-        $search = str_replace(['city', 'negros occidental', 'philippines', ','], ['', '', '', ''], $search);
+        // PRIORITY 1: Exact match (case-insensitive)
+        foreach ($locations as $name => $data) {
+            if (strtolower($name) === $search) {
+                return array_merge($data, ['name' => $name]);
+            }
+        }
+        
+        // PRIORITY 2: Contains specific campus identifiers (Alijis, Binalbagan, Fortune Towne)
+        $specificKeywords = ['alijis', 'binalbagan', 'fortune towne', 'fortune'];
+        foreach ($specificKeywords as $keyword) {
+            if (stripos($search, $keyword) !== false) {
+                // Search must match this specific keyword
+                foreach ($locations as $name => $data) {
+                    if (stripos(strtolower($name), $keyword) !== false) {
+                        return array_merge($data, ['name' => $name]);
+                    }
+                }
+            }
+        }
+        
+        // PRIORITY 3: Normalize and do exact match
+        $search = str_replace(['city', 'negros occidental', 'philippines', ',', 'campus'], ['', '', '', '', ''], $search);
         $search = trim(preg_replace('/\s+/', ' ', $search));
         
-        // Exact match first
         foreach ($locations as $name => $data) {
-            $normalizedName = str_replace(['City', 'Negros Occidental', 'Philippines', ','], ['', '', '', ''], $name);
+            $normalizedName = str_replace(['City', 'Negros Occidental', 'Philippines', ',', 'Campus'], ['', '', '', '', ''], $name);
             $normalizedName = strtolower(trim(preg_replace('/\s+/', ' ', $normalizedName)));
             
             if ($normalizedName === $search) {
@@ -412,19 +447,32 @@ class NegrosOccidentalLocations {
             }
         }
         
-        // Partial match
+        // PRIORITY 4: Partial match (but exclude if searching for specific campus and it doesn't match)
+        $searchingForSpecificCampus = false;
+        foreach ($specificKeywords as $keyword) {
+            if (stripos($searchOriginal, $keyword) !== false) {
+                $searchingForSpecificCampus = $keyword;
+                break;
+            }
+        }
+        
         foreach ($locations as $name => $data) {
+            // If searching for specific campus, skip entries without that keyword
+            if ($searchingForSpecificCampus && stripos(strtolower($name), $searchingForSpecificCampus) === false) {
+                continue;
+            }
+            
             $normalizedName = str_replace(['City', 'Negros Occidental', 'Philippines', ','], ['', '', '', ''], $name);
             $normalizedName = strtolower(trim(preg_replace('/\s+/', ' ', $normalizedName)));
             
-            if (stripos($normalizedName, $search) !== false || stripos($search, $normalizedName) !== false) {
+            if (stripos($normalizedName, $search) !== false) {
                 return array_merge($data, ['name' => $name]);
             }
         }
         
-        // Try original search as fallback
+        // PRIORITY 5: Try original search as fallback
         foreach ($locations as $name => $data) {
-            if (stripos($name, $search) !== false) {
+            if (stripos($name, $searchOriginal) !== false) {
                 return array_merge($data, ['name' => $name]);
             }
         }

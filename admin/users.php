@@ -3,8 +3,8 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Check if user is admin
-require_admin();
+// Check if user is admin (secretary NOT allowed)
+require_admin_only();
 
 $page_title = "User Management - CHMSU BAO";
 $base_url = "..";
@@ -149,13 +149,15 @@ $result = $conn->query($query);
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $user['email']; ?></td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                 <?php if ($user['user_type'] === 'admin'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Admin</span>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">BAO Admin</span>
+                                                <?php elseif ($user['user_type'] === 'secretary'): ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">BAO Secretary</span>
                                                 <?php elseif ($user['user_type'] === 'staff'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Staff</span>
                                                 <?php elseif ($user['user_type'] === 'student'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Student</span>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Student/Faculty/Staff</span>
                                                 <?php else: ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">External</span>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">External User</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $user['organization'] ?: '-'; ?></td>
@@ -212,10 +214,10 @@ $result = $conn->query($query);
             <div class="mb-4">
                 <label for="user_type" class="block text-sm font-medium text-gray-700 mb-1">User Type</label>
                 <select id="user_type" name="user_type" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50" onchange="toggleOrganizationField()">
-                    <option value="student">Student</option>
-                    <option value="staff">Staff</option>
-                    <option value="admin">Admin</option>
-                    <option value="external">External</option>
+                    <option value="student">Student / Faculty / Staff</option>
+                    <option value="admin">BAO Admin</option>
+                    <option value="secretary">BAO Secretary</option>
+                    <option value="external">External User</option>
                 </select>
             </div>
             <div id="organization_field" class="mb-4 hidden">
@@ -243,6 +245,9 @@ $result = $conn->query($query);
     // Add modal functions
     function openAddModal() {
         document.getElementById('addModal').classList.remove('hidden');
+        // Reset form to ensure clean state
+        document.getElementById('addModal').querySelector('form').reset();
+        toggleOrganizationField(); // Update organization field visibility
     }
     
     function closeAddModal() {

@@ -113,7 +113,32 @@ function require_admin($redirect_url = '../login.php') {
     }
     send_no_cache_headers();
     
-    // Check if admin is logged in
+    // Check if admin or secretary is logged in
+    if (!isset($_SESSION['user_sessions']['admin']) && !isset($_SESSION['user_sessions']['secretary'])) {
+        header("Location: $redirect_url");
+        exit();
+    }
+    
+    // Set the active user type
+    if (isset($_SESSION['user_sessions']['admin'])) {
+        set_active_user_type('admin');
+    } else {
+        set_active_user_type('secretary');
+    }
+}
+
+/**
+ * Redirect user if not admin (secretary NOT allowed)
+ * 
+ * @param string $redirect_url URL to redirect to if not admin
+ */
+function require_admin_only($redirect_url = '../login.php') {
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
+    }
+    send_no_cache_headers();
+    
+    // Check if admin is logged in (secretary NOT allowed)
     if (!isset($_SESSION['user_sessions']['admin'])) {
         header("Location: $redirect_url");
         exit();
@@ -121,6 +146,18 @@ function require_admin($redirect_url = '../login.php') {
     
     // Set admin as the active user type
     set_active_user_type('admin');
+}
+
+/**
+ * Check if current user is secretary
+ * 
+ * @return bool True if secretary, false otherwise
+ */
+function is_secretary() {
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
+    }
+    return isset($_SESSION['user_sessions']['secretary']) && $_SESSION['active_user_type'] === 'secretary';
 }
 
 /**

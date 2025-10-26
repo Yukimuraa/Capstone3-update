@@ -20,6 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    if (isset($_POST['action'])) {
        // Add new item
        if ($_POST['action'] === 'add') {
+           // Only admin can add items, not secretary
+           if (is_secretary()) {
+               $error = 'You do not have permission to add new items.';
+           } else {
            $name = sanitize_input($_POST['name']);
            $description = sanitize_input($_POST['description']);
            $price = floatval($_POST['price']);
@@ -77,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            } else {
                $error_message = "Error adding item: " . $conn->error;
            }
+           } // End else - admin can add items
        }
        
        // Update item
@@ -325,9 +330,11 @@ $stats = $conn->query($stats_query)->fetch_assoc();
                                </div>
                            </div>
                        </div>
+                       <?php if (!is_secretary()): ?>
                        <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500" onclick="openAddModal()">
                            <i class="fas fa-plus mr-2"></i> Add New Item
                        </button>
+                       <?php endif; ?>
                    </div>
                </div>
                

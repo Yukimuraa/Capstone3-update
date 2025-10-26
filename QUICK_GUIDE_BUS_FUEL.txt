@@ -1,0 +1,165 @@
+═══════════════════════════════════════════════════════════════
+    🚌 BUS & FUEL RATE MANAGEMENT - QUICK REFERENCE CARD
+═══════════════════════════════════════════════════════════════
+
+📍 QUICK START (3 STEPS)
+═══════════════════════════════════════════════════════════════
+
+1. SETUP (One-time only)
+   └─ Visit: http://localhost/Capstone-3/database/setup_fuel_rate.php
+   └─ This creates the settings table and sets default fuel rate
+
+2. ACCESS FEATURES
+   └─ Login as Admin
+   └─ Go to: Bus Management (sidebar)
+   └─ See 3 tabs: Schedules | Manage Buses | Fuel Rate
+
+3. START MANAGING
+   └─ Add buses in "Manage Buses" tab
+   └─ Update fuel prices in "Fuel Rate" tab
+
+
+═══════════════════════════════════════════════════════════════
+📋 COMMON TASKS
+═══════════════════════════════════════════════════════════════
+
+┌─ ADD NEW BUS ────────────────────────────────────────────────
+│  1. Go to "Manage Buses" tab
+│  2. Fill form (Bus #, Type, Capacity, Status)
+│  3. Click "Add Bus"
+│  ✓ Done! Bus appears in the list
+└──────────────────────────────────────────────────────────────
+
+┌─ UPDATE FUEL RATE ───────────────────────────────────────────
+│  1. Go to "Fuel Rate" tab
+│  2. Enter new price (e.g., 75.50)
+│  3. Click "Update Fuel Rate"
+│  ✓ All new bookings use this rate!
+│  
+│  💡 NOTE: Existing bookings keep their original rate
+└──────────────────────────────────────────────────────────────
+
+┌─ CHANGE BUS STATUS ──────────────────────────────────────────
+│  1. Go to "Manage Buses" tab
+│  2. Click Edit (pencil) icon on bus
+│  3. Select new status
+│  4. Click "Update Status"
+│  
+│  Status Options:
+│  • Available ─── Ready for booking
+│  • Booked ────── Currently reserved
+│  • Maintenance ─ Under repair
+│  • Out of Service ─ Not available
+└──────────────────────────────────────────────────────────────
+
+┌─ DELETE BUS ─────────────────────────────────────────────────
+│  1. Go to "Manage Buses" tab
+│  2. Click Delete (trash) icon
+│  3. Confirm deletion
+│  
+│  ⚠ Cannot delete if bus has active bookings!
+└──────────────────────────────────────────────────────────────
+
+
+═══════════════════════════════════════════════════════════════
+🔍 NAVIGATION
+═══════════════════════════════════════════════════════════════
+
+Admin Panel > Bus Management
+    │
+    ├─ Tab 1: Bus Schedules
+    │         └─ View/approve/reject requests
+    │         └─ Print receipts
+    │         └─ Filter by month
+    │
+    ├─ Tab 2: Manage Buses
+    │         └─ Add new buses
+    │         └─ View all buses
+    │         └─ Edit status
+    │         └─ Delete buses
+    │
+    └─ Tab 3: Fuel Rate
+              └─ View current rate
+              └─ Update fuel price
+              └─ See tips & info
+
+
+═══════════════════════════════════════════════════════════════
+💡 PRO TIPS
+═══════════════════════════════════════════════════════════════
+
+🔹 Update fuel rate BEFORE approving new bookings
+🔹 Use simple bus numbers (1, 2, 3) for easy tracking
+🔹 Check local gas stations for current fuel prices
+🔹 Mark buses as "Maintenance" during servicing
+🔹 Keep a log of when you update fuel rates
+🔹 Add 5-10% buffer to fuel rate for fluctuations
+
+
+═══════════════════════════════════════════════════════════════
+⚠️ IMPORTANT NOTES
+═══════════════════════════════════════════════════════════════
+
+❗ Fuel Rate Changes:
+   • Only affects NEW bookings after the update
+   • Existing bookings keep their original rate
+   • No way to retroactively change old bookings
+
+❗ Bus Deletion:
+   • Cannot delete buses with active bookings
+   • Must complete or cancel bookings first
+   • Action is permanent and cannot be undone
+
+❗ Bus Numbers:
+   • Must be unique across all buses
+   • Can use numbers (1, 2, 3) or text (Bus-001)
+   • Choose carefully - hard to change later
+
+
+═══════════════════════════════════════════════════════════════
+🐛 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+Problem: "Fuel rate not showing"
+Fix: Run database/setup_fuel_rate.php
+
+Problem: "Cannot delete bus"
+Fix: Check for active bookings, complete them first
+
+Problem: "Bus number already exists"  
+Fix: Choose a different unique bus number
+
+Problem: "Tab not showing"
+Fix: Ensure logged in as admin, refresh page
+
+
+═══════════════════════════════════════════════════════════════
+📞 NEED HELP?
+═══════════════════════════════════════════════════════════════
+
+📖 Full Documentation: BUS_FUEL_MANAGEMENT_GUIDE.md
+🔧 Setup Script: database/setup_fuel_rate.php
+💻 Admin Panel: admin/bus.php
+
+
+═══════════════════════════════════════════════════════════════
+✅ CHECKLIST FOR FIRST-TIME SETUP
+═══════════════════════════════════════════════════════════════
+
+☐ Run setup_fuel_rate.php script
+☐ Verify default fuel rate (₱70.00)
+☐ Add all your buses to the system
+☐ Update fuel rate to current market price
+☐ Test adding a sample bus schedule
+☐ Verify billing calculation is correct
+☐ Print a test receipt
+☐ Bookmark the admin panel
+
+
+═══════════════════════════════════════════════════════════════
+
+Last Updated: October 26, 2025
+Version: 1.0
+
+═══════════════════════════════════════════════════════════════
+

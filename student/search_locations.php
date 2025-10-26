@@ -20,3 +20,4 @@ $results = NegrosOccidentalLocations::searchLocations($query, 10);
 echo json_encode(['results' => $results]);
 ?>
 
+

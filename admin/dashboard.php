@@ -3,12 +3,13 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Check if user is admin
+// Check if user is admin or secretary
 require_admin();
 
-// Get user data for the admin
-$user_id = $_SESSION['user_sessions']['admin']['user_id'];
-$user_name = $_SESSION['user_sessions']['admin']['user_name'];
+// Get user data based on active user type (admin or secretary)
+$active_type = $_SESSION['active_user_type'];
+$user_id = $_SESSION['user_sessions'][$active_type]['user_id'];
+$user_name = $_SESSION['user_sessions'][$active_type]['user_name'];
 
 $page_title = "Admin Dashboard - CHMSU BAO";
 $base_url = "..";

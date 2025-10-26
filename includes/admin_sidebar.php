@@ -10,7 +10,10 @@ if ($logout_path === '') {
 if (substr($logout_path, -1) !== '/') {
     $logout_path .= '/';
 }
-$logout_path .= 'logout.php?user_type=admin';
+// Determine user type for logout (admin or secretary)
+require_once __DIR__ . '/functions.php';
+$user_type_logout = is_secretary() ? 'secretary' : 'admin';
+$logout_path .= 'logout.php?user_type=' . $user_type_logout;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -66,9 +69,15 @@ $logout_path .= 'logout.php?user_type=admin';
        <!-- <a href="gym.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-calendar-alt mr-2"></i>Gym Bookings
        </a> -->
+       <?php
+       // Only show Users menu for admin (not secretary)
+       require_once __DIR__ . '/functions.php';
+       if (!is_secretary()):
+       ?>
        <a href="users.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-users mr-2"></i>Users
        </a>
+       <?php endif; ?>
        <!-- <a href="reports.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-chart-bar mr-2"></i>Reports
        </a> -->
