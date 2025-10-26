@@ -26,21 +26,21 @@ $bookings_query = "SELECT COUNT(*) as count FROM bookings WHERE date >= CURDATE(
 $bookings_result = $conn->query($bookings_query);
 $upcoming_bookings = $bookings_result->fetch_assoc()['count'];
 
-$users_query = "SELECT COUNT(*) as count FROM users";
+$users_query = "SELECT COUNT(*) as count FROM user_accounts";
 $users_result = $conn->query($users_query);
 $users_count = $users_result->fetch_assoc()['count'];
 
 // Get recent requests
 $recent_requests_query = "SELECT r.*, u.name as user_name, u.user_type 
                          FROM requests r 
-                         JOIN users u ON r.user_id = u.id 
+                         JOIN user_accounts u ON r.user_id = u.id 
                          ORDER BY r.created_at DESC LIMIT 5";
 $recent_requests = $conn->query($recent_requests_query);
 
 // Get upcoming bookings
 $upcoming_bookings_query = "SELECT b.*, u.name as user_name, u.organization 
                            FROM bookings b 
-                           JOIN users u ON b.user_id = u.id 
+                           JOIN user_accounts u ON b.user_id = u.id 
                            WHERE b.date >= CURDATE() 
                            ORDER BY b.date ASC LIMIT 5";
 $upcoming_bookings_result = $conn->query($upcoming_bookings_query);

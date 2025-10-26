@@ -12,7 +12,7 @@ $end = $_GET['end'] ?? null; // ISO date
 
 $query = "SELECT b.booking_id, b.date as booking_date, b.start_time, b.end_time, b.status, u.name as user_name, b.purpose
           FROM bookings b
-          JOIN users u ON u.id = b.user_id
+          JOIN user_accounts u ON u.id = b.user_id
           WHERE b.facility_type = 'gym'";
 
 $params = [];

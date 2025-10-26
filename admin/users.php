@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "All required fields must be filled out";
             } else {
                 // Check if email already exists
-                $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+                $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
                 $stmt->bind_param("s", $email);
                 $stmt->execute();
                 $result = $stmt->get_result();
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                     
                     // Insert new user
-                    $stmt = $conn->prepare("INSERT INTO users (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
+                    $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
                     $stmt->bind_param("sssss", $name, $email, $hashed_password, $user_type, $organization);
                     
                     if ($stmt->execute()) {
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id === $_SESSION['user_id']) {
                 $error = "You cannot delete your own account";
             } else {
-                $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+                $stmt = $conn->prepare("DELETE FROM user_accounts WHERE id = ?");
                 $stmt->bind_param("i", $id);
                 
                 if ($stmt->execute()) {
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Get all users
-$query = "SELECT * FROM users ORDER BY user_type, name";
+$query = "SELECT * FROM user_accounts ORDER BY user_type, name";
 $result = $conn->query($query);
 ?>
 

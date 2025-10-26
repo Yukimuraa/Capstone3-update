@@ -1,0 +1,125 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║              BUS REQUEST NOT SHOWING - QUICK FIX                          ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+PROBLEM:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Student submits bus request → Admin sees 0 requests
+❌ Admin page shows "No schedules found for this month"
+❌ Request was "hidden" because admin page only showed current month
+
+ROOT CAUSE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The admin page was filtering to ONLY show October 2025 requests.
+If student requested a bus for November/December/any other month = HIDDEN!
+
+SOLUTION APPLIED:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Admin page NOW shows ALL requests by default
+✅ Added filter buttons: "All Requests" | "Current Month"  
+✅ No more hidden requests!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ QUICK TEST (2 STEPS):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Run Diagnostic Tool
+   👉 http://localhost/Capstone-3/check_bus_requests.php
+   
+   This will show:
+   ✓ Total requests in database
+   ✓ Requests grouped by month
+   ✓ Requests grouped by status
+   ✓ Complete list of all requests
+
+STEP 2: Check Admin Page
+   👉 http://localhost/Capstone-3/admin/bus.php
+   
+   You should now see:
+   ✓ "Bus Management System (All Requests)"
+   ✓ All pending bus requests
+   ✓ Filter buttons at the top
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 WHAT'S NEW:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FILTER BUTTONS (Top Right):
+
+   [All Requests]  ← Shows ALL requests (DEFAULT - always use this!)
+   [Current Month] ← Shows only October 2025
+
+PAGE TITLE SHOWS:
+   "Bus Management System (All Requests)" ← Default
+   "Bus Management System (October 2025)" ← When filtered
+
+STATISTICS NOW SHOW:
+   Instead of: Total Requests: 0
+   Now shows:  Total Requests: [actual count from all months]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 EXAMPLE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BEFORE (October filter only):
+   Available Buses: 5/5
+   Total Requests: 0  ← Your November request was hidden!
+   Pending: 0
+   Approved: 0
+
+AFTER (All Requests):
+   Available Buses: 5/5
+   Total Requests: 1  ← Now visible!
+   Pending: 1         ← Your request appears!
+   Approved: 0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 TROUBLESHOOTING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STILL SEEING 0 REQUESTS?
+
+Option 1: Check if request was actually saved
+   → Run: check_bus_requests.php
+   → Look at "Total Bus Requests Found"
+   → If 0 = request wasn't saved properly
+
+Option 2: Check if buses exist
+   → Run: check_bus_requests.php
+   → Scroll to "Bus Inventory" section
+   → If 0 buses = you need to add buses first
+
+Option 3: Test by creating new request
+   → Login as student
+   → Go to Bus Schedule
+   → Submit a new request
+   → Refresh admin page
+   → Should now appear!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DETAILED DOCS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For more details, see: BUS_REQUEST_FIX.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ SUMMARY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The admin page now shows ALL bus requests by default!
+
+✅ No more hidden requests
+✅ Easy filtering with buttons
+✅ Clear status counts
+✅ Diagnostic tool included
+
+Just refresh admin/bus.php and your requests should appear! 🎉
+
+
+

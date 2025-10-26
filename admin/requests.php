@@ -42,7 +42,7 @@ $search = isset($_GET['search']) ? $_GET['search'] : '';
 // Build query based on filters
 $query = "SELECT r.*, u.name as user_name, u.user_type 
           FROM requests r 
-          JOIN users u ON r.user_id = u.id 
+          JOIN user_accounts u ON r.user_id = u.id 
           WHERE 1=1";
 
 $params = [];

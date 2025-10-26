@@ -59,8 +59,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           // Calculate total price
           $total_price = $quantity * $item['price'];
           
-          // Generate order ID
-          $order_id = 'ORD-' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+          // Generate unique order ID with retry mechanism
+          $order_id = '';
+          $max_attempts = 10;
+          for ($i = 0; $i < $max_attempts; $i++) {
+              // Use timestamp + larger random number for uniqueness
+              $order_id = 'ORD-' . date('Ymd') . '-' . date('His') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+              
+              // Check if this order_id already exists
+              $check_stmt = $conn->prepare("SELECT id FROM orders WHERE order_id = ?");
+              $check_stmt->bind_param("s", $order_id);
+              $check_stmt->execute();
+              $check_result = $check_stmt->get_result();
+              
+              if ($check_result->num_rows == 0) {
+                  // Unique ID found, break the loop
+                  break;
+              }
+              
+              // If we're on the last attempt and still have duplicates, add microseconds
+              if ($i == $max_attempts - 1) {
+                  $order_id = 'ORD-' . date('Ymd') . '-' . date('His') . '-' . substr(microtime(true) * 10000, -4);
+              }
+          }
           
           // Create order
           $stmt = $conn->prepare("INSERT INTO orders (order_id, user_id, inventory_id, quantity, total_price, status) VALUES (?, ?, ?, ?, ?, 'pending')");
@@ -75,8 +96,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $update_stmt->bind_param("iii", $new_quantity, $in_stock, $item_id);
           $update_stmt->execute();
           
-          // Create a request for the order
-          $request_id = 'REQ-' . date('Y') . '-' . str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
+          // Generate unique request ID with retry mechanism
+          $request_id = '';
+          for ($i = 0; $i < $max_attempts; $i++) {
+              // Use timestamp + larger random number for uniqueness
+              $request_id = 'REQ-' . date('Ymd') . '-' . date('His') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+              
+              // Check if this request_id already exists
+              $check_req_stmt = $conn->prepare("SELECT id FROM requests WHERE request_id = ?");
+              $check_req_stmt->bind_param("s", $request_id);
+              $check_req_stmt->execute();
+              $check_req_result = $check_req_stmt->get_result();
+              
+              if ($check_req_result->num_rows == 0) {
+                  // Unique ID found, break the loop
+                  break;
+              }
+              
+              // If we're on the last attempt and still have duplicates, add microseconds
+              if ($i == $max_attempts - 1) {
+                  $request_id = 'REQ-' . date('Ymd') . '-' . date('His') . '-' . substr(microtime(true) * 10000, -4);
+              }
+          }
           $details = "Order for " . $quantity . " " . $item['name'];
           if (!empty($size)) {
               $details .= " (Size: " . $size . ")";
@@ -180,11 +221,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <form method="POST" action="order_item.php?id=<?php echo $item_id; ?>" class="mt-6">
                                   <div class="space-y-4">
                                       <?php 
-                                      $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
+                                      // Check if item name contains clothing keywords
+                                      $clothingKeywords = ['shirt', 't-shirt', 'tshirt', 'pants', 'shorts', 'jacket', 'hoodie', 'polo', 'jersey'];
                                       $needs_sizes = false;
                                       
-                                      foreach ($sizingItems as $sizingItem) {
-                                          if (strpos($item['name'], $sizingItem) !== false) {
+                                      foreach ($clothingKeywords as $keyword) {
+                                          if (stripos($item['name'], $keyword) !== false) {
                                               $needs_sizes = true;
                                               break;
                                           }

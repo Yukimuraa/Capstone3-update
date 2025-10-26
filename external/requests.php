@@ -56,20 +56,20 @@ $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
 $date_filter = isset($_GET['date']) ? $_GET['date'] : 'all';
 
 // Build the query based on filters
-$query_conditions = ["user_id = ?"];
+$query_conditions = ["b.user_id = ?"];
 $query_params = [$user_id];
 $param_types = "i";
 
 if ($status_filter != 'all') {
-    $query_conditions[] = "status = ?";
+    $query_conditions[] = "b.status = ?";
     $query_params[] = $status_filter;
     $param_types .= "s";
 }
 
 if ($date_filter == 'upcoming') {
-    $query_conditions[] = "date >= CURDATE()";
+    $query_conditions[] = "b.date >= CURDATE()";
 } elseif ($date_filter == 'past') {
-    $query_conditions[] = "date < CURDATE()";
+    $query_conditions[] = "b.date < CURDATE()";
 }
 
 $conditions_sql = implode(" AND ", $query_conditions);
@@ -79,7 +79,7 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
-$count_query = "SELECT COUNT(*) as total FROM bookings WHERE $conditions_sql";
+$count_query = "SELECT COUNT(*) as total FROM bookings b WHERE $conditions_sql";
 $stmt = $conn->prepare($count_query);
 $stmt->bind_param($param_types, ...$query_params);
 $stmt->execute();
@@ -90,7 +90,7 @@ $total_pages = ceil($total_rows / $per_page);
 // Get requests with user information
 $requests_query = "SELECT b.*, u.name as user_name, u.email as user_email 
                   FROM bookings b
-                  LEFT JOIN users u ON b.user_id = u.id
+                  LEFT JOIN user_accounts u ON b.user_id = u.id
                   WHERE $conditions_sql
                   ORDER BY b.date DESC, b.created_at DESC
                   LIMIT ?, ?";
@@ -296,7 +296,6 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                             <td class="px-6 py-4 text-sm text-gray-500">
                                                 <div class="font-medium"><?php echo $display_name; ?></div>
                                                 <div class="text-gray-400"><?php echo $display_email; ?></div>
-                                                <div class="text-gray-400">notre</div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                 <div class="text-sm text-gray-900"><?php echo date('M d, Y', strtotime($request['date'])); ?></div>

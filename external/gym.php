@@ -26,6 +26,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $contact_person = sanitize_input($_POST['contact_person']);
             $contact_number = sanitize_input($_POST['contact_number']);
             
+            // Normalize times to HH:MM:SS format for proper comparison
+            $start_time = trim($start_time);
+            $end_time = trim($end_time);
+            $start_normalized = (strlen($start_time) === 5) ? $start_time . ':00' : $start_time;
+            $end_normalized = (strlen($end_time) === 5) ? $end_time . ':00' : $end_time;
+            
             // Validate booking date (must be in the future)
             $booking_date = new DateTime($date);
             $today = new DateTime();
@@ -37,14 +43,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			// Validate time (end time must be after start time)
 			elseif ($start_time >= $end_time) {
                 $error_message = "End time must be after start time.";
-			} 
-			// Block lunch break 12:00 PM - 1:00 PM for partial bookings; allow full-day 08:00-18:00
-			elseif (!(($start_time === '08:00' || $start_time === '08:00:00') && ($end_time === '18:00' || $end_time === '18:00:00'))
-				&& $start_time < '13:00:00' && $end_time > '12:00:00') {
-				$error_message = "The gymnasium is unavailable from 12:00 PM to 1:00 PM.";
 			}
-            // Check if the gym is already booked for that date
-            else {
+			// Check if booking overlaps with lunch break (11:30 AM - 1:00 PM)
+			// Allow full-day bookings (08:00-18:00) to bypass this check
+			// Block bookings that start before 13:00 AND end after 11:30
+			elseif (!(($start_normalized === '08:00:00') && ($end_normalized === '18:00:00'))) {
+				// Convert times to comparable integers (remove colons)
+				$start_int = (int)str_replace(':', '', $start_normalized);
+				$end_int = (int)str_replace(':', '', $end_normalized);
+				$lunch_start_int = 113000; // 11:30:00
+				$lunch_end_int = 130000;   // 13:00:00
+				
+				// Check if booking overlaps with lunch: starts before 13:00 AND ends after 11:30
+				if ($start_int < $lunch_end_int && $end_int > $lunch_start_int) {
+					$error_message = "The gymnasium is unavailable from 11:30 AM to 1:00 PM (Lunch Break).";
+				}
+			}
+            
+            // If no validation errors, proceed to check overlaps and insert booking
+            if (empty($error_message)) {
 				// Use half-open interval overlap: existing.start < new.end AND existing.end > new.start
 				// This allows adjacent bookings that touch at boundaries (e.g., 09:30 following 08:30–09:30)
 				$check_query = "SELECT 1 FROM bookings 
@@ -640,22 +657,58 @@ $bookings_result = $bookings_stmt->get_result();
                                 });
                                 
                                 // Additionally, compute dynamic free windows (like 14:30 - 18:00) and offer as custom slots
+                                // Respect lunch break: 11:30 - 13:00
                                 const dayStart = '08:00:00';
+                                const lunchStart = '11:30:00';
+                                const lunchEnd = '13:00:00';
                                 const dayEnd = '18:00:00';
                                 const bookedTimes = (data.booked || []).map(b => ({ start: b.start, end: b.end }))
                                     .sort((a, b) => a.start.localeCompare(b.start));
                                 let currentTime = dayStart;
                                 const freeWindows = [];
+                                
                                 bookedTimes.forEach(booking => {
                                     if (currentTime < booking.start) {
-                                        freeWindows.push({ start: currentTime, end: booking.start });
+                                        // Split available window if it crosses lunch break
+                                        if (currentTime < lunchStart && booking.start > lunchStart) {
+                                            // Add morning slot (before lunch)
+                                            if (currentTime < lunchStart) {
+                                                freeWindows.push({ start: currentTime, end: lunchStart });
+                                            }
+                                            // Add afternoon slot (after lunch) if booking starts after lunch
+                                            if (booking.start > lunchEnd) {
+                                                freeWindows.push({ start: lunchEnd, end: booking.start });
+                                            }
+                                        } else if (currentTime >= lunchEnd || booking.start <= lunchStart) {
+                                            // Normal window that doesn't cross lunch
+                                            freeWindows.push({ start: currentTime, end: booking.start });
+                                        }
                                     }
                                     if (booking.end > currentTime) {
-                                        currentTime = booking.end;
+                                        // Skip lunch break when updating current time
+                                        if (booking.end > lunchStart && booking.end < lunchEnd) {
+                                            currentTime = lunchEnd;
+                                        } else if (currentTime < lunchStart && booking.end >= lunchStart) {
+                                            currentTime = (booking.end >= lunchEnd) ? booking.end : lunchEnd;
+                                        } else {
+                                            currentTime = booking.end;
+                                        }
                                     }
                                 });
+                                
+                                // Check remaining time after last booking
                                 if (currentTime < dayEnd) {
-                                    freeWindows.push({ start: currentTime, end: dayEnd });
+                                    // Split if it crosses lunch break
+                                    if (currentTime < lunchStart) {
+                                        freeWindows.push({ start: currentTime, end: lunchStart });
+                                        freeWindows.push({ start: lunchEnd, end: dayEnd });
+                                    } else if (currentTime >= lunchEnd) {
+                                        freeWindows.push({ start: currentTime, end: dayEnd });
+                                    }
+                                    // If currentTime is between lunchStart and lunchEnd, start from lunchEnd
+                                    else if (currentTime >= lunchStart && currentTime < lunchEnd) {
+                                        freeWindows.push({ start: lunchEnd, end: dayEnd });
+                                    }
                                 }
                                 // Render free windows of at least 60 minutes as selectable custom slots
                                 freeWindows.forEach(w => {

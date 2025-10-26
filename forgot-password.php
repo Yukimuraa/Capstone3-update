@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Email and user type are required";
     } else {
         // Check if user exists
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? AND user_type = ?");
+        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
         $stmt->bind_param("ss", $email, $user_type);
         $stmt->execute();
         $result = $stmt->get_result();

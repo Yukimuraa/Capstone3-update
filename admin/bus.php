@@ -76,12 +76,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Check if filter is set (default to "all" to show all requests)
+$view_filter = isset($_GET['view']) ? $_GET['view'] : 'all';
+
 include '../includes/header.php';
 ?>
 <div class="flex min-h-screen">
     <?php include '../includes/admin_sidebar.php'; ?>
     <main class="flex-1 p-8 bg-gray-100">
-        <h2 class="text-3xl font-bold mb-6 text-blue-900 flex items-center"><i class="fas fa-bus mr-3"></i>Bus Management System <span class="ml-2 text-lg font-normal text-gray-500">(<?php echo date('F Y'); ?>)</span></h2>
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-bold text-blue-900 flex items-center">
+                <i class="fas fa-bus mr-3"></i>Bus Management System 
+                <span class="ml-2 text-lg font-normal text-gray-500">
+                    <?php echo $view_filter === 'current_month' ? '(' . date('F Y') . ')' : '(All Requests)'; ?>
+                </span>
+            </h2>
+            <div class="flex gap-2">
+                <a href="?view=all" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow">
+                    <i class="fas fa-list mr-2"></i>All Requests
+                </a>
+                <a href="?view=current_month" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'current_month' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow">
+                    <i class="fas fa-calendar mr-2"></i>Current Month
+                </a>
+            </div>
+        </div>
         
         <?php if ($success): ?>
             <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded">
@@ -124,29 +142,48 @@ include '../includes/header.php';
         $current_month = date('m');
         $current_year = date('Y');
         
-        // Count schedules by status
-        $count_sql = "SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-            SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
-            SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-            FROM bus_schedules WHERE MONTH(date_covered) = ? AND YEAR(date_covered) = ?";
-        $count_stmt = $conn->prepare($count_sql);
-        $count_stmt->bind_param("ii", $current_month, $current_year);
-        $count_stmt->execute();
-        $count_result = $count_stmt->get_result();
-        $schedule_stats = $count_result->fetch_assoc();
-        
-        // Get all schedules for this month and year with billing info
-        $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
-                     FROM bus_schedules bs 
-                     LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
-                     WHERE MONTH(bs.date_covered) = ? AND YEAR(bs.date_covered) = ? 
-                     ORDER BY bs.created_at DESC";
-        $list_stmt = $conn->prepare($list_sql);
-        $list_stmt->bind_param("ii", $current_month, $current_year);
-        $list_stmt->execute();
-        $list_result = $list_stmt->get_result();
+        // Count schedules by status (ALL TIME or FILTERED)
+        if ($view_filter === 'current_month') {
+            $count_sql = "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM bus_schedules WHERE MONTH(date_covered) = ? AND YEAR(date_covered) = ?";
+            $count_stmt = $conn->prepare($count_sql);
+            $count_stmt->bind_param("ii", $current_month, $current_year);
+            $count_stmt->execute();
+            $count_result = $count_stmt->get_result();
+            $schedule_stats = $count_result->fetch_assoc();
+            
+            // Get schedules for this month with billing info
+            $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
+                         FROM bus_schedules bs 
+                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                         WHERE MONTH(bs.date_covered) = ? AND YEAR(bs.date_covered) = ? 
+                         ORDER BY bs.created_at DESC";
+            $list_stmt = $conn->prepare($list_sql);
+            $list_stmt->bind_param("ii", $current_month, $current_year);
+            $list_stmt->execute();
+            $list_result = $list_stmt->get_result();
+        } else {
+            // Show ALL requests (default)
+            $count_sql = "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM bus_schedules";
+            $count_result = $conn->query($count_sql);
+            $schedule_stats = $count_result->fetch_assoc();
+            
+            // Get all schedules with billing info
+            $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
+                         FROM bus_schedules bs 
+                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                         ORDER BY bs.created_at DESC";
+            $list_result = $conn->query($list_sql);
+        }
         ?>
         <!-- Statistics Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -288,14 +325,10 @@ include '../includes/header.php';
                                                         <i class="fas fa-check"></i>
                                                     </button>
                                                 </form>
-                                                <form method="POST" class="inline">
-                                                    <input type="hidden" name="action" value="reject_schedule">
-                                                    <input type="hidden" name="schedule_id" value="<?php echo $row['id']; ?>">
-                                                    <button type="submit" class="text-red-600 hover:text-red-900"
-                                                            onclick="return confirm('Are you sure you want to reject this schedule?')">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
-                                                </form>
+                                                <button type="button" class="text-red-600 hover:text-red-900"
+                                                        onclick="openRejectModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['client'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['destination'], ENT_QUOTES); ?>')">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
                                             <?php endif; ?>
                                             <?php if ($row['total_amount']): ?>
                                                 <a href="../student/print_bus_receipt.php?id=<?php echo $row['id']; ?>" 
@@ -308,7 +341,13 @@ include '../includes/header.php';
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="11" class="border px-4 py-2 text-center text-gray-500">No schedules found for this month.</td></tr>
+                            <tr><td colspan="11" class="border px-4 py-2 text-center text-gray-500">
+                                <?php if ($view_filter === 'current_month'): ?>
+                                    No schedules found for this month. <a href="?view=all" class="text-blue-600 hover:underline">View all requests</a>
+                                <?php else: ?>
+                                    No bus requests found in the system.
+                                <?php endif; ?>
+                            </td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -316,4 +355,79 @@ include '../includes/header.php';
         </div>
     </main>
 </div>
+
+<!-- Reject Schedule Confirmation Modal -->
+<div id="rejectModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Reject Bus Schedule</h3>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <p class="text-sm text-gray-600 mb-4">Are you sure you want to reject this bus schedule?</p>
+            <div class="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Client:</p>
+                    <p class="text-sm text-gray-900" id="reject-client"></p>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Destination:</p>
+                    <p class="text-sm text-gray-900" id="reject-destination"></p>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">
+                <i class="fas fa-info-circle mr-1"></i>
+                The student will be notified that their request has been rejected.
+            </p>
+        </div>
+        
+        <form method="POST" id="rejectForm">
+            <input type="hidden" name="action" value="reject_schedule">
+            <input type="hidden" name="schedule_id" id="reject-schedule-id">
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeRejectModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    <i class="fas fa-times mr-2"></i>
+                    Yes, Reject Schedule
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openRejectModal(scheduleId, client, destination) {
+    document.getElementById('reject-schedule-id').value = scheduleId;
+    document.getElementById('reject-client').textContent = client;
+    document.getElementById('reject-destination').textContent = destination;
+    document.getElementById('rejectModal').classList.remove('hidden');
+}
+
+function closeRejectModal() {
+    document.getElementById('rejectModal').classList.add('hidden');
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(event) {
+    if (event.target.id === 'rejectModal') {
+        closeRejectModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeRejectModal();
+    }
+});
+</script>
+
 <?php include '../includes/footer.php'; ?> 

@@ -1,0 +1,54 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║            PHP WARNING FIXED - $view_filter                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+WARNING MESSAGE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Warning: Undefined variable $view_filter in admin/bus.php on line 88
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLEM:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The variable $view_filter was being used in the page header (line 88)
+BEFORE it was defined (line 146).
+
+PHP reads code from top to bottom, so when it reached line 88, 
+$view_filter didn't exist yet!
+
+SOLUTION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Moved the variable definition to the TOP of the file (line 79-80)
+✅ Removed the duplicate definition (was at line 145-146)
+✅ Now $view_filter is available when the header needs it
+
+WHAT WAS CHANGED:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+admin/bus.php - Line 79-80 (ADDED):
+   // Check if filter is set (default to "all" to show all requests)
+   $view_filter = isset($_GET['view']) ? $_GET['view'] : 'all';
+
+admin/bus.php - Line 145-146 (REMOVED - was duplicate):
+   // Check if filter is set (default to "all" to show all requests)
+   $view_filter = isset($_GET['view']) ? $_GET['view'] : 'all';
+
+RESULT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Warning is gone!
+✅ Page displays correctly
+✅ Filter buttons work properly
+✅ "(All Requests)" displays without errors
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TEST IT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Go to: http://localhost/Capstone-3/admin/bus.php
+2. Should display: "Bus Management System (All Requests)"
+3. No PHP warnings should appear!
+
+✨ Fixed!
+
+
+

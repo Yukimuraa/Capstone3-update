@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
         
         // Update the user's password
-        $stmt = $conn->prepare("UPDATE users SET password = ? WHERE email = ?");
+        $stmt = $conn->prepare("UPDATE user_accounts SET password = ? WHERE email = ?");
         $stmt->bind_param("ss", $hashed_password, $email);
         
         if ($stmt->execute()) {

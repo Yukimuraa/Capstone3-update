@@ -145,7 +145,7 @@ $offset = ($page - 1) * $per_page;
 
 // Count total reservations
 $count_query = "SELECT COUNT(*) as total FROM bookings b 
-                LEFT JOIN users u ON b.user_id = u.id 
+                LEFT JOIN user_accounts u ON b.user_id = u.id 
                 $conditions_sql";
 
 if (!empty($param_types)) {
@@ -164,7 +164,7 @@ $total_pages = ceil($total_rows / $per_page);
 $reservations_query = "SELECT b.*, u.name as user_name, u.email as user_email, u.organization, 
                       gf.name as facility_name 
                       FROM bookings b 
-                      LEFT JOIN users u ON b.user_id = u.id 
+                      LEFT JOIN user_accounts u ON b.user_id = u.id 
                       LEFT JOIN gym_facilities gf ON b.$facility_column = gf.id 
                       $conditions_sql
                       ORDER BY b.date DESC, b.created_at DESC

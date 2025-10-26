@@ -17,13 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    // Get total available buses
-    $total_buses_query = "SELECT COUNT(*) as total FROM buses WHERE status = 'available'";
-    $total_buses_result = $conn->query($total_buses_query);
-    $total_buses = $total_buses_result->fetch_assoc()['total'];
+    // Per-bus availability for the date
+    $buses = [];
+    $buses_query = "SELECT b.id, b.bus_number FROM buses b ORDER BY CAST(b.bus_number AS UNSIGNED) ASC";
+    $buses_result = $conn->query($buses_query);
     
-    // Get booked buses for the specific date
-    $booked_query = "SELECT COUNT(DISTINCT bb.bus_id) as booked 
+    // Preload booked bus ids for the date
+    $booked_ids = [];
+    $booked_query = "SELECT DISTINCT bb.bus_id 
                      FROM bus_bookings bb 
                      JOIN bus_schedules bs ON bb.schedule_id = bs.id 
                      WHERE bs.date_covered = ? AND bb.status = 'active'";
@@ -31,15 +32,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $booked_stmt->bind_param("s", $date_covered);
     $booked_stmt->execute();
     $booked_result = $booked_stmt->get_result();
-    $booked_buses = $booked_result->fetch_assoc()['booked'];
+    while ($row = $booked_result->fetch_assoc()) {
+        $booked_ids[(int)$row['bus_id']] = true;
+    }
     
+    while ($row = $buses_result->fetch_assoc()) {
+        $busId = (int)$row['id'];
+        $isAvailable = !isset($booked_ids[$busId]);
+        $buses[] = [
+            'id' => $busId,
+            'bus_number' => $row['bus_number'],
+            'available' => $isAvailable
+        ];
+    }
+    
+    $total_buses = count($buses);
+    $booked_buses = count($booked_ids);
     $available_buses = $total_buses - $booked_buses;
     
     echo json_encode([
         'total_buses' => $total_buses,
         'booked_buses' => $booked_buses,
         'available_buses' => $available_buses,
-        'can_book' => $available_buses >= $no_of_vehicles
+        'can_book' => $available_buses >= $no_of_vehicles,
+        'buses' => $buses
     ]);
 } else {
     echo json_encode(['error' => 'Invalid request method']);

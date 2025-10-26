@@ -23,7 +23,7 @@ $request_id = $_GET['id'];
 // Verify the request belongs to the user
 $request_query = "SELECT b.*, u.name as user_name, u.email as user_email 
                  FROM bookings b
-                 LEFT JOIN users u ON b.user_id = u.id
+                 LEFT JOIN user_accounts u ON b.user_id = u.id
                  WHERE b.id = ? AND b.user_id = ?";
 $stmt = $conn->prepare($request_query);
 $stmt->bind_param("ii", $request_id, $user_id);

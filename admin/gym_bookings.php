@@ -78,7 +78,7 @@ $user_filter = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
 // Build query based on filters
 $query = "SELECT b.*, u.name as user_name, u.email as user_email, u.organization 
           FROM bookings b
-          JOIN users u ON b.user_id = u.id
+          JOIN user_accounts u ON b.user_id = u.id
           WHERE b.facility_type = 'gym'";
 
 $params = [];
@@ -112,7 +112,7 @@ $stmt->execute();
 $bookings_result = $stmt->get_result();
 
 // Get external users for filter dropdown
-$users_query = "SELECT id, name, email FROM users WHERE user_type = 'external' ORDER BY name";
+$users_query = "SELECT id, name, email FROM user_accounts WHERE user_type = 'external' ORDER BY name";
 $users_result = $conn->query($users_query);
 ?>
 
@@ -836,8 +836,10 @@ $users_result = $conn->query($users_query);
                         
                         // Add available time slots
                         if (data.booked && data.booked.length > 0) {
-                            // Calculate free time slots between bookings
+                            // Calculate free time slots between bookings, respecting lunch break (11:30-13:00)
                             const dayStart = '08:00:00';
+                            const lunchStart = '11:30:00';
+                            const lunchEnd = '13:00:00';
                             const dayEnd = '18:00:00';
                             const bookedTimes = data.booked.map(b => ({
                                 start: b.start,
@@ -845,54 +847,83 @@ $users_result = $conn->query($users_query);
                             })).sort((a, b) => a.start.localeCompare(b.start));
                             
                             let currentTime = dayStart;
+                            const freeSlots = [];
+                            
                             bookedTimes.forEach(booking => {
                                 if (currentTime < booking.start) {
-                                    // Calculate time difference in minutes
-                                    const [startHr, startMin] = currentTime.split(':').map(Number);
-                                    const [endHr, endMin] = booking.start.split(':').map(Number);
-                                    const diffMinutes = (endHr * 60 + endMin) - (startHr * 60 + startMin);
-                                    
-                                    // Only show slots that are at least 1 hour (60 minutes)
-                                    if (diffMinutes >= 60) {
-                                        const availChip = document.createElement('div');
-                                        availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
-                                        availChip.style.backgroundColor = '#dcfce7';
-                                        availChip.style.color = '#166534';
-                                        availChip.style.border = '1px solid #bbf7d0';
-                                        availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${booking.start.substring(0,5)}`;
-                                        slot.appendChild(availChip);
+                                    // Split available window if it crosses lunch break
+                                    if (currentTime < lunchStart && booking.start > lunchStart) {
+                                        // Add morning slot (before lunch)
+                                        if (currentTime < lunchStart) {
+                                            freeSlots.push({ start: currentTime, end: lunchStart });
+                                        }
+                                        // Add afternoon slot (after lunch) if booking starts after lunch
+                                        if (booking.start > lunchEnd) {
+                                            freeSlots.push({ start: lunchEnd, end: booking.start });
+                                        }
+                                    } else if (currentTime >= lunchEnd || booking.start <= lunchStart) {
+                                        // Normal window that doesn't cross lunch
+                                        freeSlots.push({ start: currentTime, end: booking.start });
                                     }
                                 }
-                                currentTime = booking.end;
+                                if (booking.end > currentTime) {
+                                    // Skip lunch break when updating current time
+                                    if (booking.end > lunchStart && booking.end < lunchEnd) {
+                                        currentTime = lunchEnd;
+                                    } else if (currentTime < lunchStart && booking.end >= lunchStart) {
+                                        currentTime = (booking.end >= lunchEnd) ? booking.end : lunchEnd;
+                                    } else {
+                                        currentTime = booking.end;
+                                    }
+                                }
                             });
                             
-                            // Check if there's time after last booking
+                            // Check remaining time after last booking
                             if (currentTime < dayEnd) {
-                                // Calculate time difference in minutes
-                                const [startHr, startMin] = currentTime.split(':').map(Number);
-                                const [endHr, endMin] = dayEnd.split(':').map(Number);
+                                // Split if it crosses lunch break
+                                if (currentTime < lunchStart) {
+                                    freeSlots.push({ start: currentTime, end: lunchStart });
+                                    freeSlots.push({ start: lunchEnd, end: dayEnd });
+                                } else if (currentTime >= lunchEnd) {
+                                    freeSlots.push({ start: currentTime, end: dayEnd });
+                                } else if (currentTime >= lunchStart && currentTime < lunchEnd) {
+                                    freeSlots.push({ start: lunchEnd, end: dayEnd });
+                                }
+                            }
+                            
+                            // Display free slots that are at least 1 hour
+                            freeSlots.forEach(freeSlot => {
+                                const [startHr, startMin] = freeSlot.start.split(':').map(Number);
+                                const [endHr, endMin] = freeSlot.end.split(':').map(Number);
                                 const diffMinutes = (endHr * 60 + endMin) - (startHr * 60 + startMin);
                                 
-                                // Only show slots that are at least 1 hour (60 minutes)
                                 if (diffMinutes >= 60) {
                                     const availChip = document.createElement('div');
                                     availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
                                     availChip.style.backgroundColor = '#dcfce7';
                                     availChip.style.color = '#166534';
                                     availChip.style.border = '1px solid #bbf7d0';
-                                    availChip.textContent = `Available: ${currentTime.substring(0,5)} - ${dayEnd.substring(0,5)}`;
+                                    availChip.textContent = `Available: ${freeSlot.start.substring(0,5)} - ${freeSlot.end.substring(0,5)}`;
                                     slot.appendChild(availChip);
                                 }
-                            }
+                            });
                         } else {
-                            // No bookings - show full day available
-                            const availChip = document.createElement('div');
-                            availChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
-                            availChip.style.backgroundColor = '#dcfce7';
-                            availChip.style.color = '#166534';
-                            availChip.style.border = '1px solid #bbf7d0';
-                            availChip.textContent = 'Available: 08:00 - 18:00';
-                            slot.appendChild(availChip);
+                            // No bookings - show morning and afternoon slots separately
+                            const morningChip = document.createElement('div');
+                            morningChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
+                            morningChip.style.backgroundColor = '#dcfce7';
+                            morningChip.style.color = '#166534';
+                            morningChip.style.border = '1px solid #bbf7d0';
+                            morningChip.textContent = 'Available: 08:00 - 11:30';
+                            slot.appendChild(morningChip);
+                            
+                            const afternoonChip = document.createElement('div');
+                            afternoonChip.className = 'px-1 py-0.5 rounded text-xs mb-1';
+                            afternoonChip.style.backgroundColor = '#dcfce7';
+                            afternoonChip.style.color = '#166534';
+                            afternoonChip.style.border = '1px solid #bbf7d0';
+                            afternoonChip.textContent = 'Available: 13:00 - 18:00';
+                            slot.appendChild(afternoonChip);
                         }
                     })
                     .catch(err => {

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Check - CHMSU BAO</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .card { transition: all 0.3s; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold text-white mb-2">🔍 Database Check</h1>
+            <p class="text-blue-200 text-lg">Based on your MySQL screenshot</p>
+        </div>
+
+        <!-- Status -->
+        <div class="bg-green-500 text-white rounded-lg p-6 mb-8 text-center">
+            <h2 class="text-2xl font-bold mb-2">✅ Good News!</h2>
+            <p class="text-lg">Your database has the <strong>user_accounts</strong> table!</p>
+            <p class="text-sm mt-2">This is the table that was causing the error.</p>
+        </div>
+
+        <!-- Main Actions -->
+        <div class="grid md:grid-cols-2 gap-6 mb-8">
+            <!-- Check Database -->
+            <a href="check_database.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">1. Check Database</h3>
+                    <p class="text-gray-600 mb-4">
+                        See what tables you have and what's missing
+                    </p>
+                    <div class="text-blue-600 font-semibold">
+                        Click to check →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Fix All Columns -->
+            <a href="fix_all_missing_columns.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">🔧</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">2. Fix All Columns</h3>
+                    <p class="text-gray-600 mb-4">
+                        Add missing columns to all tables (includes status)
+                    </p>
+                    <div class="text-green-600 font-semibold">
+                        Complete Fix →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Fix Bus Error -->
+            <a href="fix_bus_schedules_table.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">🚌</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">3. Fix Bus Error</h3>
+                    <p class="text-gray-600 mb-4">
+                        Fix "Unknown column 'status'" error in admin/bus.php
+                    </p>
+                    <div class="text-red-600 font-semibold">
+                        Quick Fix →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Test Database -->
+            <a href="test_database.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">🧪</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">4. Run Tests</h3>
+                    <p class="text-gray-600 mb-4">
+                        Test connection, tables, and queries
+                    </p>
+                    <div class="text-purple-600 font-semibold">
+                        Click to test →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Add Missing Tables -->
+            <a href="add_missing_tables.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">➕</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">5. Add Missing Tables</h3>
+                    <p class="text-gray-600 mb-4">
+                        Create tables that don't exist
+                    </p>
+                    <div class="text-orange-600 font-semibold">
+                        Add Tables →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Login -->
+            <a href="login.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-4xl mb-4">🔐</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">6. Try Login</h3>
+                    <p class="text-gray-600 mb-4">
+                        Test if login works now
+                    </p>
+                    <div class="text-indigo-600 font-semibold">
+                        Click to login →
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- What I Saw -->
+        <div class="bg-white rounded-lg shadow-xl p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">📸 What I Saw in Your Screenshot</h2>
+            <div class="grid md:grid-cols-3 gap-3">
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ <strong>user_accounts</strong></p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ billing_statements</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ bookings</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ buses</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ bus_bookings</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ bus_schedules</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ facilities</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ gym_bookings</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ gym_facilities</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ inventory</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ orders</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ password_resets</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ requests</p>
+                </div>
+                <div class="bg-green-50 border border-green-200 rounded p-3">
+                    <p class="text-sm text-gray-700">✅ request_comments</p>
+                </div>
+            </div>
+            <p class="text-gray-600 mt-4 text-sm">
+                Total: <strong>14 tables</strong> found in your database
+            </p>
+        </div>
+
+        <!-- Possible Issues -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-500 p-6 mb-8 rounded">
+            <h3 class="font-bold text-yellow-800 mb-2">⚠️ Possible Issues</h3>
+            <ul class="list-disc list-inside text-yellow-700 space-y-1 text-sm">
+                <li><strong>user_accounts table is empty</strong> - Need to add users</li>
+                <li><strong>Missing columns</strong> - Like organization or profile_pic</li>
+                <li><strong>Wrong table references</strong> - Some code might use "users" instead of "user_accounts"</li>
+            </ul>
+            <p class="text-yellow-800 mt-3 font-semibold">
+                Run steps 1 & 2 above to check and fix these issues automatically!
+            </p>
+        </div>
+
+        <!-- Test Credentials -->
+        <div class="bg-blue-900 text-white rounded-lg p-6">
+            <h3 class="text-xl font-bold mb-3">🔐 Test Login Credentials</h3>
+            <p class="mb-3">Password for all: <code class="bg-blue-800 px-2 py-1 rounded">admin123</code></p>
+            <div class="grid md:grid-cols-2 gap-3">
+                <div class="bg-blue-800 rounded p-3">
+                    <p class="font-semibold">Admin</p>
+                    <p class="text-sm text-blue-200">admin@chmsu.edu.ph</p>
+                </div>
+                <div class="bg-blue-800 rounded p-3">
+                    <p class="font-semibold">Staff</p>
+                    <p class="text-sm text-blue-200">staff@chmsu.edu.ph</p>
+                </div>
+                <div class="bg-blue-800 rounded p-3">
+                    <p class="font-semibold">Student</p>
+                    <p class="text-sm text-blue-200">student@chmsu.edu.ph</p>
+                </div>
+                <div class="bg-blue-800 rounded p-3">
+                    <p class="font-semibold">External</p>
+                    <p class="text-sm text-blue-200">external@example.com</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-8">
+            <p class="text-blue-200 text-sm">
+                Need more help? Check <a href="CHECK_MY_DATABASE.md" class="underline">CHECK_MY_DATABASE.md</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+

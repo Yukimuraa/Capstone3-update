@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Passwords do not match";
     } else {
         // Check if email already exists
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
             // Insert new admin user
-            $stmt = $conn->prepare("INSERT INTO users (name, email, password, user_type) VALUES (?, ?, ?, 'admin')");
+            $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type) VALUES (?, ?, ?, 'admin')");
             $stmt->bind_param("sss", $name, $email, $hashed_password);
             
             if ($stmt->execute()) {

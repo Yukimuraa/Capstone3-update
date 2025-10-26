@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fix Bus Error - CHMSU BAO</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .card { transition: all 0.3s; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px rgba(0,0,0,0.3); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-red-900 via-red-800 to-orange-900 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold text-white mb-2">🚨 Fix Bus Error</h1>
+            <p class="text-red-200 text-lg">Unknown column 'status' in 'field list'</p>
+        </div>
+
+        <!-- Error Explanation -->
+        <div class="bg-red-600 text-white rounded-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold mb-2">❌ The Problem</h2>
+            <p class="mb-2">Error in: <code class="bg-red-800 px-2 py-1 rounded">admin/bus.php line 134</code></p>
+            <p class="text-red-100">
+                The <strong>bus_schedules</strong> table is missing the <strong>status</strong> column.
+            </p>
+        </div>
+
+        <!-- Quick Fix Options -->
+        <div class="grid md:grid-cols-2 gap-6 mb-8">
+            <!-- Fix Bus Schedules Only -->
+            <a href="fix_bus_schedules_table.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-5xl mb-4">🚌</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Fix Bus Schedules Table</h3>
+                    <p class="text-gray-600 mb-4">
+                        Add the missing 'status' column to bus_schedules table only
+                    </p>
+                    <div class="text-blue-600 font-semibold">
+                        Quick Fix (Recommended) →
+                    </div>
+                </div>
+            </a>
+
+            <!-- Fix All Missing Columns -->
+            <a href="fix_all_missing_columns.php" class="card block">
+                <div class="bg-white rounded-lg shadow-xl p-6 h-full">
+                    <div class="text-5xl mb-4">🔧</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Fix All Tables</h3>
+                    <p class="text-gray-600 mb-4">
+                        Check all tables and add any missing columns
+                    </p>
+                    <div class="text-green-600 font-semibold">
+                        Complete Fix →
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- What Will Be Fixed -->
+        <div class="bg-white rounded-lg shadow-xl p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🔧 What Will Be Added</h2>
+            <div class="space-y-3">
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
+                    <p class="font-bold text-blue-800">bus_schedules table</p>
+                    <ul class="list-disc list-inside text-blue-700 text-sm mt-1">
+                        <li><strong>status</strong> - ENUM('pending', 'approved', 'rejected', 'completed')</li>
+                        <li><strong>user_id</strong> - INT (if missing)</li>
+                        <li><strong>user_type</strong> - ENUM('student', 'admin', 'staff', 'external')</li>
+                        <li><strong>updated_at</strong> - TIMESTAMP</li>
+                    </ul>
+                </div>
+
+                <div class="bg-gray-50 border-l-4 border-gray-500 p-4">
+                    <p class="font-bold text-gray-800">Other tables (if using complete fix)</p>
+                    <ul class="list-disc list-inside text-gray-700 text-sm mt-1">
+                        <li>user_accounts: organization, profile_pic</li>
+                        <li>buses: status</li>
+                        <li>facilities: type, status</li>
+                        <li>bookings: is_buffer</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Steps -->
+        <div class="bg-gradient-to-r from-blue-900 to-purple-900 rounded-lg p-6 mb-8 text-white">
+            <h2 class="text-2xl font-bold mb-4">📋 How To Fix</h2>
+            <ol class="space-y-3">
+                <li class="flex items-start">
+                    <span class="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">1</span>
+                    <div>
+                        <p class="font-bold">Click "Fix Bus Schedules Table" above</p>
+                        <p class="text-sm text-blue-200">This will add the missing status column</p>
+                    </div>
+                </li>
+                <li class="flex items-start">
+                    <span class="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">2</span>
+                    <div>
+                        <p class="font-bold">Wait for "Success" message</p>
+                        <p class="text-sm text-blue-200">Should take only a few seconds</p>
+                    </div>
+                </li>
+                <li class="flex items-start">
+                    <span class="bg-blue-500 rounded-full w-8 h-8 flex items-center justify-center mr-3 flex-shrink-0">3</span>
+                    <div>
+                        <p class="font-bold">Test admin/bus.php page</p>
+                        <p class="text-sm text-blue-200">The error should be gone!</p>
+                    </div>
+                </li>
+            </ol>
+        </div>
+
+        <!-- Alternative Methods -->
+        <div class="bg-yellow-100 border-l-4 border-yellow-500 p-6 rounded mb-8">
+            <h3 class="font-bold text-yellow-800 mb-2">💡 Alternative: Manual SQL</h3>
+            <p class="text-yellow-700 mb-3">If you prefer to run SQL manually in phpMyAdmin:</p>
+            <pre class="bg-yellow-50 p-4 rounded text-sm overflow-x-auto"><code>ALTER TABLE bus_schedules 
+ADD COLUMN status ENUM('pending', 'approved', 'rejected', 'completed') 
+DEFAULT 'pending' 
+AFTER user_type;</code></pre>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap gap-4 justify-center">
+            <a href="fix_bus_schedules_table.php" class="bg-red-600 text-white px-8 py-4 rounded-lg font-bold hover:bg-red-700 shadow-lg">
+                🚀 Fix Now!
+            </a>
+            <a href="check_database.php" class="bg-blue-600 text-white px-8 py-4 rounded-lg font-bold hover:bg-blue-700 shadow-lg">
+                📊 Check Database
+            </a>
+            <a href="admin/bus.php" class="bg-gray-600 text-white px-8 py-4 rounded-lg font-bold hover:bg-gray-700 shadow-lg">
+                🚌 Test Bus Page
+            </a>
+        </div>
+
+        <!-- Footer Help -->
+        <div class="text-center mt-8">
+            <p class="text-white text-sm">
+                Need more help? Check <a href="CHECK_MY_DATABASE.md" class="underline">CHECK_MY_DATABASE.md</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+
+

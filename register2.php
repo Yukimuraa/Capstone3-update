@@ -22,7 +22,7 @@ $success = '';
      $error = "Organization name is required for external users";
  } else {
      // Check if email already exists
-     $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+     $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
      $stmt->bind_param("s", $email);
      $stmt->execute();
      $result = $stmt->get_result();
@@ -34,7 +34,7 @@ $success = '';
          $hashed_password = password_hash($password, PASSWORD_DEFAULT);
          
          // Insert new user
-         $stmt = $conn->prepare("INSERT INTO users (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
+         $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
          $stmt->bind_param("sssss", $name, $email, $hashed_password, $user_type, $organization);
          
          if ($stmt->execute()) {

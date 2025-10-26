@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "All fields are required";
     } else {
         // Prepare SQL statement to prevent SQL injection
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? AND user_type = ?");
+        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
         $stmt->bind_param("ss", $email, $user_type);
         $stmt->execute();
         $result = $stmt->get_result();

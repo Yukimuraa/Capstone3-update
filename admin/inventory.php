@@ -28,11 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            // Handle sizes for specific clothing items
            $sizes = null;
-           $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
+           // Check if item name contains clothing keywords
+           $clothingKeywords = ['shirt', 't-shirt', 'tshirt', 'pants', 'shorts', 'jacket', 'hoodie', 'polo', 'jersey'];
            $needs_sizes = false;
            
-           foreach ($sizingItems as $item) {
-               if (strpos($name, $item) !== false) {
+           foreach ($clothingKeywords as $keyword) {
+               if (stripos($name, $keyword) !== false) {
                    $needs_sizes = true;
                    break;
                }
@@ -89,11 +90,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            // Handle sizes for specific clothing items
            $sizes = null;
-           $sizingItems = ['NSTP-ROTC TSHIRT', 'NSTP Shirt - CWTS', 'NSTP Shirt - LTS', 'P.E PANTS', 'P.E T-SHIRT'];
+           // Check if item name contains clothing keywords
+           $clothingKeywords = ['shirt', 't-shirt', 'tshirt', 'pants', 'shorts', 'jacket', 'hoodie', 'polo', 'jersey'];
            $needs_sizes = false;
            
-           foreach ($sizingItems as $item) {
-               if (strpos($name, $item) !== false) {
+           foreach ($clothingKeywords as $keyword) {
+               if (stripos($name, $keyword) !== false) {
                    $needs_sizes = true;
                    break;
                }
@@ -635,9 +637,15 @@ $stats = $conn->query($stats_query)->fetch_assoc();
        document.getElementById('edit_quantity').value = item.quantity;
        document.getElementById('edit_in_stock').checked = item.in_stock == 1;
        
-       // Check if item needs sizes
-       const needsSizes = sizingItems.some(sizingItem => item.name.includes(sizingItem));
+       // Check if item needs sizes (using clothing keywords)
+       const itemNameLower = item.name.toLowerCase();
+       const needsSizes = clothingKeywords.some(keyword => itemNameLower.includes(keyword));
        const sizesContainer = document.getElementById('edit_sizes_container');
+       
+       // Clear all checkboxes first
+       document.querySelectorAll('.size-checkbox').forEach(checkbox => {
+           checkbox.checked = false;
+       });
        
        if (needsSizes) {
            sizesContainer.classList.remove('hidden');
@@ -772,21 +780,25 @@ $stats = $conn->query($stats_query)->fetch_assoc();
    });
 
    // Add the JavaScript for size options display
-   const sizingItems = [
-       'NSTP-ROTC TSHIRT',
-       'NSTP Shirt - CWTS',
-       'NSTP Shirt - LTS',
-       'P.E PANTS',
-       'P.E T-SHIRT'
+   const clothingKeywords = [
+       'shirt',
+       't-shirt',
+       'tshirt',
+       'pants',
+       'shorts',
+       'jacket',
+       'hoodie',
+       'polo',
+       'jersey'
    ];
    
    // For the add item form
    document.getElementById('name').addEventListener('input', function() {
-       const itemName = this.value.trim();
+       const itemName = this.value.trim().toLowerCase();
        const sizesContainer = document.getElementById('sizes-container');
        
-       // Check if current item name is in the sizing items list
-       const needsSizes = sizingItems.some(item => itemName.includes(item));
+       // Check if current item name contains clothing keywords
+       const needsSizes = clothingKeywords.some(keyword => itemName.includes(keyword));
        
        if (needsSizes) {
            sizesContainer.classList.remove('hidden');

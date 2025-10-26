@@ -1,12 +1,22 @@
 -- Bus Management System Database Schema
 
--- Create bus_schedules table (enhanced version)
--- First, check if table exists and add missing columns
-ALTER TABLE bus_schedules 
-ADD COLUMN IF NOT EXISTS status ENUM('pending', 'approved', 'rejected', 'completed') DEFAULT 'pending',
-ADD COLUMN IF NOT EXISTS user_id INT,
-ADD COLUMN IF NOT EXISTS user_type ENUM('student', 'admin', 'staff', 'external') DEFAULT 'student',
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+-- Create bus_schedules table
+CREATE TABLE IF NOT EXISTS bus_schedules (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    client VARCHAR(255) NOT NULL,
+    destination VARCHAR(255) NOT NULL,
+    purpose VARCHAR(255) NOT NULL,
+    date_covered DATE NOT NULL,
+    vehicle VARCHAR(50) NOT NULL,
+    bus_no VARCHAR(20) NOT NULL,
+    no_of_days INT NOT NULL DEFAULT 1,
+    no_of_vehicles INT NOT NULL DEFAULT 1,
+    user_id INT,
+    user_type ENUM('student', 'admin', 'staff', 'external') DEFAULT 'student',
+    status ENUM('pending', 'approved', 'rejected', 'completed') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
 -- Create buses table for availability tracking
 CREATE TABLE IF NOT EXISTS buses (

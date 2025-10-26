@@ -14,7 +14,7 @@ $error_message = '';
 
 // Get current user data
 $user_id = $_SESSION['user_id'];
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+$stmt = $conn->prepare("SELECT * FROM user_accounts WHERE id = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         $error_message = "Name and email are required fields.";
     } else {
         // Check if email already exists (excluding current user)
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $stmt = $conn->prepare("SELECT id FROM user_accounts WHERE email = ? AND id != ?");
         $stmt->bind_param("si", $email, $user_id);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                 $params[] = $profile_pic_path;
             }
             
-            $update_query = "UPDATE users SET " . implode(", ", $update_fields) . ", updated_at = NOW() WHERE id = ?";
+            $update_query = "UPDATE user_accounts SET " . implode(", ", $update_fields) . ", updated_at = NOW() WHERE id = ?";
             $param_types .= "i";
             $params[] = $user_id;
             
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                 $success_message = "Profile updated successfully!";
                 
                 // Refresh user data
-                $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+                $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE id = ?");
                 $stmt->bind_param("i", $user_id);
                 $stmt->execute();
                 $result = $stmt->get_result();
@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         if (password_verify($current_password, $user['password'])) {
             // Update password
             $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE user_accounts SET password = ? WHERE id = ?");
             $stmt->bind_param("si", $hashed_password, $user_id);
             
             if ($stmt->execute()) {

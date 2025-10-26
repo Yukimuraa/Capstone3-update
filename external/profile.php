@@ -14,7 +14,7 @@ $page_title = "My Profile - CHMSU BAO";
 $base_url = "..";
 
 // Get user profile data
-$profile_query = "SELECT * FROM users WHERE id = ?";
+$profile_query = "SELECT * FROM user_accounts WHERE id = ?";
 $stmt = $conn->prepare($profile_query);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     
     // Check if email already exists (excluding current user)
     if (!empty($email) && $email !== $user_data['email']) {
-        $email_check_query = "SELECT id FROM users WHERE email = ? AND id != ?";
+        $email_check_query = "SELECT id FROM user_accounts WHERE email = ? AND id != ?";
         $stmt = $conn->prepare($email_check_query);
         $stmt->bind_param("si", $email, $user_id);
         $stmt->execute();
@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             $params[] = $profile_pic_path;
         }
         
-        $update_query = "UPDATE users SET " . implode(", ", $update_fields) . ", updated_at = NOW() WHERE id = ?";
+        $update_query = "UPDATE user_accounts SET " . implode(", ", $update_fields) . ", updated_at = NOW() WHERE id = ?";
         $param_types .= "i";
         $params[] = $user_id;
         

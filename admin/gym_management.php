@@ -136,18 +136,18 @@ $param_types = "";
 
 if ($status_filter != 'all') {
     if ($status_filter == 'approved') {
-        $query_conditions[] = "(status = 'approved' OR status = 'confirmed')";
+        $query_conditions[] = "(b.status = 'approved' OR b.status = 'confirmed')";
     } else {
-        $query_conditions[] = "status = ?";
+        $query_conditions[] = "b.status = ?";
         $query_params[] = $status_filter;
         $param_types .= "s";
     }
 }
 
 if ($date_filter == 'upcoming') {
-    $query_conditions[] = "date >= CURDATE()";
+    $query_conditions[] = "b.date >= CURDATE()";
 } elseif ($date_filter == 'past') {
-    $query_conditions[] = "date < CURDATE()";
+    $query_conditions[] = "b.date < CURDATE()";
 }
 
 $conditions_sql = !empty($query_conditions) ? "WHERE " . implode(" AND ", $query_conditions) : "";
@@ -157,7 +157,7 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
-$count_query = "SELECT COUNT(*) as total FROM bookings $conditions_sql";
+$count_query = "SELECT COUNT(*) as total FROM bookings b $conditions_sql";
 $stmt = $conn->prepare($count_query);
 if (!empty($query_params)) {
     $stmt->bind_param($param_types, ...$query_params);
@@ -170,7 +170,7 @@ $total_pages = ceil($total_rows / $per_page);
 // Get requests with user information
 $requests_query = "SELECT b.*, u.name as user_name, u.email as user_email 
                   FROM bookings b
-                  LEFT JOIN users u ON b.user_id = u.id
+                  LEFT JOIN user_accounts u ON b.user_id = u.id
                   $conditions_sql
                   ORDER BY b.date DESC, b.created_at DESC
                   LIMIT ?, ?";

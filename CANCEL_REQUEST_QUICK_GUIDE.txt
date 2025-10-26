@@ -1,0 +1,156 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║           CANCEL BUS REQUEST FEATURE - QUICK GUIDE                        ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+✨ NEW FEATURE ADDED!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Students can now CANCEL their pending bus requests!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW TO USE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Go to Your Bus Schedules
+   → student/bus.php
+   → Look at "My Bus Schedules" section
+
+STEP 2: Find Pending Request
+   → Look for requests with ⏰ [Pending] badge (yellow)
+   → You'll see action buttons on the right
+
+STEP 3: Click Cancel Button
+   → Click the red ❌ button
+   → A confirmation dialog will appear
+
+STEP 4: Confirm Cancellation
+   → Click "OK" to confirm
+   → Or "Cancel" to keep the request
+
+STEP 5: Done!
+   → Success message appears: "Bus request cancelled successfully!"
+   → Status changes to 🚫 [Cancelled] (grey)
+   → Cancel button disappears
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHAT YOU'LL SEE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REQUEST STATUS BADGES:
+
+⏰ [Pending]   - Yellow badge, can be cancelled ✓
+✅ [Approved]  - Green badge, cannot cancel (already approved)
+❌ [Rejected]  - Red badge, cannot cancel (already rejected)
+🚫 [Cancelled] - Grey badge, already cancelled
+🏁 [Completed] - Blue badge, cannot cancel (already done)
+
+ACTION BUTTONS:
+
+For PENDING requests:
+   👁️ View (blue)   - See request details
+   ❌ Cancel (red)   - Cancel the request ← NEW!
+
+For APPROVED requests:
+   👁️ View (blue)   - See request details
+   🖨️ Print (green)  - Print receipt
+
+For REJECTED/CANCELLED/COMPLETED:
+   👁️ View (blue)   - See request details only
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VISUAL EXAMPLE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BEFORE CANCELLING:
+┌──────────────────────────────────────────────┐
+│ 📍 Bacolod  ⏰ [Pending]                     │
+│ 📅 Nov 15, 2025 • Bus #1                     │
+│ Educational Field Trip                        │
+│                                               │
+│ Actions: 👁️ View  ❌ Cancel ← Click here!    │
+└──────────────────────────────────────────────┘
+
+AFTER CANCELLING:
+┌──────────────────────────────────────────────┐
+│ 📍 Bacolod  🚫 [Cancelled]                   │
+│ 📅 Nov 15, 2025 • Bus #1                     │
+│ Educational Field Trip                        │
+│                                               │
+│ Actions: 👁️ View  ← Only view now            │
+└──────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT NOTES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ You can ONLY cancel PENDING requests
+✓ Once approved, rejected, or completed - you CANNOT cancel
+✓ Confirmation dialog prevents accidental cancellation
+✓ Cancelled requests remain in your history for records
+✓ You can only cancel YOUR OWN requests (security)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMMON SCENARIOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Scenario 1: CHANGED MIND
+   "I submitted a request but realized I picked the wrong date"
+   → Solution: Cancel the pending request and submit a new one ✓
+
+Scenario 2: DUPLICATE REQUEST
+   "I accidentally submitted the same request twice"
+   → Solution: Cancel one of the duplicate pending requests ✓
+
+Scenario 3: PLANS CHANGED
+   "Our trip was postponed/cancelled"
+   → Solution: Cancel the pending request to avoid admin work ✓
+
+Scenario 4: WRONG INFORMATION
+   "I entered wrong destination/details"
+   → Solution: Cancel and submit a corrected request ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TROUBLESHOOTING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q: I don't see a cancel button!
+A: Cancel button only appears for PENDING requests. If your request is
+   already approved, rejected, or completed, you cannot cancel it.
+
+Q: I clicked cancel but nothing happened!
+A: Make sure to click "OK" in the confirmation dialog. If you clicked
+   "Cancel" in the dialog, the request won't be cancelled.
+
+Q: Can I un-cancel a cancelled request?
+A: No. Once cancelled, you need to submit a new request. Cancelled
+   requests remain in history for record-keeping only.
+
+Q: Admin already approved my request, can I cancel?
+A: No. Once approved, the request is locked and cannot be cancelled.
+   Contact the admin directly if you need to change it.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BENEFITS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Fix mistakes quickly
+✓ Remove duplicate requests
+✓ Reduce admin workload
+✓ Better request management
+✓ Clear audit trail
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For detailed documentation, see: CANCEL_BUS_REQUEST_FEATURE.md
+
+Feature is LIVE and ready to use! 🎉
+
+
+

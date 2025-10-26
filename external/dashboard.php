@@ -15,7 +15,7 @@ $page_title = "Dashboard - CHMSU BAO";
 $base_url = "..";
 
 // Get user profile information
-$profile_query = "SELECT * FROM users WHERE id = ?";
+$profile_query = "SELECT * FROM user_accounts WHERE id = ?";
 $stmt = $conn->prepare($profile_query);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();

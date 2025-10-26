@@ -36,7 +36,7 @@ if (isset($_POST['verify_otp'])) {
         $tempUser = $_SESSION['temp_user'];
         $hashed_password = password_hash($tempUser['password'], PASSWORD_DEFAULT);
 
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
+        $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
         $stmt->bind_param("sssss", $tempUser['name'], $tempUser['email'], $hashed_password, $tempUser['user_type'], $tempUser['organization']);
 
         if ($stmt->execute()) {
@@ -62,7 +62,7 @@ if (isset($_POST['verify_otp'])) {
     } elseif ($user_type === 'external' && empty($organization)) {
         $error = "Organization name is required for external users";
     } else {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
