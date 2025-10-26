@@ -156,17 +156,18 @@ function resolveLocationPHP($input) {
     return $input . ", Negros Occidental, Philippines";
 }
 
-// Geocode location using Nominatim OpenStreetMap API
+// Geocode location using Photon API (OpenStreetMap-based)
 function geocodeLocationPHP($location) {
     // Resolve location first
     $resolvedLocation = resolveLocationPHP($location);
     
-    $url = "https://nominatim.openstreetmap.org/search?q=" . urlencode($resolvedLocation) . "&format=json&limit=1";
+    $url = "https://photon.komoot.io/api/?q=" . urlencode($resolvedLocation) . "&limit=1";
     
-    // Set up context with User-Agent header (required by Nominatim)
+    // Set up context with User-Agent header
     $context = stream_context_create([
         'http' => [
-            'header' => "User-Agent: CHMSU-BAO-Bus-Booking-System\r\n"
+            'header' => "User-Agent: CHMSU-BAO-Bus-Booking-System\r\n",
+            'timeout' => 10
         ]
     ]);
     
@@ -178,11 +179,18 @@ function geocodeLocationPHP($location) {
     
     $data = json_decode($response, true);
     
-    if (!empty($data) && isset($data[0])) {
+    if (isset($data['features']) && count($data['features']) > 0) {
+        $feature = $data['features'][0];
+        $properties = $feature['properties'];
+        $coords = $feature['geometry']['coordinates'];
+        
+        // Photon returns [lon, lat] format
         return [
-            'lat' => floatval($data[0]['lat']),
-            'lon' => floatval($data[0]['lon']),
-            'display_name' => $data[0]['display_name']
+            'lat' => floatval($coords[1]),
+            'lon' => floatval($coords[0]),
+            'display_name' => $properties['name'] ?? $resolvedLocation,
+            'city' => $properties['city'] ?? '',
+            'state' => $properties['state'] ?? ''
         ];
     }
     
@@ -918,7 +926,7 @@ $stats = $stats_result->fetch_assoc();
                     </div>
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-route text-green-600 mr-1"></i>
-                        Distance calculated from CHMSU using HERE API routing
+                        Distance calculated from CHMSU using Photon API (geocoding) + HERE/OSRM (routing)
                     </p>
                 </div>
                 
@@ -1603,12 +1611,12 @@ function resolveLocation(input) {
     return `${input}, Negros Occidental, Philippines`;
 }
 
-// Geocode location using Nominatim OpenStreetMap API
+// Geocode location using Photon API (OpenStreetMap-based)
 async function geocodeLocation(location) {
     // Resolve location to geocodable address first
     const resolvedLocation = resolveLocation(location);
     
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(resolvedLocation)}&format=json&limit=1`;
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(resolvedLocation)}&limit=1`;
     
     try {
         const response = await fetch(url, {
@@ -1618,18 +1626,25 @@ async function geocodeLocation(location) {
         });
         const data = await response.json();
         
-        if (data && data.length > 0) {
+        if (data.features && data.features.length > 0) {
+            const feature = data.features[0];
+            const properties = feature.properties;
+            const coords = feature.geometry.coordinates;
+            
+            // Photon returns [lon, lat] format
             return {
-                lat: parseFloat(data[0].lat),
-                lon: parseFloat(data[0].lon),
-                display_name: data[0].display_name,
+                lat: parseFloat(coords[1]),
+                lon: parseFloat(coords[0]),
+                display_name: properties.name || resolvedLocation,
+                city: properties.city || '',
+                state: properties.state || '',
                 original_input: location,
                 resolved_to: resolvedLocation
             };
         }
         return null;
     } catch (error) {
-        console.error('Geocoding error:', error);
+        console.error('Photon geocoding error:', error);
         return null;
     }
 }
@@ -1658,7 +1673,7 @@ async function updateDistance() {
     distanceDisplay.innerHTML = `
         <div class="flex items-center">
             <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-            <span>Calculating distance from CHMSU using HERE API...</span>
+            <span>Calculating distance from CHMSU using Photon + HERE API...</span>
         </div>
     `;
     
@@ -1751,7 +1766,7 @@ async function updateDistance() {
             </div>
             <div class="mt-2 text-xs text-gray-600 flex items-center">
                 <i class="fas fa-${usedHERE ? 'route' : 'database'} mr-1"></i>
-                ${usedHERE ? 'Calculated using HERE API routing' : 'Calculated using coordinates database'}
+                ${usedHERE ? 'Calculated using Photon API + HERE routing' : 'Calculated using Photon API + coordinates database'}
             </div>
         `;
         
