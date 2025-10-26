@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../includes/negros_occidental_locations.php';
 
 // Check if user is student
 require_student();
@@ -67,341 +68,24 @@ function getBusIdByNumber($conn, $bus_number) {
     return $row ? $row['id'] : null;
 }
 
-// Smart location resolver for PHP - maps landmarks and schools to geocodable addresses
-function resolveLocationPHP($input) {
-    $normalized = strtolower(trim($input));
-    
-    // School and University mappings - OSM-friendly format
-    $locationMap = [
-        // CHMSU Campuses
-        'chmsu' => 'Talisay, Negros Occidental, Philippines',
-        'chmsu talisay' => 'Talisay, Negros Occidental, Philippines',
-        'chmsu main' => 'Talisay, Negros Occidental, Philippines',
-        'chmsu main campus' => 'Talisay, Negros Occidental, Philippines',
-        'talisay main campus' => 'Talisay, Negros Occidental, Philippines',
-        'central philippines state university' => 'Talisay, Negros Occidental, Philippines',
-        'cpsu' => 'Talisay, Negros Occidental, Philippines',
-        'carlos hilado' => 'Talisay, Negros Occidental, Philippines',
-        'chmsc' => 'Talisay, Negros Occidental, Philippines',
-        
-        'chmsu binalbagan' => 'Binalbagan, Negros Occidental, Philippines',
-        'binalbagan campus' => 'Binalbagan, Negros Occidental, Philippines',
-        
-        'chmsu fortune towne' => 'Bacolod, Negros Occidental, Philippines',
-        'fortune towne campus' => 'Bacolod, Negros Occidental, Philippines',
-        'fortune towne' => 'Bacolod, Negros Occidental, Philippines',
-        
-        'chmsu alijis' => 'Bacolod, Negros Occidental, Philippines',
-        'alijis campus' => 'Bacolod, Negros Occidental, Philippines',
-        
-        // Major landmarks
-        'sm city bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'sm bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'ayala bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'robinsons bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'bacolod airport' => 'Silay, Negros Occidental, Philippines',
-        'silay airport' => 'Silay, Negros Occidental, Philippines',
-        
-        // Other schools
-        'uc bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'usls' => 'Bacolod, Negros Occidental, Philippines',
-        'la salle bacolod' => 'Bacolod, Negros Occidental, Philippines',
-        'uno-r' => 'Bacolod, Negros Occidental, Philippines'
-    ];
-    
-    // Normalize barangay/zone format
-    if (preg_match('/(?:barangay|brgy|zone|purok)\s*\d*\s*(?:,?\s*)?(talisay|bacolod|silay|binalbagan|kabankalan|himamaylan|bago|cadiz|sagay|victorias|escalante|san carlos|la carlota|ilog|isabela)/i', $input, $matches)) {
-        $cityPart = ucfirst(strtolower($matches[1]));
-        return $cityPart . ", Negros Occidental, Philippines";
-    }
-    
-    // Check exact match
-    if (isset($locationMap[$normalized])) {
-        return $locationMap[$normalized];
-    }
-    
-    // Check if input contains any known location
-    foreach ($locationMap as $key => $value) {
-        if (stripos($normalized, $key) !== false) {
-            return $value;
-        }
-    }
-    
-    // Check if input contains city names
-    $cities = [
-        'bacolod' => 'Bacolod',
-        'talisay' => 'Talisay',
-        'silay' => 'Silay',
-        'binalbagan' => 'Binalbagan',
-        'kabankalan' => 'Kabankalan',
-        'himamaylan' => 'Himamaylan',
-        'bago' => 'Bago',
-        'cadiz' => 'Cadiz',
-        'sagay' => 'Sagay',
-        'victorias' => 'Victorias',
-        'escalante' => 'Escalante',
-        'san carlos' => 'San Carlos',
-        'la carlota' => 'La Carlota',
-        'ilog' => 'Ilog',
-        'isabela' => 'Isabela'
-    ];
-    
-    foreach ($cities as $key => $value) {
-        if (stripos($normalized, $key) !== false) {
-            return $value . ", Negros Occidental, Philippines";
-        }
-    }
-    
-    // Return input with proper formatting
-    return $input . ", Negros Occidental, Philippines";
-}
+// LOCAL DISTANCE CALCULATION - No APIs required
+// Uses hardcoded coordinates for all Negros Occidental locations
 
-// Geocode location using Photon API (OpenStreetMap-based)
-function geocodeLocationPHP($location) {
-    // Resolve location first
-    $resolvedLocation = resolveLocationPHP($location);
-    
-    $url = "https://photon.komoot.io/api/?q=" . urlencode($resolvedLocation) . "&limit=1";
-    
-    // Set up context with User-Agent header
-    $context = stream_context_create([
-        'http' => [
-            'header' => "User-Agent: CHMSU-BAO-Bus-Booking-System\r\n",
-            'timeout' => 10
-        ]
-    ]);
-    
-    $response = @file_get_contents($url, false, $context);
-    
-    if ($response === false) {
-        return null;
-    }
-    
-    $data = json_decode($response, true);
-    
-    if (isset($data['features']) && count($data['features']) > 0) {
-        $feature = $data['features'][0];
-        $properties = $feature['properties'];
-        $coords = $feature['geometry']['coordinates'];
-        
-        // Photon returns [lon, lat] format
-        return [
-            'lat' => floatval($coords[1]),
-            'lon' => floatval($coords[0]),
-            'display_name' => $properties['name'] ?? $resolvedLocation,
-            'city' => $properties['city'] ?? '',
-            'state' => $properties['state'] ?? ''
-        ];
-    }
-    
-    return null;
-}
-
-// HERE API configuration
-define('HERE_API_KEY', 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE5MjhkNGUyYjNkZjRkMjE4YjJlYTFiODhiZTkxNWYzIiwiaCI6Im11cm11cjY0In0=');
-
-// CHMSU Talisay as the fixed origin point
-define('CHMSU_ORIGIN_LAT', 10.7358);
-define('CHMSU_ORIGIN_LON', 122.9853);
-define('CHMSU_ORIGIN_NAME', 'CHMSU - Carlos Hilado Memorial State University, Talisay City, Negros Occidental');
-
-// Database of coordinates for major locations in Negros Occidental
-function getHardcodedCoordinatesPHP($location) {
-    $normalized = strtolower(trim($location));
-    
-    $locationCoordinates = [
-        // Cities
-        'talisay' => ['lat' => 10.7358, 'lon' => 122.9853, 'name' => 'Talisay City, Negros Occidental'],
-        'bacolod' => ['lat' => 10.6760, 'lon' => 122.9500, 'name' => 'Bacolod City, Negros Occidental'],
-        'silay' => ['lat' => 10.8000, 'lon' => 122.9667, 'name' => 'Silay City, Negros Occidental'],
-        'binalbagan' => ['lat' => 10.1906, 'lon' => 122.8608, 'name' => 'Binalbagan, Negros Occidental'],
-        'kabankalan' => ['lat' => 9.9906, 'lon' => 122.8111, 'name' => 'Kabankalan City, Negros Occidental'],
-        'himamaylan' => ['lat' => 10.0989, 'lon' => 122.8711, 'name' => 'Himamaylan City, Negros Occidental'],
-        'bago' => ['lat' => 10.5383, 'lon' => 122.8358, 'name' => 'Bago City, Negros Occidental'],
-        'cadiz' => ['lat' => 10.9506, 'lon' => 123.2897, 'name' => 'Cadiz City, Negros Occidental'],
-        'sagay' => ['lat' => 10.8969, 'lon' => 123.4167, 'name' => 'Sagay City, Negros Occidental'],
-        'victorias' => ['lat' => 10.8972, 'lon' => 123.0739, 'name' => 'Victorias City, Negros Occidental'],
-        'escalante' => ['lat' => 10.8394, 'lon' => 123.5017, 'name' => 'Escalante City, Negros Occidental'],
-        'san carlos' => ['lat' => 10.4775, 'lon' => 123.3806, 'name' => 'San Carlos City, Negros Occidental'],
-        'la carlota' => ['lat' => 10.4222, 'lon' => 122.9194, 'name' => 'La Carlota City, Negros Occidental'],
-        'ilog' => ['lat' => 10.0422, 'lon' => 122.7553, 'name' => 'Ilog, Negros Occidental'],
-        'isabela' => ['lat' => 10.2142, 'lon' => 122.9711, 'name' => 'Isabela, Negros Occidental'],
-        
-        // Schools & Institutions (mapped to city centers)
-        'chmsu' => ['lat' => 10.7358, 'lon' => 122.9853, 'name' => 'CHMSU Talisay Campus'],
-        'chmsu talisay' => ['lat' => 10.7358, 'lon' => 122.9853, 'name' => 'CHMSU Talisay Main Campus'],
-        'chmsu binalbagan' => ['lat' => 10.1906, 'lon' => 122.8608, 'name' => 'CHMSU Binalbagan Campus'],
-        'central philippine state university' => ['lat' => 10.7358, 'lon' => 122.9853, 'name' => 'CHMSU Talisay']
-    ];
-    
-    // Direct match
-    if (isset($locationCoordinates[$normalized])) {
-        return $locationCoordinates[$normalized];
-    }
-    
-    // Check if location contains city name or school name
-    foreach ($locationCoordinates as $city => $coords) {
-        if (stripos($normalized, $city) !== false) {
-            return $coords;
-        }
-    }
-    
-    return null;
-}
-
-// Calculate distance using Haversine formula
-function calculateHaversineDistancePHP($lat1, $lon1, $lat2, $lon2) {
-    $R = 6371; // Radius of Earth in kilometers
-    $dLat = deg2rad($lat2 - $lat1);
-    $dLon = deg2rad($lon2 - $lon1);
-    
-    $a = sin($dLat/2) * sin($dLat/2) +
-         cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-         sin($dLon/2) * sin($dLon/2);
-    
-    $c = 2 * atan2(sqrt($a), sqrt(1-$a));
-    $distance = $R * $c;
-    
-    return round($distance); // Round to nearest km
-}
-
-// Get coordinates for destination using HERE Geocoding API
-function getDestinationCoordinatesHERE($location) {
-    $normalized = strtolower(trim($location));
-    
-    // First try hardcoded coordinates
-    $hardcoded = getHardcodedCoordinatesPHP($location);
-    if ($hardcoded) {
-        return $hardcoded;
-    }
-    
-    // Resolve location for better geocoding
-    $resolvedLocation = resolveLocationPHP($location);
-    
-    $url = "https://geocode.search.hereapi.com/v1/geocode?q=" . urlencode($resolvedLocation) . "&apikey=" . HERE_API_KEY;
-    
-    $context = stream_context_create([
-        'http' => [
-            'header' => "User-Agent: CHMSU-BAO-Bus-Booking-System\r\n"
-        ]
-    ]);
-    
-    $response = @file_get_contents($url, false, $context);
-    
-    if ($response === false) {
-        return null;
-    }
-    
-    $data = json_decode($response, true);
-    
-    if (!empty($data['items']) && isset($data['items'][0])) {
-        $item = $data['items'][0];
-        return [
-            'lat' => floatval($item['position']['lat']),
-            'lon' => floatval($item['position']['lng']),
-            'name' => $item['title'],
-            'display_name' => $item['address']['label']
-        ];
-    }
-    
-    return null;
-}
-
-// Calculate distance using HERE Routing API
-function calculateDistanceHERE($destination) {
-    // Get destination coordinates
-    $destCoords = getDestinationCoordinatesHERE($destination);
-    
-    if (!$destCoords) {
-        return null;
-    }
-    
-    // HERE Routing API URL
-    $url = "https://router.hereapi.com/v8/routes?" . http_build_query([
-        'transportMode' => 'car',
-        'origin' => CHMSU_ORIGIN_LAT . ',' . CHMSU_ORIGIN_LON,
-        'destination' => $destCoords['lat'] . ',' . $destCoords['lon'],
-        'return' => 'summary',
-        'apikey' => HERE_API_KEY
-    ]);
-    
-    $context = stream_context_create([
-        'http' => [
-            'header' => "User-Agent: CHMSU-BAO-Bus-Booking-System\r\n"
-        ]
-    ]);
-    
-    $response = @file_get_contents($url, false, $context);
-    
-    if ($response === false) {
-        // Fallback to Haversine calculation
-        return calculateHaversineDistancePHP(
-            CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-            $destCoords['lat'], $destCoords['lon']
-        );
-    }
-    
-    $data = json_decode($response, true);
-    
-    if (!empty($data['routes']) && isset($data['routes'][0]['sections'][0]['summary']['length'])) {
-        $distanceMeters = $data['routes'][0]['sections'][0]['summary']['length'];
-        $distanceKm = round($distanceMeters / 1000);
-        return $distanceKm;
-    }
-    
-    // Fallback to Haversine calculation
-    return calculateHaversineDistancePHP(
-        CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-        $destCoords['lat'], $destCoords['lon']
-    );
-}
-
-// Function to get distance between two locations using HERE API (CHMSU as origin)
+// Function to get distance between two locations (CHMSU as origin)
 function getDistanceBetweenLocations($from, $to) {
-    // Always use CHMSU Talisay as the origin point
-    $origin = 'CHMSU - Carlos Hilado Memorial State University, Talisay City, Negros Occidental';
-    
-    // If "from" is not CHMSU, use "to" as destination
+    // Always use CHMSU Talisay as origin
     $destination = $to;
     
-    // If "from" is CHMSU, use "to" as destination
-    if (stripos($from, 'chmsu') !== false || stripos($from, 'talisay') !== false) {
-        $destination = $to;
-    } else {
-        // If "to" is CHMSU, use "from" as destination
-        if (stripos($to, 'chmsu') !== false || stripos($to, 'talisay') !== false) {
-            $destination = $from;
-        } else {
-            // If neither is CHMSU, use "to" as destination (CHMSU is always origin)
-            $destination = $to;
-        }
+    // If "to" is CHMSU, use "from" as destination
+    if (stripos($to, 'chmsu') !== false || stripos($to, 'talisay') !== false) {
+        $destination = $from;
     }
     
-    // Try HERE API first for accurate routing
-    $distance = calculateDistanceHERE($destination);
+    // Get distance from local database
+    $result = NegrosOccidentalLocations::getDistanceFromCHMSU($destination);
     
-    if ($distance !== null) {
-        return $distance > 0 ? $distance : 5; // Minimum 5 km if very close
-    }
-    
-    // Fallback: Try hardcoded coordinates
-    $destCoords = getHardcodedCoordinatesPHP($destination);
-    if ($destCoords) {
-        $distance = calculateHaversineDistancePHP(
-            CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-            $destCoords['lat'], $destCoords['lon']
-        );
-        return $distance > 0 ? $distance : 5;
-    }
-    
-    // Final fallback: Try OpenStreetMap
-    $destCoords = geocodeLocationPHP($destination);
-    if ($destCoords) {
-        $distance = calculateHaversineDistancePHP(
-            CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-            $destCoords['lat'], $destCoords['lon']
-        );
-        return $distance > 0 ? $distance : 5;
+    if ($result) {
+        return max($result['distance_km'], 5); // Minimum 5km
     }
     
     // Ultimate fallback
@@ -925,8 +609,8 @@ $stats = $stats_result->fetch_assoc();
                         </div>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">
-                        <i class="fas fa-route text-green-600 mr-1"></i>
-                        Distance calculated from CHMSU using Photon API (geocoding) + HERE/OSRM (routing)
+                        <i class="fas fa-database text-green-600 mr-1"></i>
+                        Distance calculated from CHMSU using local database (all Negros Occidental locations)
                     </p>
                 </div>
                 
@@ -1161,19 +845,13 @@ function closeCancelModal() {
     document.getElementById('cancelModal').classList.add('hidden');
 }
 
-// HERE API configuration
-const HERE_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE5MjhkNGUyYjNkZjRkMjE4YjJlYTFiODhiZTkxNWYzIiwiaCI6Im11cm11cjY0In0=';
-
-// CHMSU Talisay as the fixed origin point
-const CHMSU_ORIGIN_LAT = 10.7358;
-const CHMSU_ORIGIN_LON = 122.9853;
+// CHMSU Talisay as the fixed origin point (LOCAL ONLY - NO APIs)
 const CHMSU_ORIGIN_NAME = 'CHMSU - Carlos Hilado Memorial State University, Talisay City, Negros Occidental';
 
-// Local suggestions for Negros Occidental
+// Local suggestions for Negros Occidental - COMPREHENSIVE COVERAGE (Excluding Talisay - system is located there)
 const localSuggestions = [
     // Major Cities
     'Bacolod City, Negros Occidental',
-    'Talisay City, Negros Occidental', 
     'Silay City, Negros Occidental',
     'Binalbagan, Negros Occidental',
     'Kabankalan City, Negros Occidental',
@@ -1188,181 +866,354 @@ const localSuggestions = [
     'Ilog, Negros Occidental',
     'Isabela, Negros Occidental',
     
-    // Schools & Institutions
-    'CHMSU Talisay Main Campus',
+    // CHMSU Campuses (excluding Talisay - main campus location)
     'CHMSU Binalbagan Campus',
     'CHMSU Fortune Towne Campus',
     'CHMSU Alijis Campus',
+    
+    // Bacolod City Barangays (61 total - ALL included) - matches database format
+    'Barangay 1, Bacolod',
+    'Barangay 2, Bacolod',
+    'Barangay 3, Bacolod',
+    'Barangay 4, Bacolod',
+    'Barangay 5, Bacolod',
+    'Barangay 6, Bacolod',
+    'Barangay 7, Bacolod',
+    'Barangay 8, Bacolod',
+    'Barangay 9, Bacolod',
+    'Barangay 10, Bacolod',
+    'Barangay 11, Bacolod',
+    'Barangay 12, Bacolod',
+    'Barangay 13, Bacolod',
+    'Barangay 14, Bacolod',
+    'Barangay 15, Bacolod',
+    'Barangay 16, Bacolod',
+    'Barangay 17, Bacolod',
+    'Barangay 18, Bacolod',
+    'Barangay 19, Bacolod',
+    'Barangay 20, Bacolod',
+    'Barangay 21, Bacolod',
+    'Barangay 22, Bacolod',
+    'Barangay 23, Bacolod',
+    'Barangay 24, Bacolod',
+    'Barangay 25, Bacolod',
+    'Barangay 26, Bacolod',
+    'Barangay 27, Bacolod',
+    'Barangay 28, Bacolod',
+    'Barangay 29, Bacolod',
+    'Barangay 30, Bacolod',
+    'Barangay 31, Bacolod',
+    'Barangay 32, Bacolod',
+    'Barangay 33, Bacolod',
+    'Barangay 34, Bacolod',
+    'Barangay 35, Bacolod',
+    'Barangay 36, Bacolod',
+    'Barangay 37, Bacolod',
+    'Barangay 38, Bacolod',
+    'Barangay 39, Bacolod',
+    'Barangay 40, Bacolod',
+    'Barangay 41, Bacolod',
+    'Barangay Mandalagan, Bacolod',
+    'Barangay Villamonte, Bacolod',
+    'Barangay Tangub, Bacolod',
+    'Barangay Bata, Bacolod',
+    'Barangay Singcang-Airport, Bacolod',
+    'Barangay Banago, Bacolod',
+    'Barangay Alijis, Bacolod',
+    'Barangay Taculing, Bacolod',
+    'Barangay Granada, Bacolod',
+    'Barangay Estefania, Bacolod',
+    'Barangay Sum-ag, Bacolod',
+    'Barangay Felisa, Bacolod',
+    'Barangay Punta Taytay, Bacolod',
+    'Barangay Vista Alegre, Bacolod',
+    'Barangay Pahanocoy, Bacolod',
+    'Barangay Handumanan, Bacolod',
+    'Barangay Montevista, Bacolod',
+    'Barangay Cabug, Bacolod',
+    'Barangay Alangilan, Bacolod',
+    
+    // Silay City Barangays - matches database format
+    'Barangay 1, Silay',
+    'Barangay 2, Silay',
+    'Barangay 3, Silay',
+    'Barangay 4, Silay',
+    'Barangay 5, Silay',
+    'Barangay 6, Silay',
+    'Barangay Balaring, Silay',
+    'Barangay Guinhalaran, Silay',
+    'Barangay Hawaiian, Silay',
+    'Barangay Kapitan Ramon, Silay',
+    'Barangay Mambulac, Silay',
+    'Barangay E. Lopez, Silay',
+    'Barangay Lantad, Silay',
+    'Barangay Rizal, Silay',
+    
+    // Bago City Barangays
+    'Barangay Alijis, Bago City',
+    'Barangay Atipuluan, Bago City',
+    'Barangay Bacong, Bago City',
+    'Barangay Balingasag, Bago City',
+    'Barangay Binubuhan, Bago City',
+    'Barangay Dulao, Bago City',
+    'Barangay Lag-asan, Bago City',
+    'Barangay Ma-ao, Bago City',
+    'Barangay Poblacion, Bago City',
+    
+    // La Carlota City Barangays (Complete)
+    'Barangay Ara-al, La Carlota',
+    'Barangay Ayungon, La Carlota',
+    'Barangay Balabag, La Carlota',
+    'Barangay Batuan, La Carlota',
+    'Barangay Consuelo, La Carlota',
+    'Barangay Cubay, La Carlota',
+    'Barangay Haguimit, La Carlota',
+    'Barangay I (Poblacion), La Carlota',
+    'Barangay II (Poblacion), La Carlota',
+    'Barangay La Granja, La Carlota',
+    'Barangay Nagasi, La Carlota',
+    'Barangay RSB (Rafael Salas), La Carlota',
+    'Barangay San Miguel, La Carlota',
+    'Barangay Yubo, La Carlota',
+    
+    // More Bago City Barangays
+    'Barangay Abuanan, Bago City',
+    'Barangay Alianza, Bago City',
+    'Barangay Busay, Bago City',
+    'Barangay Calumangan, Bago City',
+    'Barangay Caridad, Bago City',
+    'Barangay Mailum, Bago City',
+    'Barangay Malingin, Bago City',
+    'Barangay Pacol, Bago City',
+    'Barangay Sagasa, Bago City',
+    'Barangay Taloc, Bago City',
+    
+    // Kabankalan City Barangays (Complete)
+    'Barangay Bantayan, Kabankalan City',
+    'Barangay Binicuil, Kabankalan City',
+    'Barangay Camansi, Kabankalan City',
+    'Barangay Camingawan, Kabankalan City',
+    'Barangay Carol-an, Kabankalan City',
+    'Barangay Daan Banua, Kabankalan City',
+    'Barangay Hilamonan, Kabankalan City',
+    'Barangay Inapoy, Kabankalan City',
+    'Barangay Locotan, Kabankalan City',
+    'Barangay Magatas, Kabankalan City',
+    'Barangay Magballo, Kabankalan City',
+    'Barangay Oringao, Kabankalan City',
+    'Barangay Orong, Kabankalan City',
+    'Barangay Pinaguinpinan, Kabankalan City',
+    'Barangay Salong, Kabankalan City',
+    'Barangay Tabugon, Kabankalan City',
+    'Barangay Tagoc, Kabankalan City',
+    'Barangay Tagukon, Kabankalan City',
+    'Barangay Talubangi, Kabankalan City',
+    'Barangay Tampalon, Kabankalan City',
+    'Barangay Tan-awan, Kabankalan City',
+    'Barangay Tapi, Kabankalan City',
+    'Barangay Tiling, Kabankalan City',
+    
+    // Himamaylan City Barangays (Complete)
+    'Barangay 1 (Poblacion I), Himamaylan City',
+    'Barangay 2 (Poblacion II), Himamaylan City',
+    'Barangay 3 (Poblacion III), Himamaylan City',
+    'Barangay 4 (Poblacion IV), Himamaylan City',
+    'Barangay 5 (Poblacion V), Himamaylan City',
+    'Barangay 6 (Poblacion VI), Himamaylan City',
+    'Barangay Aguisan, Himamaylan City',
+    'Barangay Buenavista, Himamaylan City',
+    'Barangay Cabadiangan, Himamaylan City',
+    'Barangay Cabanbanan, Himamaylan City',
+    'Barangay Carabalan, Himamaylan City',
+    'Barangay Caradio-an, Himamaylan City',
+    'Barangay Mambagaton, Himamaylan City',
+    'Barangay Nabali-an, Himamaylan City',
+    'Barangay San Antonio, Himamaylan City',
+    'Barangay San Jose, Himamaylan City',
+    'Barangay San Pablo, Himamaylan City',
+    'Barangay Sara-et, Himamaylan City',
+    'Barangay Suay, Himamaylan City',
+    'Barangay Talaban, Himamaylan City',
+    'Barangay To-oy, Himamaylan City',
+    
+    // Sagay City Barangays (Complete)
+    'Barangay Andres Bonifacio, Sagay',
+    'Barangay Bato, Sagay',
+    'Barangay Baviera, Sagay',
+    'Barangay Bulanon, Sagay',
+    'Barangay Campo Himoga-an, Sagay',
+    'Barangay Colonia Divina, Sagay',
+    'Barangay Fabrica, Sagay',
+    'Barangay General Luna, Sagay',
+    'Barangay Himoga-an Baybay, Sagay',
+    'Barangay Lopez Jaena, Sagay',
+    'Barangay Malubon, Sagay',
+    'Barangay Old Sagay, Sagay',
+    'Barangay Paraiso, Sagay',
+    'Barangay Poblacion I, Sagay',
+    'Barangay Poblacion II, Sagay',
+    'Barangay Poblacion III, Sagay',
+    'Barangay Poblacion IV, Sagay',
+    'Barangay Poblacion V, Sagay',
+    'Barangay Puey, Sagay',
+    'Barangay Rafaela Barrera, Sagay',
+    'Barangay Rizal, Sagay',
+    'Barangay Sewahon I, Sagay',
+    'Barangay Sewahon II, Sagay',
+    'Barangay Taba-ao, Sagay',
+    'Barangay Tadlong, Sagay',
+    'Barangay Vito, Sagay',
+    
+    // San Carlos City Barangays (Complete)
+    'Barangay 3, San Carlos',
+    'Barangay 4, San Carlos',
+    'Barangay 5, San Carlos',
+    'Barangay Bagonbon, San Carlos',
+    'Barangay Buluangan, San Carlos',
+    'Barangay Codcod, San Carlos',
+    'Barangay Ermita, San Carlos',
+    'Barangay Guadalupe, San Carlos',
+    'Barangay I (Poblacion I), San Carlos',
+    'Barangay II (Poblacion II), San Carlos',
+    'Barangay Nataban, San Carlos',
+    'Barangay Palampas, San Carlos',
+    'Barangay Prosperidad, San Carlos',
+    'Barangay Punao, San Carlos',
+    'Barangay Quezon, San Carlos',
+    'Barangay Rizal, San Carlos',
+    'Barangay San Antonio, San Carlos',
+    'Barangay San Juan, San Carlos',
+    'Barangay San Pedro, San Carlos',
+    
+    // Cadiz City Barangays (Complete)
+    'Barangay Andres Bonifacio, Cadiz',
+    'Barangay Bandila, Cadiz',
+    'Barangay Banquerohan, Cadiz',
+    'Barangay 1 (Poblacion), Cadiz',
+    'Barangay 2 (Poblacion), Cadiz',
+    'Barangay 3 (Poblacion), Cadiz',
+    'Barangay 4 (Poblacion), Cadiz',
+    'Barangay 5 (Poblacion), Cadiz',
+    'Barangay 6 (Poblacion), Cadiz',
+    'Barangay 7 (Poblacion), Cadiz',
+    'Barangay 8 (Poblacion), Cadiz',
+    'Barangay 9 (Poblacion), Cadiz',
+    'Barangay 10 (Poblacion), Cadiz',
+    'Barangay Cabahug, Cadiz',
+    'Barangay Caduhaan, Cadiz',
+    'Barangay Celestino Villacin, Cadiz',
+    'Barangay Daga, Cadiz',
+    'Barangay Luna, Cadiz',
+    'Barangay Mabini, Cadiz',
+    'Barangay Magsaysay, Cadiz',
+    'Barangay Sicaba, Cadiz',
+    'Barangay Tiglawigan, Cadiz',
+    'Barangay Tinampa-an, Cadiz',
+    
+    // Victorias City Barangays (Complete)
+    'Barangay Bago, Victorias',
+    'Barangay Canlandog, Victorias',
+    'Barangay Daan Banua, Victorias',
+    'Barangay I (Poblacion I), Victorias',
+    'Barangay II (Poblacion II), Victorias',
+    'Barangay III (Poblacion III), Victorias',
+    'Barangay IV (Poblacion IV), Victorias',
+    'Barangay V (Poblacion V), Victorias',
+    'Barangay VI (Poblacion VI), Victorias',
+    'Barangay VII (Poblacion VII), Victorias',
+    'Barangay VIII (Poblacion VIII), Victorias',
+    'Barangay IX (Poblacion IX), Victorias',
+    'Barangay X (Poblacion X), Victorias',
+    'Barangay XI (Poblacion XI), Victorias',
+    'Barangay XII (Poblacion XII), Victorias',
+    'Barangay XIII (Poblacion XIII), Victorias',
+    'Barangay XIV (Poblacion XIV), Victorias',
+    'Barangay XV (Poblacion XV), Victorias',
+    'Barangay XVI (Poblacion XVI), Victorias',
+    'Barangay XVII (Poblacion XVII), Victorias',
+    'Barangay XVIII (Poblacion XVIII), Victorias',
+    'Barangay XIX (Poblacion XIX), Victorias',
+    'Barangay XX (Poblacion XX), Victorias',
+    'Barangay XXI (Poblacion XXI), Victorias',
+    'Barangay XXII (Poblacion XXII), Victorias',
+    'Barangay XXIII (Poblacion XXIII), Victorias',
+    'Barangay XXIV (Poblacion XXIV), Victorias',
+    'Barangay XXV (Poblacion XXV), Victorias',
+    'Barangay XXVI (Poblacion XXVI), Victorias',
+    'Barangay Malaya, Victorias',
+    'Barangay Malingin, Victorias',
+    'Barangay San Miguel, Victorias',
+    
+    // Escalante City Barangays (Complete)
+    'Barangay Alimango, Escalante',
+    'Barangay Balintawak, Escalante',
+    'Barangay Binaguiohan, Escalante',
+    'Barangay Dian-ay, Escalante',
+    'Barangay Hacienda Fe, Escalante',
+    'Barangay Japitan, Escalante',
+    'Barangay Jonob-jonob, Escalante',
+    'Barangay Libertad, Escalante',
+    'Barangay Mabini, Escalante',
+    'Barangay Magsaysay, Escalante',
+    'Barangay Malasibog, Escalante',
+    'Barangay Old Poblacion, Escalante',
+    'Barangay Paitan, Escalante',
+    'Barangay Pinapugasan, Escalante',
+    'Barangay Rizal, Escalante',
+    'Barangay Sampinit, Escalante',
+    'Barangay Udtongan, Escalante',
+    'Barangay Washington, Escalante',
+    
+    // Sipalay City Barangays
+    'Barangay Cabadiangan, Sipalay City',
+    'Barangay Camindangan, Sipalay City',
+    'Barangay Gil Montilla, Sipalay City',
+    'Barangay Maricalum, Sipalay City',
+    
+    // Schools & Universities
     'University of Negros Occidental - Recoletos',
     'La Salle Bacolod',
     'University of St. La Salle',
+    'University of Bacolod',
+    'STI College Bacolod',
+    'Carlos Hilado Memorial State College',
     
-    // Landmarks
+    // Landmarks & Shopping Centers
     'SM City Bacolod',
     'Ayala Capitol Central',
     'Robinsons Place Bacolod',
     'Bacolod City Plaza',
+    'Bacolod Public Plaza',
+    'The Negros Museum',
+    'Capitol Park and Lagoon',
+    'CityMall Bacolod',
+    
+    // Airports
     'Silay Airport',
     'Bacolod Airport',
+    'Bacolod-Silay International Airport',
     
-    // Common Barangays (examples)
-    'Barangay 1, Bacolod City',
-    'Barangay 2, Bacolod City',
-    'Barangay 3, Bacolod City',
-    'Barangay 4, Bacolod City',
-    'Barangay 5, Bacolod City',
-    'Barangay 1, Talisay City',
-    'Barangay 2, Talisay City',
-    'Barangay 3, Talisay City',
-    'Barangay 1, Silay City',
-    'Barangay 2, Silay City',
-    'Barangay 3, Silay City',
-    
-    // Common Puroks (examples)
-    'Purok 1, Barangay 1, Bacolod City',
-    'Purok 2, Barangay 1, Bacolod City',
-    'Purok 3, Barangay 1, Bacolod City',
-    'Purok 1, Barangay 2, Talisay City',
-    'Purok 2, Barangay 2, Talisay City',
-    'Purok 1, Barangay 1, Silay City',
-    'Purok 2, Barangay 1, Silay City'
+    // Other Municipalities
+    'Calatrava, Negros Occidental',
+    'Cauayan, Negros Occidental',
+    'Don Salvador Benedicto, Negros Occidental',
+    'Enrique B. Magalona, Negros Occidental',
+    'Hinigaran, Negros Occidental',
+    'Hinoba-an, Negros Occidental',
+    'La Castellana, Negros Occidental',
+    'Manapla, Negros Occidental',
+    'Moises Padilla, Negros Occidental',
+    'Murcia, Negros Occidental',
+    'Pontevedra, Negros Occidental',
+    'Pulupandan, Negros Occidental',
+    'Salvador Benedicto, Negros Occidental',
+    'San Enrique, Negros Occidental',
+    'Sipalay, Negros Occidental',
+    'Toboso, Negros Occidental',
+    'Valladolid, Negros Occidental'
 ];
 
-// Database of coordinates for major locations in Negros Occidental
-const locationCoordinates = {
-    // Cities
-    'talisay': { lat: 10.7358, lon: 122.9853, name: 'Talisay City, Negros Occidental' },
-    'bacolod': { lat: 10.6760, lon: 122.9500, name: 'Bacolod City, Negros Occidental' },
-    'silay': { lat: 10.8000, lon: 122.9667, name: 'Silay City, Negros Occidental' },
-    'binalbagan': { lat: 10.1906, lon: 122.8608, name: 'Binalbagan, Negros Occidental' },
-    'kabankalan': { lat: 9.9906, lon: 122.8111, name: 'Kabankalan City, Negros Occidental' },
-    'himamaylan': { lat: 10.0989, lon: 122.8711, name: 'Himamaylan City, Negros Occidental' },
-    'bago': { lat: 10.5383, lon: 122.8358, name: 'Bago City, Negros Occidental' },
-    'cadiz': { lat: 10.9506, lon: 123.2897, name: 'Cadiz City, Negros Occidental' },
-    'sagay': { lat: 10.8969, lon: 123.4167, name: 'Sagay City, Negros Occidental' },
-    'victorias': { lat: 10.8972, lon: 123.0739, name: 'Victorias City, Negros Occidental' },
-    'escalante': { lat: 10.8394, lon: 123.5017, name: 'Escalante City, Negros Occidental' },
-    'san carlos': { lat: 10.4775, lon: 123.3806, name: 'San Carlos City, Negros Occidental' },
-    'la carlota': { lat: 10.4222, lon: 122.9194, name: 'La Carlota City, Negros Occidental' },
-    'ilog': { lat: 10.0422, lon: 122.7553, name: 'Ilog, Negros Occidental' },
-    'isabela': { lat: 10.2142, lon: 122.9711, name: 'Isabela, Negros Occidental' },
-    
-    // Schools & Institutions (mapped to city centers)
-    'chmsu': { lat: 10.7358, lon: 122.9853, name: 'CHMSU Talisay Campus' },
-    'chmsu talisay': { lat: 10.7358, lon: 122.9853, name: 'CHMSU Talisay Main Campus' },
-    'chmsu binalbagan': { lat: 10.1906, lon: 122.8608, name: 'CHMSU Binalbagan Campus' },
-    'central philippine state university': { lat: 10.7358, lon: 122.9853, name: 'CHMSU Talisay' }
-};
-
-// Get coordinates from hardcoded database
-function getHardcodedCoordinates(location) {
-    const normalized = location.toLowerCase().trim();
-    
-    // Direct city match
-    if (locationCoordinates[normalized]) {
-        return locationCoordinates[normalized];
-    }
-    
-    // Check if location contains a city name
-    for (const [city, coords] of Object.entries(locationCoordinates)) {
-        if (normalized.includes(city)) {
-            return coords;
-        }
-    }
-    
-    return null;
-}
-
-// Haversine formula to calculate distance between two coordinates
-function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Radius of Earth in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    return Math.round(distance); // Round to nearest km
-}
-
-// Get destination coordinates using HERE Geocoding API
-async function getDestinationCoordinatesHERE(location) {
-    // First try hardcoded coordinates
-    const hardcoded = getHardcodedCoordinates(location);
-    if (hardcoded) {
-        return hardcoded;
-    }
-    
-    // Resolve location for better geocoding
-    const resolvedLocation = resolveLocation(location);
-    
-    const url = `https://geocode.search.hereapi.com/v1/geocode?q=${encodeURIComponent(resolvedLocation)}&apikey=${HERE_API_KEY}`;
-    
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'CHMSU-BAO-Bus-Booking-System'
-            }
-        });
-        const data = await response.json();
-        
-        if (data.items && data.items.length > 0) {
-            const item = data.items[0];
-            return {
-                lat: parseFloat(item.position.lat),
-                lon: parseFloat(item.position.lng),
-                name: item.title,
-                display_name: item.address.label
-            };
-        }
-        return null;
-    } catch (error) {
-        console.error('HERE Geocoding error:', error);
-        return null;
-    }
-}
-
-// Calculate distance using HERE Routing API
-async function calculateDistanceHERE(destination) {
-    // Get destination coordinates
-    const destCoords = await getDestinationCoordinatesHERE(destination);
-    
-    if (!destCoords) {
-        return null;
-    }
-    
-    // HERE Routing API URL
-    const url = `https://router.hereapi.com/v8/routes?transportMode=car&origin=${CHMSU_ORIGIN_LAT},${CHMSU_ORIGIN_LON}&destination=${destCoords.lat},${destCoords.lon}&return=summary&apikey=${HERE_API_KEY}`;
-    
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'CHMSU-BAO-Bus-Booking-System'
-            }
-        });
-        const data = await response.json();
-        
-        if (data.routes && data.routes[0] && data.routes[0].sections && data.routes[0].sections[0] && data.routes[0].sections[0].summary && data.routes[0].sections[0].summary.length) {
-            const distanceMeters = data.routes[0].sections[0].summary.length;
-            const distanceKm = Math.round(distanceMeters / 1000);
-            return distanceKm;
-        }
-        
-        // Fallback to Haversine calculation
-        return calculateHaversineDistance(
-            CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-            destCoords.lat, destCoords.lon
-        );
-    } catch (error) {
-        console.error('HERE Routing error:', error);
-        // Fallback to Haversine calculation
-        return calculateHaversineDistance(
-            CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-            destCoords.lat, destCoords.lon
-        );
-    }
-}
+// NO API FUNCTIONS NEEDED - All calculations done locally on server
 
 // Searchable dropdown functions
 let suggestionTimeout = null;
@@ -1399,52 +1250,27 @@ function hideLocationSuggestions() {
     setTimeout(() => {
         const suggestionsDiv = document.getElementById('location-suggestions');
         suggestionsDiv.classList.add('hidden');
-    }, 200);
+    }, 300); // Increased delay to 300ms
 }
 
-async function showSuggestions(query) {
+function showSuggestions(query) {
     const suggestionsDiv = document.getElementById('location-suggestions');
     const normalizedQuery = query.toLowerCase().trim();
     
-    // Filter local suggestions
-    const localMatches = localSuggestions.filter(suggestion => 
+    // Filter local suggestions only - no API calls
+    const matches = localSuggestions.filter(suggestion => 
         suggestion.toLowerCase().includes(normalizedQuery)
-    ).slice(0, 5);
+    ).slice(0, 10);
     
-    // Get HERE Autosuggest results
-    let hereSuggestions = [];
-    try {
-        const url = `https://autosuggest.search.hereapi.com/v1/autosuggest?q=${encodeURIComponent(query)}&at=${CHMSU_ORIGIN_LAT},${CHMSU_ORIGIN_LON}&limit=5&apikey=${HERE_API_KEY}`;
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'CHMSU-BAO-Bus-Booking-System'
-            }
-        });
-        const data = await response.json();
-        
-        if (data.items) {
-            hereSuggestions = data.items
-                .filter(item => item.title && item.title.toLowerCase().includes('negros'))
-                .slice(0, 3)
-                .map(item => item.title);
-        }
-    } catch (error) {
-        console.error('HERE Autosuggest error:', error);
-    }
-    
-    // Combine and deduplicate suggestions
-    const allSuggestions = [...localMatches, ...hereSuggestions];
-    const uniqueSuggestions = [...new Set(allSuggestions)].slice(0, 8);
-    
-    if (uniqueSuggestions.length === 0) {
+    if (matches.length === 0) {
         suggestionsDiv.classList.add('hidden');
         return;
     }
     
-    // Display suggestions
-    suggestionsDiv.innerHTML = uniqueSuggestions.map(suggestion => `
+    // Display suggestions - use onmousedown instead of onclick (fires before blur)
+    suggestionsDiv.innerHTML = matches.map(suggestion => `
         <div class="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0" 
-             onclick="selectSuggestion('${suggestion.replace(/'/g, "\\'")}')">
+             onmousedown="selectSuggestion('${suggestion.replace(/'/g, "\\'")}'); event.preventDefault();">
             <div class="flex items-center">
                 <i class="fas fa-map-marker-alt text-blue-500 mr-2"></i>
                 <span class="text-sm">${suggestion}</span>
@@ -1511,145 +1337,9 @@ document.addEventListener('keydown', function(event) {
     });
 });
 
-// Smart location resolver - maps common landmarks, schools, and institutions to geocodable addresses
-function resolveLocation(input) {
-    const normalized = input.toLowerCase().trim();
-    
-    // School and University mappings - using OSM-friendly formats
-    const locationMap = {
-        // CHMSU Campuses
-        'chmsu': 'Talisay, Negros Occidental, Philippines',
-        'chmsu talisay': 'Talisay, Negros Occidental, Philippines',
-        'chmsu main': 'Talisay, Negros Occidental, Philippines',
-        'chmsu main campus': 'Talisay, Negros Occidental, Philippines',
-        'talisay main campus': 'Talisay, Negros Occidental, Philippines',
-        'central philippines state university': 'Talisay, Negros Occidental, Philippines',
-        'cpsu': 'Talisay, Negros Occidental, Philippines',
-        'carlos hilado': 'Talisay, Negros Occidental, Philippines',
-        'chmsc': 'Talisay, Negros Occidental, Philippines',
-        
-        'chmsu binalbagan': 'Binalbagan, Negros Occidental, Philippines',
-        'binalbagan campus': 'Binalbagan, Negros Occidental, Philippines',
-        
-        'chmsu fortune towne': 'Bacolod, Negros Occidental, Philippines',
-        'fortune towne campus': 'Bacolod, Negros Occidental, Philippines',
-        'fortune towne': 'Bacolod, Negros Occidental, Philippines',
-        
-        'chmsu alijis': 'Bacolod, Negros Occidental, Philippines',
-        'alijis campus': 'Bacolod, Negros Occidental, Philippines',
-        
-        // Major landmarks
-        'sm city bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'sm bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'ayala bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'ayala capitol central': 'Bacolod, Negros Occidental, Philippines',
-        'robinsons bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'bacolod airport': 'Silay, Negros Occidental, Philippines',
-        'silay airport': 'Silay, Negros Occidental, Philippines',
-        'bacolod city plaza': 'Bacolod, Negros Occidental, Philippines',
-        'bacolod plaza': 'Bacolod, Negros Occidental, Philippines',
-        
-        // Other schools
-        'uc bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'usls': 'Bacolod, Negros Occidental, Philippines',
-        'la salle bacolod': 'Bacolod, Negros Occidental, Philippines',
-        'university of negros occidental': 'Bacolod, Negros Occidental, Philippines',
-        'uno-r': 'Bacolod, Negros Occidental, Philippines',
-        
-        // City halls
-        'bacolod city hall': 'Bacolod, Negros Occidental, Philippines',
-        'talisay city hall': 'Talisay, Negros Occidental, Philippines',
-        'silay city hall': 'Silay, Negros Occidental, Philippines'
-    };
-    
-    // Normalize barangay/zone format (e.g., "Barangay 5 Silay city" -> "Silay, Negros Occidental")
-    const barangayPattern = /(?:barangay|brgy|zone|purok)\s*\d*\s*(?:,?\s*)?(talisay|bacolod|silay|binalbagan|kabankalan|himamaylan|bago|cadiz|sagay|victorias|escalante|san carlos|la carlota|ilog|isabela)/i;
-    const barangayMatch = input.match(barangayPattern);
-    if (barangayMatch) {
-        const cityPart = barangayMatch[1].charAt(0).toUpperCase() + barangayMatch[1].slice(1).toLowerCase();
-        return `${cityPart}, Negros Occidental, Philippines`;
-    }
-    
-    // Check if input matches any known location (exact match)
-    if (locationMap[normalized]) {
-        return locationMap[normalized];
-    }
-    
-    // Check if input contains any known location as substring
-    for (const [key, value] of Object.entries(locationMap)) {
-        if (normalized.includes(key)) {
-            return value;
-        }
-    }
-    
-    // If input contains city names, extract and format them
-    const cities = {
-        'bacolod': 'Bacolod',
-        'talisay': 'Talisay',
-        'silay': 'Silay',
-        'binalbagan': 'Binalbagan',
-        'kabankalan': 'Kabankalan',
-        'himamaylan': 'Himamaylan',
-        'bago': 'Bago',
-        'cadiz': 'Cadiz',
-        'sagay': 'Sagay',
-        'victorias': 'Victorias',
-        'escalante': 'Escalante',
-        'san carlos': 'San Carlos',
-        'la carlota': 'La Carlota',
-        'ilog': 'Ilog',
-        'isabela': 'Isabela'
-    };
-    
-    for (const [key, value] of Object.entries(cities)) {
-        if (normalized.includes(key)) {
-            return `${value}, Negros Occidental, Philippines`;
-        }
-    }
-    
-    // Return original input with proper formatting
-    return `${input}, Negros Occidental, Philippines`;
-}
+// NO GEOCODING OR RESOLVING FUNCTIONS NEEDED - All done locally in PHP
 
-// Geocode location using Photon API (OpenStreetMap-based)
-async function geocodeLocation(location) {
-    // Resolve location to geocodable address first
-    const resolvedLocation = resolveLocation(location);
-    
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(resolvedLocation)}&limit=1`;
-    
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'CHMSU-BAO-Bus-Booking-System'
-            }
-        });
-        const data = await response.json();
-        
-        if (data.features && data.features.length > 0) {
-            const feature = data.features[0];
-            const properties = feature.properties;
-            const coords = feature.geometry.coordinates;
-            
-            // Photon returns [lon, lat] format
-            return {
-                lat: parseFloat(coords[1]),
-                lon: parseFloat(coords[0]),
-                display_name: properties.name || resolvedLocation,
-                city: properties.city || '',
-                state: properties.state || '',
-                original_input: location,
-                resolved_to: resolvedLocation
-            };
-        }
-        return null;
-    } catch (error) {
-        console.error('Photon geocoding error:', error);
-        return null;
-    }
-}
-
-// Calculate and display distance using HERE API (CHMSU as origin)
+// Calculate and display distance using LOCAL DATABASE (NO APIs)
 async function updateDistance() {
     const fromLocation = document.getElementById('from_location').value.trim();
     const toLocation = document.getElementById('to_location').value.trim();
@@ -1673,57 +1363,31 @@ async function updateDistance() {
     distanceDisplay.innerHTML = `
         <div class="flex items-center">
             <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-            <span>Calculating distance from CHMSU using Photon + HERE API...</span>
+            <span>Calculating distance from CHMSU using local database...</span>
         </div>
     `;
     
     try {
         // Determine destination (always from CHMSU to destination)
         let destination = toLocation;
-        let originName = CHMSU_ORIGIN_NAME;
         
-        // If "from" is CHMSU, use "to" as destination
-        if (fromLocation.toLowerCase().includes('chmsu') || fromLocation.toLowerCase().includes('talisay')) {
-            destination = toLocation;
-        } else if (toLocation.toLowerCase().includes('chmsu') || toLocation.toLowerCase().includes('talisay')) {
-            // If "to" is CHMSU, use "from" as destination
+        // If "to" is CHMSU, use "from" as destination
+        if (toLocation.toLowerCase().includes('chmsu') || toLocation.toLowerCase().includes('talisay')) {
             destination = fromLocation;
-        } else {
-            // If neither is CHMSU, use "to" as destination (CHMSU is always origin)
-            destination = toLocation;
         }
         
-        // Try HERE API first for accurate routing
-        let distance = await calculateDistanceHERE(destination);
-        let usedHERE = false;
-        let destCoords = null;
+        // Call local PHP endpoint
+        const formData = new FormData();
+        formData.append('destination', destination);
         
-        if (distance !== null) {
-            usedHERE = true;
-            destCoords = await getDestinationCoordinatesHERE(destination);
-        } else {
-            // Fallback: Try hardcoded coordinates
-            const hardcoded = getHardcodedCoordinates(destination);
-            if (hardcoded) {
-                distance = calculateHaversineDistance(
-                    CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-                    hardcoded.lat, hardcoded.lon
-                );
-                destCoords = hardcoded;
-            } else {
-                // Final fallback: Try OpenStreetMap
-                const osmCoords = await geocodeLocation(destination);
-                if (osmCoords) {
-                    distance = calculateHaversineDistance(
-                        CHMSU_ORIGIN_LAT, CHMSU_ORIGIN_LON,
-                        osmCoords.lat, osmCoords.lon
-                    );
-                    destCoords = osmCoords;
-                }
-            }
-        }
+        const response = await fetch('calculate_distance.php', {
+            method: 'POST',
+            body: formData
+        });
         
-        if (!distance || !destCoords) {
+        const result = await response.json();
+        
+        if (result.error) {
             distanceDisplay.className = 'p-3 rounded-md text-sm bg-yellow-100 text-yellow-800';
             distanceDisplay.innerHTML = `
                 <div>
@@ -1731,7 +1395,7 @@ async function updateDistance() {
                     <span class="font-semibold">Location not found</span>
                 </div>
                 <div class="mt-2 text-xs">
-                    "${destination}" could not be found. Try using city names like: Talisay, Bacolod, Silay, Binalbagan, etc.
+                    "${destination}" could not be found in the database. Try using: Bacolod City, Talisay City, or specific barangays.
                 </div>
                 <div class="mt-2 text-xs text-gray-600">
                     Using estimated distance: <span class="font-bold">50 km</span> (one-way), <span class="font-bold">100 km</span> (round trip)
@@ -1740,33 +1404,31 @@ async function updateDistance() {
             return;
         }
         
-        const totalDistance = distance * 2; // Round trip
-        
         // Display result
         distanceDisplay.className = 'p-3 rounded-md text-sm bg-green-100 text-green-800 border border-green-300';
         
         distanceDisplay.innerHTML = `
             <div class="flex items-center justify-between">
                 <span><i class="fas fa-route mr-2"></i>Distance (one-way):</span>
-                <span class="font-bold text-lg">${distance} km</span>
+                <span class="font-bold text-lg">${result.distance_km} km</span>
             </div>
             <div class="flex items-center justify-between mt-1">
                 <span><i class="fas fa-exchange-alt mr-2"></i>Total Distance (round trip):</span>
-                <span class="font-bold text-lg">${totalDistance} km</span>
+                <span class="font-bold text-lg">${result.total_distance_km} km</span>
             </div>
             <div class="mt-3 pt-2 border-t border-green-200 text-xs text-gray-700">
                 <div class="mb-2">
                     <i class="fas fa-university mr-1 text-blue-600"></i>
-                    <span class="font-semibold">From:</span> ${originName}
+                    <span class="font-semibold">From:</span> ${CHMSU_ORIGIN_NAME}
                 </div>
                 <div>
                     <i class="fas fa-map-marker-alt mr-1 text-green-600"></i>
-                    <span class="font-semibold">To:</span> ${destCoords.name || destCoords.display_name}
+                    <span class="font-semibold">To:</span> ${result.destination}
                 </div>
             </div>
             <div class="mt-2 text-xs text-gray-600 flex items-center">
-                <i class="fas fa-${usedHERE ? 'route' : 'database'} mr-1"></i>
-                ${usedHERE ? 'Calculated using Photon API + HERE routing' : 'Calculated using Photon API + coordinates database'}
+                <i class="fas fa-database mr-1"></i>
+                Calculated using local Negros Occidental database (${result.type})
             </div>
         `;
         

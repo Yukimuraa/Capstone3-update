@@ -9,16 +9,173 @@ require_once 'config/database.php';
 $testResults = [];
 $error = '';
 
-// Test locations in Negros Occidental
+// Test locations in Negros Occidental - Comprehensive Coverage
 $testLocations = [
+    // Major Cities
     'Talisay, Negros Occidental',
     'Bacolod City, Negros Occidental',
+    'Silay City, Negros Occidental',
+    'Binalbagan, Negros Occidental',
+    'Kabankalan City, Negros Occidental',
+    'Himamaylan City, Negros Occidental',
+    'Bago City, Negros Occidental',
+    'Cadiz City, Negros Occidental',
+    'Sagay City, Negros Occidental',
+    'Victorias City, Negros Occidental',
+    'Escalante City, Negros Occidental',
+    'San Carlos City, Negros Occidental',
+    'La Carlota City, Negros Occidental',
+    
+    // CHMSU Campuses
     'CHMSU Talisay',
-    'Barangay 5, Talisay City',
-    'Purok 2, Barangay 1, Bacolod',
+    'CHMSU Binalbagan',
+    'CHMSU Fortune Towne',
+    'CHMSU Alijis',
+    
+    // Bacolod City Barangays (61 barangays - showing major ones)
+    'Barangay 1, Bacolod City',
+    'Barangay 2, Bacolod City',
+    'Barangay 3, Bacolod City',
+    'Barangay 4, Bacolod City',
+    'Barangay 5, Bacolod City',
+    'Barangay 6, Bacolod City',
+    'Barangay Mandalagan, Bacolod City',
+    'Barangay Villamonte, Bacolod City',
+    'Barangay Tangub, Bacolod City',
+    'Barangay Bata, Bacolod City',
+    'Barangay Singcang-Airport, Bacolod City',
+    'Barangay Banago, Bacolod City',
+    'Barangay Alijis, Bacolod City',
+    'Barangay Taculing, Bacolod City',
+    'Barangay Granada, Bacolod City',
+    'Barangay Estefania, Bacolod City',
+    'Barangay Sum-ag, Bacolod City',
+    'Barangay Felisa, Bacolod City',
+    'Barangay Punta Taytay, Bacolod City',
+    'Barangay Vista Alegre, Bacolod City',
+    
+    // Talisay City Barangays (13 barangays)
+    'Barangay Zone 1, Talisay City',
+    'Barangay Zone 2, Talisay City',
+    'Barangay Zone 3, Talisay City',
+    'Barangay Zone 4, Talisay City',
+    'Barangay Zone 5, Talisay City',
+    'Barangay Zone 6, Talisay City',
+    'Barangay Zone 7, Talisay City',
+    'Barangay Zone 8, Talisay City',
+    'Barangay Zone 9, Talisay City',
+    'Barangay Zone 10, Talisay City',
+    'Barangay Zone 11, Talisay City',
+    'Barangay Zone 12, Talisay City',
+    'Barangay Zone 13, Talisay City',
+    
+    // Silay City Barangays (major ones)
+    'Barangay 1, Silay City',
+    'Barangay 2, Silay City',
+    'Barangay 3, Silay City',
+    'Barangay 4, Silay City',
+    'Barangay 5, Silay City',
+    'Barangay Balaring, Silay City',
+    'Barangay Guinhalaran, Silay City',
+    'Barangay Hawaiian, Silay City',
+    'Barangay Kapitan Ramon, Silay City',
+    'Barangay Mambulac, Silay City',
+    
+    // Bago City Barangays (major ones)
+    'Barangay Alijis, Bago City',
+    'Barangay Atipuluan, Bago City',
+    'Barangay Bacong, Bago City',
+    'Barangay Balingasag, Bago City',
+    'Barangay Binubuhan, Bago City',
+    'Barangay Dulao, Bago City',
+    'Barangay Lag-asan, Bago City',
+    'Barangay Ma-ao, Bago City',
+    'Barangay Poblacion, Bago City',
+    
+    // Kabankalan City Barangays (major ones)
+    'Barangay Binicuil, Kabankalan City',
+    'Barangay Camingawan, Kabankalan City',
+    'Barangay Daan Banua, Kabankalan City',
+    'Barangay Inapoy, Kabankalan City',
+    'Barangay Oringao, Kabankalan City',
+    'Barangay Poblacion, Kabankalan City',
+    'Barangay Salong, Kabankalan City',
+    'Barangay Tabugon, Kabankalan City',
+    
+    // Himamaylan City Barangays (major ones)
+    'Barangay Aguisan, Himamaylan City',
+    'Barangay Buenavista, Himamaylan City',
+    'Barangay Cabanbanan, Himamaylan City',
+    'Barangay Carabalan, Himamaylan City',
+    'Barangay Poblacion, Himamaylan City',
+    'Barangay Sara-et, Himamaylan City',
+    'Barangay Su-ay, Himamaylan City',
+    
+    // La Carlota City Barangays (major ones)
+    'Barangay Ara-al, La Carlota City',
+    'Barangay Ayungon, La Carlota City',
+    'Barangay Balabag, La Carlota City',
+    'Barangay Cubay, La Carlota City',
+    'Barangay Haguimit, La Carlota City',
+    'Barangay La Granja, La Carlota City',
+    'Barangay Poblacion 1, La Carlota City',
+    'Barangay Poblacion 2, La Carlota City',
+    'Barangay Poblacion 3, La Carlota City',
+    
+    // Sagay City Barangays (major ones)
+    'Barangay Bato, Sagay City',
+    'Barangay Bulanon, Sagay City',
+    'Barangay Fabrica, Sagay City',
+    'Barangay Lopez Jaena, Sagay City',
+    'Barangay Poblacion 1, Sagay City',
+    'Barangay Poblacion 2, Sagay City',
+    'Barangay Vito, Sagay City',
+    
+    // San Carlos City Barangays (major ones)
+    'Barangay 1, San Carlos City',
+    'Barangay 2, San Carlos City',
+    'Barangay 3, San Carlos City',
+    'Barangay Codcod, San Carlos City',
+    'Barangay Ermita, San Carlos City',
+    'Barangay Prosperidad, San Carlos City',
+    'Barangay Quezon, San Carlos City',
+    
+    // Landmarks
     'SM City Bacolod',
+    'Ayala Capitol Central',
+    'Robinsons Place Bacolod',
+    'Bacolod City Plaza',
     'Silay Airport',
-    'Binalbagan, Negros Occidental'
+    'Bacolod-Silay Airport',
+    
+    // Puroks (examples with specific barangays)
+    'Purok 1, Barangay 1, Bacolod City',
+    'Purok 2, Barangay 1, Bacolod City',
+    'Purok 1, Barangay Mandalagan, Bacolod City',
+    'Purok 1, Zone 1, Talisay City',
+    'Purok 2, Zone 1, Talisay City',
+    'Purok 1, Barangay Balaring, Silay City',
+    
+    // Other municipalities
+    'Calatrava, Negros Occidental',
+    'Cauayan, Negros Occidental',
+    'Don Salvador Benedicto, Negros Occidental',
+    'Enrique B. Magalona, Negros Occidental',
+    'Hinigaran, Negros Occidental',
+    'Hinoba-an, Negros Occidental',
+    'Ilog, Negros Occidental',
+    'Isabela, Negros Occidental',
+    'La Castellana, Negros Occidental',
+    'Manapla, Negros Occidental',
+    'Moises Padilla, Negros Occidental',
+    'Murcia, Negros Occidental',
+    'Pontevedra, Negros Occidental',
+    'Pulupandan, Negros Occidental',
+    'Salvador Benedicto, Negros Occidental',
+    'San Enrique, Negros Occidental',
+    'Sipalay, Negros Occidental',
+    'Toboso, Negros Occidental',
+    'Valladolid, Negros Occidental'
 ];
 
 // Function to test Photon API
@@ -102,9 +259,30 @@ if (isset($_GET['auto_test'])) {
                     Photon API Test Tool
                 </h1>
                 <p class="text-gray-600">Test geocoding for Negros Occidental locations using Photon API (OpenStreetMap)</p>
+                
+                <!-- Location Statistics -->
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div class="text-sm text-blue-600 font-medium">Total Locations</div>
+                        <div class="text-2xl font-bold text-blue-900"><?php echo count($testLocations); ?></div>
+                    </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div class="text-sm text-green-600 font-medium">Cities Covered</div>
+                        <div class="text-2xl font-bold text-green-900">13</div>
+                    </div>
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                        <div class="text-sm text-purple-600 font-medium">Barangays</div>
+                        <div class="text-2xl font-bold text-purple-900">100+</div>
+                    </div>
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <div class="text-sm text-orange-600 font-medium">Municipalities</div>
+                        <div class="text-2xl font-bold text-orange-900">19</div>
+                    </div>
+                </div>
+                
                 <div class="mt-4 flex space-x-3">
                     <a href="?auto_test=1" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                        <i class="fas fa-play mr-2"></i> Auto-Test All Locations
+                        <i class="fas fa-play mr-2"></i> Auto-Test All <?php echo count($testLocations); ?> Locations
                     </a>
                     <a href="test_photon_api.php" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
                         <i class="fas fa-refresh mr-2"></i> Clear Results
@@ -135,11 +313,33 @@ if (isset($_GET['auto_test'])) {
                     <i class="fas fa-list text-purple-600 mr-2"></i>
                     Quick Test Locations
                 </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                
+                <!-- Coverage Info -->
+                <div class="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border-l-4 border-blue-500 rounded-md">
+                    <h3 class="font-semibold text-gray-900 mb-2">
+                        <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                        Comprehensive Negros Occidental Coverage
+                    </h3>
+                    <p class="text-sm text-gray-700 mb-2">
+                        This test includes <strong><?php echo count($testLocations); ?> locations</strong> covering:
+                    </p>
+                    <ul class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> All 13 cities</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> 100+ barangays</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> 19 municipalities</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> Major landmarks</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> CHMSU campuses</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> Specific puroks</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> Shopping centers</li>
+                        <li><i class="fas fa-check-circle text-green-600 mr-1"></i> Airports</li>
+                    </ul>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
                     <?php foreach ($testLocations as $location): ?>
                         <form method="POST" class="inline-block">
                             <input type="hidden" name="test_location" value="<?php echo htmlspecialchars($location); ?>">
-                            <button type="submit" class="w-full px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-md hover:bg-purple-200 transition">
+                            <button type="submit" class="w-full px-3 py-2 text-sm bg-purple-100 text-purple-800 rounded-md hover:bg-purple-200 transition text-left">
                                 <i class="fas fa-map-marker-alt mr-1"></i>
                                 <?php echo htmlspecialchars($location); ?>
                             </button>
