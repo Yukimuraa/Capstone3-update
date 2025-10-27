@@ -12,18 +12,31 @@ $email = '';
 if (isset($_GET['token'])) {
     $token = $_GET['token'];
     
-    // Verify token
-    $stmt = $conn->prepare("SELECT * FROM password_resets WHERE token = ? AND expires_at > NOW()");
+    // Verify token - check if it exists first
+    $stmt = $conn->prepare("SELECT * FROM password_resets WHERE token = ?");
     $stmt->bind_param("s", $token);
     $stmt->execute();
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        $valid_token = true;
         $reset_data = $result->fetch_assoc();
-        $email = $reset_data['email'];
+        
+        // Check if token has expired (if expires_at is set)
+        if ($reset_data['expires_at'] !== null) {
+            // Token has expiration date, check if it's still valid
+            if (strtotime($reset_data['expires_at']) > time()) {
+                $valid_token = true;
+                $email = $reset_data['email'];
+            } else {
+                $error = "This password reset link has expired. Please request a new one.";
+            }
+        } else {
+            // Old token without expiration - accept it but warn
+            $valid_token = true;
+            $email = $reset_data['email'];
+        }
     } else {
-        $error = "Invalid or expired token. Please request a new password reset link.";
+        $error = "Invalid token. Please request a new password reset link.";
     }
 } else {
     $error = "No reset token provided.";
@@ -132,22 +145,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                 <form action="reset-password.php?token=<?php echo $token; ?>" method="POST">
                     <div class="mb-4">
                         <label for="password" class="block text-gray-700 font-medium mb-2">New Password</label>
-                        <div class="input-with-icon">
+                        <div class="input-with-icon" style="position: relative;">
                             <span class="icon">
                                 <i class="fas fa-lock"></i>
                             </span>
-                            <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="padding-right: 40px;" required>
+                            <button type="button" onclick="togglePassword('password', 'togglePasswordIcon1')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                                <i class="fas fa-eye" id="togglePasswordIcon1"></i>
+                            </button>
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Password must be at least 8 characters long</p>
                     </div>
 
                     <div class="mb-6">
                         <label for="confirm_password" class="block text-gray-700 font-medium mb-2">Confirm New Password</label>
-                        <div class="input-with-icon">
+                        <div class="input-with-icon" style="position: relative;">
                             <span class="icon">
                                 <i class="fas fa-lock"></i>
                             </span>
-                            <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="padding-right: 40px;" required>
+                            <button type="button" onclick="togglePassword('confirm_password', 'togglePasswordIcon2')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                                <i class="fas fa-eye" id="togglePasswordIcon2"></i>
+                            </button>
                         </div>
                     </div>
 
@@ -164,5 +183,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             </div>
         </div>
     </div>
+    
+    <script>
+        function togglePassword(inputId, iconId) {
+            const passwordInput = document.getElementById(inputId);
+            const toggleIcon = document.getElementById(iconId);
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+    </script>
 </body>
 </html>

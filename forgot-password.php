@@ -42,8 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param("sss", $email, $token, $expires_at);
             
             if ($stmt->execute()) {
+                // Get the base path of the application
+                $base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
                 $reset_link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') .
-                    '://' . $_SERVER['HTTP_HOST'] . '/reset-password.php?token=' . $token;
+                    '://' . $_SERVER['HTTP_HOST'] . $base_path . '/reset-password.php?token=' . $token;
 
                 // Load SMTP configuration
                 $config = require __DIR__ . '/config/email_config.php';
@@ -173,9 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <i class="fas fa-user-tag"></i>
                         </span>
                         <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="student">Student</option>
-                            <option value="staff">Staff</option>
-                            <option value="admin">BAO Admin</option>
+                            <option value="student">Student/Faculty/Staff</option>
                             <option value="external">External User</option>
                         </select>
                     </div>

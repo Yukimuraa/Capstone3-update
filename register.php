@@ -123,6 +123,7 @@ if (isset($_POST['verify_otp'])) {
     <title>Register - CHMSU</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script>
         function toggleOrganizationField() {
             const userType = document.getElementById("user_type").value;
@@ -162,8 +163,8 @@ if (isset($_POST['verify_otp'])) {
                 <div class="mb-4">
                     <label for="user_type" class="block text-gray-700 font-semibold mb-2">User Type</label>
                     <select id="user_type" name="user_type" onchange="toggleOrganizationField()" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                        <option value="student">Student / Faculty</option>
-                        <option value="external">External Organization</option>
+                        <option value="student">Student/Faculty/Staff</option>
+                        <option value="external">External User</option>
                     </select>
                 </div>
                 <div class="mb-4">
@@ -180,16 +181,50 @@ if (isset($_POST['verify_otp'])) {
                 </div>
                 <div class="mb-4">
                     <label for="password" class="block text-gray-700 font-semibold mb-2">Password</label>
-                    <input type="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    <div style="position: relative;">
+                        <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md" style="padding-right: 40px;" required>
+                        <button type="button" onclick="togglePassword('password', 'togglePasswordIcon1')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                            <i class="fas fa-eye" id="togglePasswordIcon1"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="mb-4">
                     <label for="confirm_password" class="block text-gray-700 font-semibold mb-2">Confirm Password</label>
-                    <input type="password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    <div style="position: relative;">
+                        <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md" style="padding-right: 40px;" required>
+                        <button type="button" onclick="togglePassword('confirm_password', 'togglePasswordIcon2')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                            <i class="fas fa-eye" id="togglePasswordIcon2"></i>
+                        </button>
+                    </div>
                 </div>
                 <button type="submit" name="register" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Register</button>
             </form>
         <?php endif; ?>
+        
+        <div class="text-center mt-6">
+            <p class="text-gray-600">
+                Already have an account? 
+                <a href="login.php" class="text-blue-600 hover:underline font-semibold">Login here</a>
+            </p>
+        </div>
     </div>
+    
+    <script>
+        function togglePassword(inputId, iconId) {
+            const passwordInput = document.getElementById(inputId);
+            const toggleIcon = document.getElementById(iconId);
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+    </script>
 </body>
 
 </html>
