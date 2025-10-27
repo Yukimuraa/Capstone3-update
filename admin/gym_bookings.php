@@ -126,7 +126,11 @@ $users_result = $conn->query($users_query);
         <header class="bg-white shadow-sm z-10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <h1 class="text-2xl font-semibold text-gray-900">Gym Reservations Management</h1>
-                <div class="flex items-center">
+                <div class="flex items-center space-x-4">
+                    <a href="gym_events.php" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        <i class="fas fa-calendar-times mr-2"></i>
+                        Manage Events & Blocked Dates
+                    </a>
                     <span class="text-gray-700 mr-2"><?php echo $user_name; ?></span>
                     <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500" id="menu-button">
                         <span class="sr-only">Open menu</span>
@@ -599,6 +603,23 @@ $users_result = $conn->query($users_query);
                     fetch(`get_gym_availability.php?date=${encodeURIComponent(dateStr)}`)
                         .then(r => r.json())
                         .then(data => {
+                            // Check if date is blocked
+                            if (data.is_blocked) {
+                                const blockedMsg = document.createElement('div');
+                                blockedMsg.className = 'p-4 bg-red-50 border-2 border-red-300 rounded-lg text-center';
+                                const eventIcon = data.blocked_info?.event_type === 'ceremony' ? '🎓' : 
+                                                 data.blocked_info?.event_type === 'intramurals' ? '🏅' : '🚫';
+                                blockedMsg.innerHTML = `
+                                    <div class="text-4xl mb-2">${eventIcon}</div>
+                                    <div class="font-bold text-red-600 mb-1">DATE BLOCKED</div>
+                                    <div class="font-semibold text-gray-800">${data.blocked_info?.event_name || 'School Event'}</div>
+                                    <div class="text-sm text-gray-600 mt-1">${data.message || ''}</div>
+                                `;
+                                sessionsDiv.appendChild(blockedMsg);
+                                avail.classList.remove('hidden');
+                                return;
+                            }
+                            
                             data.sessions.forEach(s => {
                                 const tag = document.createElement('span');
                                 tag.className = `px-2 py-1 rounded text-sm ${s.available ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`;
@@ -775,6 +796,34 @@ $users_result = $conn->query($users_query);
                         const slot = document.getElementById(dayId);
                         if (!slot) return;
                         
+                        // Check if date is blocked by school event
+                        if (data.is_blocked) {
+                            slot.innerHTML = '';
+                            const blockedChip = document.createElement('div');
+                            blockedChip.className = 'px-2 py-1 rounded text-xs mb-1 text-center font-bold';
+                            const eventIcon = data.blocked_info?.event_type === 'ceremony' ? '🎓' : 
+                                             data.blocked_info?.event_type === 'intramurals' ? '🏅' : '🚫';
+                            blockedChip.style.backgroundColor = '#7c2d12';
+                            blockedChip.style.color = '#ffffff';
+                            blockedChip.style.border = '2px solid #ea580c';
+                            blockedChip.textContent = `${eventIcon} BLOCKED`;
+                            slot.appendChild(blockedChip);
+                            
+                            // Add event name label below
+                            const eventLabel = document.createElement('div');
+                            eventLabel.className = 'text-xs text-center font-semibold px-1';
+                            eventLabel.style.color = '#7c2d12';
+                            eventLabel.style.lineHeight = '1.2';
+                            eventLabel.textContent = data.blocked_info?.event_name || '';
+                            slot.appendChild(eventLabel);
+                            
+                            const dayCell = slot.closest('[data-date]');
+                            if (dayCell) {
+                                dayCell.style.backgroundColor = '#fed7aa';
+                            }
+                            return;
+                        }
+                        
                         // Check if there's a whole day booking (8 AM - 6 PM) AND no other sessions are available
                         const hasWholeDayBooking = data.sessions && data.sessions.some(session => 
                             session.type === 'whole_day' && !session.available
@@ -815,6 +864,11 @@ $users_result = $conn->query($users_query);
                 fetch(`get_gym_availability.php?date=${encodeURIComponent(dayISO)}`)
                     .then(r => r.json())
                     .then(data => {
+                        // Skip if date is blocked
+                        if (data.is_blocked) {
+                            return; // already marked above as BLOCKED
+                        }
+                        
                         // If this day is effectively fully booked (whole day booked and no partial sessions available),
                         // skip rendering any "Available" chips to avoid contradictions
                         const hasWholeDayBooking = data.sessions && data.sessions.some(session => 

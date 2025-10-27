@@ -36,6 +36,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($booking_date < $today) {
             $errors[] = "Booking date must be in the future";
         }
+        
+        // Check if external user is booking within allowed months
+        $booking_month = (int)$booking_date->format('n'); // 1-12
+        $rules_check = $conn->query("SELECT allowed_months, is_active FROM gym_booking_rules WHERE user_type = 'external' AND is_active = 1 LIMIT 1");
+        
+        if ($rules_check && $rules_check->num_rows > 0) {
+            $rules = $rules_check->fetch_assoc();
+            $allowed_months = array_map('intval', explode(',', $rules['allowed_months']));
+            
+            if (!in_array($booking_month, $allowed_months)) {
+                $month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                $allowed_month_names = array_map(function($m) use ($month_names) { return $month_names[$m]; }, $allowed_months);
+                $errors[] = "External users can only book gym facilities during: " . implode(', ', $allowed_month_names) . ". Please contact the BAO office for special requests.";
+            }
+        }
+        
+        // Check if the date is blocked by a school event
+        $blocked_check = $conn->prepare("SELECT event_name, event_type, blocked_for_user_types 
+                                          FROM gym_blocked_dates 
+                                          WHERE ? BETWEEN start_date AND end_date 
+                                          AND is_active = 1
+                                          AND (blocked_for_user_types = 'all' OR blocked_for_user_types = 'external')");
+        $blocked_check->bind_param("s", $date);
+        $blocked_check->execute();
+        $blocked_result = $blocked_check->get_result();
+        
+        if ($blocked_result->num_rows > 0) {
+            $blocked_event = $blocked_result->fetch_assoc();
+            $errors[] = "The gym is not available on this date due to: " . htmlspecialchars($blocked_event['event_name']) . ". Please choose a different date.";
+        }
     }
     
     if (empty($time_slot)) {

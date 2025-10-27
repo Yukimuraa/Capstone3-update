@@ -26,6 +26,37 @@ try {
         exit();
     }
 
+    // Check if the date is blocked by a school event
+    $blocked_query = "SELECT event_name, event_type, blocked_for_user_types, description 
+                      FROM gym_blocked_dates 
+                      WHERE ? BETWEEN start_date AND end_date 
+                      AND is_active = 1";
+    $blocked_stmt = $conn->prepare($blocked_query);
+    $blocked_stmt->bind_param("s", $date);
+    $blocked_stmt->execute();
+    $blocked_result = $blocked_stmt->get_result();
+    
+    $is_blocked = false;
+    $blocked_info = null;
+    if ($blocked_result->num_rows > 0) {
+        $is_blocked = true;
+        $blocked_info = $blocked_result->fetch_assoc();
+    }
+    
+    // If date is blocked, return immediately with no available sessions
+    if ($is_blocked) {
+        echo json_encode([
+            'date' => $date,
+            'sessions' => [],
+            'booked' => [],
+            'operating_hours' => '8:00 AM - 6:00 PM',
+            'is_blocked' => true,
+            'blocked_info' => $blocked_info,
+            'message' => 'This date is blocked due to: ' . $blocked_info['event_name']
+        ]);
+        exit();
+    }
+    
     // Define gym operating hours (8 AM to 6 PM)
     $operating_hours = [
         ['start' => '08:00:00', 'end' => '18:00:00', 'label' => 'Whole Day Booking (8:00 AM - 6:00 PM)', 'type' => 'whole_day'],
@@ -99,7 +130,9 @@ try {
         'date' => $date,
         'sessions' => $sessions,
         'booked' => $booked_display,
-        'operating_hours' => '8:00 AM - 6:00 PM'
+        'operating_hours' => '8:00 AM - 6:00 PM',
+        'is_blocked' => $is_blocked,
+        'blocked_info' => $blocked_info
     ]);
 
 } catch (Exception $e) {

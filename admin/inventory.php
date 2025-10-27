@@ -216,15 +216,6 @@ if (!$low_stock_items) {
 // Get total inventory items count
 $total_items_query = "SELECT COUNT(*) as total_inventory FROM inventory";
 $total_items = $conn->query($total_items_query)->fetch_assoc();
-
-// Get purchase statistics
-$stats_query = "SELECT 
-    COUNT(*) as total_orders,
-    SUM(quantity) as total_items,
-    SUM(total_price) as total_revenue
-FROM orders 
-WHERE status = 'completed'";
-$stats = $conn->query($stats_query)->fetch_assoc();
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -298,44 +289,24 @@ $stats = $conn->query($stats_query)->fetch_assoc();
                <?php endif; ?>
                
                <div class="flex items-center justify-between mb-6">
-                   <div>
-                       <h2 class="text-xl font-bold tracking-tight text-gray-900">Manage Inventory</h2>
-                       <p class="text-gray-500">Add, edit, or remove items from the inventory</p>
-                   </div>
-                   <div class="flex items-center gap-4">
-                       <!-- Purchase Statistics -->
-                       <div class="bg-white rounded-lg shadow p-4">
-                           <div class="flex items-center gap-6">
-                               <div class="text-center">
-                                   <h3 class="text-sm font-medium text-gray-500">Total Inventory Items</h3>
-                                   <p class="text-2xl font-semibold text-gray-900"><?php echo number_format($total_items['total_inventory']); ?></p>
-                               </div>
-                               <div class="text-center">
-                                   <h3 class="text-sm font-medium text-gray-500">Total Orders</h3>
-                                   <p class="text-2xl font-semibold text-gray-900"><?php echo number_format($stats['total_orders']); ?></p>
-                               </div>
-                               <div class="text-center">
-                                   <h3 class="text-sm font-medium text-gray-500">Total Items Sold</h3>
-                                   <p class="text-2xl font-semibold text-gray-900"><?php echo number_format($stats['total_items']); ?></p>
-                               </div>
-                               <div class="text-center">
-                                   <h3 class="text-sm font-medium text-gray-500">Total Revenue</h3>
-                                   <div class="relative">
-                                       <select id="revenue-period" class="text-2xl font-semibold text-gray-900 bg-transparent border-none focus:ring-0 cursor-pointer">
-                                           <option value="all">₱<?php echo number_format($stats['total_revenue'], 2); ?></option>
-                                           <option value="monthly">Monthly Revenue</option>
-                                           <option value="yearly">Yearly Revenue</option>
-                                       </select>
-                                   </div>
-                               </div>
-                           </div>
-                       </div>
-                       <?php if (!is_secretary()): ?>
-                       <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500" onclick="openAddModal()">
-                           <i class="fas fa-plus mr-2"></i> Add New Item
-                       </button>
-                       <?php endif; ?>
-                   </div>
+                  <div>
+                      <h2 class="text-xl font-bold tracking-tight text-gray-900">Manage Inventory</h2>
+                      <p class="text-gray-500">Add, edit, or remove items from the inventory</p>
+                  </div>
+                  <div class="flex items-center gap-4">
+                      <!-- Inventory Statistics -->
+                      <div class="bg-white rounded-lg shadow p-4">
+                          <div class="text-center">
+                              <h3 class="text-sm font-medium text-gray-500">Total Inventory Items</h3>
+                              <p class="text-2xl font-semibold text-gray-900"><?php echo number_format($total_items['total_inventory']); ?></p>
+                          </div>
+                      </div>
+                      <?php if (!is_secretary()): ?>
+                      <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500" onclick="openAddModal()">
+                          <i class="fas fa-plus mr-2"></i> Add New Item
+                      </button>
+                      <?php endif; ?>
+                  </div>
                </div>
                
                <!-- Inventory table -->
@@ -744,29 +715,6 @@ $stats = $conn->query($stats_query)->fetch_assoc();
            // If delete is checked, clear any new image upload
            document.getElementById('edit_image').value = '';
            document.getElementById('edit-image-preview-container').classList.add('hidden');
-       }
-   });
-
-   document.getElementById('revenue-period').addEventListener('change', function() {
-       const period = this.value;
-       if (period === 'monthly' || period === 'yearly') {
-           // Make an AJAX call to get the revenue data
-           fetch('get_revenue.php?period=' + period)
-               .then(response => response.json())
-               .then(data => {
-                   if (period === 'monthly') {
-                       alert('Monthly Revenue: ₱' + data.revenue.toFixed(2));
-                   } else {
-                       alert('Yearly Revenue: ₱' + data.revenue.toFixed(2));
-                   }
-                   // Reset the dropdown
-                   this.value = 'all';
-               })
-               .catch(error => {
-                   console.error('Error:', error);
-                   alert('Error fetching revenue data');
-                   this.value = 'all';
-               });
        }
    });
 

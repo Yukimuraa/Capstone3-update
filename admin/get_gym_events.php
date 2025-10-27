@@ -65,6 +65,72 @@ while ($row = $res->fetch_assoc()) {
     ];
 }
 
+// Add blocked dates/school events to calendar
+$blocked_query = "SELECT event_name, event_type, start_date, end_date, description, blocked_for_user_types
+                  FROM gym_blocked_dates 
+                  WHERE is_active = 1";
+
+if ($start && $end) {
+    $blocked_query .= " AND (start_date <= ? AND end_date >= ?)";
+}
+
+$blocked_stmt = $conn->prepare($blocked_query);
+if ($start && $end) {
+    $blocked_stmt->bind_param("ss", $end, $start);
+}
+$blocked_stmt->execute();
+$blocked_result = $blocked_stmt->get_result();
+
+// Add blocked events to calendar with distinctive styling
+while ($blocked_event = $blocked_result->fetch_assoc()) {
+    // Color based on event type
+    $color = '#dc2626'; // red-600 for blocked events
+    $icon = '🚫';
+    
+    if ($blocked_event['event_type'] === 'intramurals') {
+        $color = '#ea580c'; // orange-600
+        $icon = '🏅';
+    } elseif ($blocked_event['event_type'] === 'ceremony') {
+        $color = '#9333ea'; // purple-600
+        $icon = '🎓';
+    } elseif ($blocked_event['event_type'] === 'maintenance') {
+        $color = '#f59e0b'; // amber-500
+        $icon = '🔧';
+    }
+    
+    // Add as background event (shows across entire days)
+    $events[] = [
+        'id' => 'blocked_' . $blocked_event['start_date'] . '_' . preg_replace('/[^a-z0-9]/i', '', $blocked_event['event_name']),
+        'title' => $icon . ' ' . $blocked_event['event_name'] . ' (BLOCKED)',
+        'start' => $blocked_event['start_date'],
+        'end' => date('Y-m-d', strtotime($blocked_event['end_date'] . ' +1 day')), // FullCalendar end is exclusive
+        'color' => $color,
+        'display' => 'background', // Shows as background event spanning the dates
+        'extendedProps' => [
+            'type' => 'blocked',
+            'event_type' => $blocked_event['event_type'],
+            'blocked_for' => $blocked_event['blocked_for_user_types'],
+            'description' => $blocked_event['description']
+        ]
+    ];
+    
+    // Also add as regular event for tooltip/details
+    $events[] = [
+        'id' => 'blocked_detail_' . $blocked_event['start_date'] . '_' . preg_replace('/[^a-z0-9]/i', '', $blocked_event['event_name']),
+        'title' => $icon . ' ' . $blocked_event['event_name'],
+        'start' => $blocked_event['start_date'],
+        'end' => date('Y-m-d', strtotime($blocked_event['end_date'] . ' +1 day')),
+        'color' => $color,
+        'allDay' => true,
+        'extendedProps' => [
+            'type' => 'blocked',
+            'event_type' => $blocked_event['event_type'],
+            'blocked_for' => $blocked_event['blocked_for_user_types'],
+            'description' => $blocked_event['description']
+        ]
+    ];
+}
+
 echo json_encode($events);
 
 

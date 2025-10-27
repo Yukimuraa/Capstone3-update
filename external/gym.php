@@ -614,6 +614,42 @@ $bookings_result = $bookings_stmt->get_result();
                             sessionsDiv.innerHTML = '';
                             bookedDiv.innerHTML = '';
                             
+                            // Check if date is blocked by school event
+                            if (data.is_blocked) {
+                                const blockedDiv = document.createElement('div');
+                                blockedDiv.className = 'text-center py-6 px-4';
+                                const eventIcon = data.blocked_info?.event_type === 'ceremony' ? '🎓' : 
+                                                 data.blocked_info?.event_type === 'intramurals' ? '🏅' : '🚫';
+                                blockedDiv.innerHTML = `
+                                    <div class="text-6xl mb-3">${eventIcon}</div>
+                                    <p class="text-lg font-bold text-red-600 mb-2">Date Blocked</p>
+                                    <p class="text-md font-semibold text-gray-800 mb-1">${data.blocked_info?.event_name || 'School Event'}</p>
+                                    <p class="text-sm text-gray-600">${data.message || 'This date is not available for booking.'}</p>
+                                    <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded">
+                                        <p class="text-xs text-red-700">${data.blocked_info?.description || ''}</p>
+                                    </div>
+                                `;
+                                sessionsDiv.appendChild(blockedDiv);
+                                return; // Stop processing
+                            }
+                            
+                            // Check if month is allowed (for external users)
+                            if (data.month_allowed === false) {
+                                const blockedDiv = document.createElement('div');
+                                blockedDiv.className = 'text-center py-6 px-4';
+                                blockedDiv.innerHTML = `
+                                    <div class="text-6xl mb-3">📅</div>
+                                    <p class="text-lg font-bold text-orange-600 mb-2">Month Not Available</p>
+                                    <p class="text-sm text-gray-600 mb-3">${data.message || 'External users can only book during specific months.'}</p>
+                                    <div class="mt-4 p-3 bg-orange-50 border border-orange-200 rounded">
+                                        <p class="text-xs text-orange-700 font-semibold">Allowed Months:</p>
+                                        <p class="text-xs text-orange-700">${(data.allowed_months || []).join(', ')}</p>
+                                    </div>
+                                `;
+                                sessionsDiv.appendChild(blockedDiv);
+                                return; // Stop processing
+                            }
+                            
                             // Check if any sessions are available
                             const availableSessions = data.sessions.filter(s => s.available);
                             const bookedSessions = data.sessions.filter(s => !s.available);

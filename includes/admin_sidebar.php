@@ -65,6 +65,9 @@ $logout_path .= 'logout.php?user_type=' . $user_type_logout;
        <a href="bus.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-bus mr-2"></i>Bus Schedule
        </a>
+       <a href="reports.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
+           <i class="fas fa-chart-bar mr-2"></i>Reports
+       </a>
        
        <!-- <a href="gym.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-calendar-alt mr-2"></i>Gym Bookings

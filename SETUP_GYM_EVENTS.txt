@@ -1,0 +1,41 @@
+===============================================
+GYM EVENT BLOCKING SYSTEM - SETUP INSTRUCTIONS
+===============================================
+
+STEP 1: Setup Database Tables
+------------------------------
+Open your browser and go to:
+http://localhost/Capstone-3/database/setup_gym_events.php
+
+This will create the necessary tables and insert sample data.
+
+STEP 2: Access Admin Panel
+---------------------------
+1. Login as admin
+2. Go to: Gym Reservations Management
+3. Click the red button "Manage Events & Blocked Dates"
+
+FEATURES IMPLEMENTED:
+---------------------
+✓ External users can ONLY book gym from March to July (graduation season)
+✓ Admin can block specific dates for school events
+✓ Sample events added:
+  - Pinning Ceremony (November 7)
+  - Intramurals (November 14-20)
+✓ Validation prevents bookings during blocked dates
+✓ Validation prevents external users from booking outside allowed months
+
+HOW TO USE:
+-----------
+Admin:
+- Add school events that block gym bookings
+- Set which user types are blocked (external only or all)
+- Manage booking rules for external users
+
+External Users:
+- Can only select dates in March-July
+- Cannot book during school events
+- Will see error messages if they try to book restricted dates
+
+That's it! The system is ready to use.
+
