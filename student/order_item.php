@@ -96,38 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $update_stmt->bind_param("iii", $new_quantity, $in_stock, $item_id);
           $update_stmt->execute();
           
-          // Generate unique request ID with retry mechanism
-          $request_id = '';
-          for ($i = 0; $i < $max_attempts; $i++) {
-              // Use timestamp + larger random number for uniqueness
-              $request_id = 'REQ-' . date('Ymd') . '-' . date('His') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
-              
-              // Check if this request_id already exists
-              $check_req_stmt = $conn->prepare("SELECT id FROM requests WHERE request_id = ?");
-              $check_req_stmt->bind_param("s", $request_id);
-              $check_req_stmt->execute();
-              $check_req_result = $check_req_stmt->get_result();
-              
-              if ($check_req_result->num_rows == 0) {
-                  // Unique ID found, break the loop
-                  break;
-              }
-              
-              // If we're on the last attempt and still have duplicates, add microseconds
-              if ($i == $max_attempts - 1) {
-                  $request_id = 'REQ-' . date('Ymd') . '-' . date('His') . '-' . substr(microtime(true) * 10000, -4);
-              }
-          }
-          $details = "Order for " . $quantity . " " . $item['name'];
-          if (!empty($size)) {
-              $details .= " (Size: " . $size . ")";
-          }
-          
-          $stmt = $conn->prepare("INSERT INTO requests (request_id, user_id, type, details, status) VALUES (?, ?, ?, ?, 'pending')");
-          $type = $item['name'] . " Order";
-          $stmt->bind_param("siss", $request_id, $_SESSION['user_id'], $type, $details);
-          $stmt->execute();
-          
           // Commit transaction
           $conn->commit();
           

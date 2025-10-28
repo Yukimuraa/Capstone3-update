@@ -69,7 +69,7 @@ $orders_query = "SELECT
     u.email as customer_email,
     i.name as item_name
 FROM orders o
-JOIN users u ON o.user_id = u.id
+JOIN user_accounts u ON o.user_id = u.id
 JOIN inventory i ON o.inventory_id = i.id
 WHERE o.status = 'completed'";
 

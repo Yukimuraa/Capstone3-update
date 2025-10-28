@@ -13,7 +13,13 @@ if (!$schedule_id) {
 }
 
 // Get billing statement data
-$query = "SELECT bs.*, bst.* 
+$query = "SELECT bs.*, 
+          bst.from_location, bst.to_location, bst.distance_km, bst.total_distance_km,
+          bst.fuel_rate, bst.computed_distance, bst.runtime_liters,
+          bst.fuel_cost, bst.runtime_cost, bst.maintenance_cost, 
+          bst.standby_cost, bst.additive_cost, bst.rate_per_bus,
+          bst.subtotal_per_vehicle, bst.total_amount,
+          bst.prepared_by, bst.recommending_approval, bst.approved_by
           FROM bus_schedules bs 
           JOIN billing_statements bst ON bs.id = bst.schedule_id 
           WHERE bs.id = ? AND bs.user_id = ?";
@@ -27,6 +33,11 @@ if ($result->num_rows === 0) {
 }
 
 $billing = $result->fetch_assoc();
+
+// Set default from_location if empty
+if (empty($billing['from_location'])) {
+    $billing['from_location'] = 'CHMSU - Carlos Hilado Memorial State University, Talisay City';
+}
 ?>
 
 <!DOCTYPE html>
@@ -52,33 +63,46 @@ $billing = $result->fetch_assoc();
         }
         .header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
             border-bottom: 2px solid #333;
-            padding-bottom: 20px;
+            padding-bottom: 8px;
+            position: relative;
+        }
+        .header-logo {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 60px;
+            width: auto;
         }
         .header h1 {
             margin: 0;
-            font-size: 24px;
+            font-size: 18px;
             color: #333;
         }
         .header h2 {
-            margin: 5px 0 0 0;
-            font-size: 18px;
+            margin: 2px 0 0 0;
+            font-size: 14px;
             color: #666;
         }
         .header .department {
-            margin-top: 10px;
-            font-size: 16px;
+            margin-top: 3px;
+            font-size: 12px;
             font-weight: bold;
             color: #333;
         }
         .form-section {
-            margin-bottom: 25px;
+            margin-bottom: 10px;
+        }
+        .form-section h3 {
+            font-size: 13px;
+            margin: 8px 0 5px 0;
         }
         .form-row {
             display: flex;
-            margin-bottom: 15px;
+            margin-bottom: 5px;
             align-items: center;
+            font-size: 12px;
         }
         .form-row label {
             font-weight: bold;
@@ -87,7 +111,7 @@ $billing = $result->fetch_assoc();
         }
         .form-row input, .form-row span {
             flex: 1;
-            padding: 5px;
+            padding: 3px 5px;
             border: 1px solid #ddd;
             border-radius: 3px;
         }
@@ -97,12 +121,13 @@ $billing = $result->fetch_assoc();
         .itinerary-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
+            margin: 8px 0;
+            font-size: 11px;
         }
         .itinerary-table th,
         .itinerary-table td {
             border: 1px solid #333;
-            padding: 8px;
+            padding: 4px;
             text-align: left;
         }
         .itinerary-table th {
@@ -110,50 +135,67 @@ $billing = $result->fetch_assoc();
             font-weight: bold;
         }
         .cost-breakdown {
-            margin: 20px 0;
+            margin: 8px 0;
         }
         .cost-breakdown h3 {
-            margin-bottom: 15px;
+            margin-bottom: 5px;
             color: #333;
+            font-size: 13px;
         }
         .cost-item {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
+            padding: 3px 0;
             border-bottom: 1px solid #eee;
+            font-size: 11px;
         }
         .cost-item.total {
             font-weight: bold;
-            font-size: 18px;
+            font-size: 12px;
             background-color: #ffffcc;
-            padding: 10px;
-            margin-top: 10px;
+            padding: 5px;
+            margin-top: 5px;
             border: 2px solid #333;
         }
         .payment-instructions {
-            margin: 30px 0;
-            padding: 15px;
+            margin: 10px 0;
+            padding: 8px;
             background-color: #f9f9f9;
             border-left: 4px solid #333;
+            font-size: 11px;
+        }
+        .payment-instructions p {
+            margin: 3px 0;
         }
         .notes {
-            margin: 20px 0;
-            font-size: 12px;
+            margin: 10px 0;
+            font-size: 10px;
             color: #666;
         }
+        .notes p {
+            margin: 2px 0;
+        }
+        .notes ul {
+            margin: 3px 0;
+            padding-left: 18px;
+        }
+        .notes li {
+            margin-bottom: 2px;
+        }
         .signatures {
-            margin-top: 40px;
+            margin-top: 15px;
             display: flex;
             justify-content: space-between;
         }
         .signature-box {
             text-align: center;
-            width: 200px;
+            width: 160px;
+            font-size: 10px;
         }
         .signature-line {
             border-bottom: 1px solid #333;
-            height: 40px;
-            margin-bottom: 5px;
+            height: 25px;
+            margin-bottom: 2px;
         }
         .print-button {
             position: fixed;
@@ -171,14 +213,109 @@ $billing = $result->fetch_assoc();
             background: #0056b3;
         }
         @media print {
+            @page {
+                size: A4;
+                margin: 8mm;
+            }
             .print-button {
                 display: none;
             }
             body {
                 background: white;
+                padding: 0;
+                margin: 0;
             }
             .receipt-container {
                 box-shadow: none;
+                padding: 10px;
+                max-width: 100%;
+                page-break-inside: avoid;
+            }
+            .header {
+                margin-bottom: 6px;
+                padding-bottom: 5px;
+            }
+            .header-logo {
+                height: 45px;
+            }
+            .header h1 {
+                font-size: 16px;
+            }
+            .header h2 {
+                font-size: 13px;
+            }
+            .form-section {
+                margin-bottom: 6px;
+            }
+            .form-section h3 {
+                margin: 5px 0 3px 0;
+                font-size: 12px;
+            }
+            .form-row {
+                margin-bottom: 4px;
+                font-size: 11px;
+            }
+            .form-row label {
+                min-width: 130px;
+            }
+            .form-row input, .form-row span {
+                padding: 2px 4px;
+            }
+            .itinerary-table {
+                margin: 6px 0;
+                font-size: 10px;
+            }
+            .itinerary-table th,
+            .itinerary-table td {
+                padding: 3px;
+            }
+            .cost-breakdown {
+                margin: 6px 0;
+            }
+            .cost-breakdown h3 {
+                margin-bottom: 4px;
+                font-size: 12px;
+            }
+            .cost-item {
+                padding: 2px 0;
+                font-size: 10px;
+            }
+            .cost-item.total {
+                font-size: 11px;
+                padding: 4px;
+                margin-top: 4px;
+            }
+            .payment-instructions {
+                margin: 8px 0;
+                padding: 6px;
+                font-size: 10px;
+            }
+            .payment-instructions p {
+                margin: 2px 0;
+            }
+            .notes {
+                margin: 8px 0;
+                font-size: 9px;
+            }
+            .notes p {
+                margin: 1px 0;
+            }
+            .notes ul {
+                margin: 2px 0;
+                padding-left: 15px;
+            }
+            .notes li {
+                margin-bottom: 1px;
+            }
+            .signatures {
+                margin-top: 10px;
+            }
+            .signature-line {
+                height: 20px;
+            }
+            .signature-box {
+                font-size: 9px;
+                width: 150px;
             }
         }
     </style>
@@ -190,6 +327,7 @@ $billing = $result->fetch_assoc();
 
     <div class="receipt-container">
         <div class="header">
+            <img src="../image/CHMSUWebLOGO.png" alt="CHMSU Logo" class="header-logo">
             <h1>Billing Statement</h1>
             <h2>USE OF VEHICLE</h2>
             <div class="department">OSAS</div>
@@ -358,6 +496,8 @@ $billing = $result->fetch_assoc();
     </script>
 </body>
 </html>
+
+
 
 
 

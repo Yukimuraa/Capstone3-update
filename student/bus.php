@@ -600,7 +600,7 @@ while ($bus = $buses_result->fetch_assoc()) {
             </button>
         </div>
         
-        <form method="POST" action="">
+        <form id="busRequestForm" method="POST" action="">
             <input type="hidden" name="action" value="add_schedule">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -745,11 +745,84 @@ while ($bus = $buses_result->fetch_assoc()) {
                 <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeAddModal()">
                     Cancel
                 </button>
-                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <button type="button" onclick="showConfirmModal()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     <i class="fas fa-paper-plane mr-2"></i> Submit Request
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">
+                <i class="fas fa-check-circle text-blue-600 mr-2"></i>Confirm Bus Request
+            </h3>
+            <button onclick="closeConfirmModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="mb-6">
+            <p class="text-gray-600 mb-4">Please review your request details before submitting:</p>
+            
+            <div class="bg-gray-50 rounded-lg p-4 space-y-3 text-sm">
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">School:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-school">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">Client/Organization:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-client">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">From:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-from">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">To:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-to">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">Purpose:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-purpose">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">Date of Travel:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-date">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">Bus Number:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-bus">-</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-200 pb-2">
+                    <span class="text-gray-600 font-medium">Number of Days:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-days">-</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600 font-medium">Number of Vehicles:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-vehicles">-</span>
+                </div>
+            </div>
+            
+            <div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+                <p class="text-sm text-yellow-700">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <strong>Important:</strong> Once submitted, your request will be sent to the admin for approval.
+                </p>
+            </div>
+        </div>
+        
+        <div class="flex justify-end space-x-3">
+            <button type="button" onclick="closeConfirmModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                <i class="fas fa-times mr-1"></i> Cancel
+            </button>
+            <button type="button" onclick="submitBusRequest()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <i class="fas fa-check mr-1"></i> Yes, Submit Request
+            </button>
+        </div>
     </div>
 </div>
 
@@ -1617,12 +1690,56 @@ function printReceipt(scheduleId) {
     window.open(`print_bus_receipt.php?id=${scheduleId}`, '_blank');
 }
 
+// Confirmation Modal Functions
+function showConfirmModal() {
+    // Get form values
+    const form = document.getElementById('busRequestForm');
+    const formData = new FormData(form);
+    
+    // Validate form first
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    // Get bus number text (from the selected option)
+    const busSelect = document.getElementById('bus_no');
+    const busText = busSelect.options[busSelect.selectedIndex].text;
+    
+    // Populate confirmation modal with form values
+    document.getElementById('confirm-school').textContent = formData.get('school') || '-';
+    document.getElementById('confirm-client').textContent = formData.get('client') || '-';
+    document.getElementById('confirm-from').textContent = formData.get('from_location') || '-';
+    document.getElementById('confirm-to').textContent = formData.get('to_location') || '-';
+    document.getElementById('confirm-purpose').textContent = formData.get('purpose') || '-';
+    document.getElementById('confirm-date').textContent = formData.get('date_covered') ? new Date(formData.get('date_covered')).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+    document.getElementById('confirm-bus').textContent = busText || '-';
+    document.getElementById('confirm-days').textContent = formData.get('no_of_days') || '-';
+    document.getElementById('confirm-vehicles').textContent = formData.get('no_of_vehicles') || '-';
+    
+    // Show confirmation modal
+    document.getElementById('confirmModal').classList.remove('hidden');
+}
+
+function closeConfirmModal() {
+    document.getElementById('confirmModal').classList.add('hidden');
+}
+
+function submitBusRequest() {
+    // Close confirmation modal
+    closeConfirmModal();
+    
+    // Submit the form
+    document.getElementById('busRequestForm').submit();
+}
+
 // Close modals when clicking outside
 document.addEventListener('click', function(event) {
     if (event.target.classList.contains('fixed')) {
         closeAddModal();
         closeViewModal();
         closeCancelModal();
+        closeConfirmModal();
     }
     
     // Close location suggestions when clicking outside

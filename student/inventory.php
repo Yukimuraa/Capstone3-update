@@ -126,17 +126,12 @@ if (!file_exists($upload_dir)) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
-                                <div class="px-4 py-3 bg-gray-50 flex justify-between items-center gap-2">
+                                <div class="px-4 py-3 bg-gray-50 flex justify-center items-center">
                                     <button onclick="openQuickAddModal(<?php echo htmlspecialchars(json_encode($item)); ?>)" 
-                                            class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 <?php echo $item['in_stock'] ? '' : 'opacity-50 cursor-not-allowed'; ?>"
+                                            class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 <?php echo $item['in_stock'] ? '' : 'opacity-50 cursor-not-allowed'; ?>"
                                             <?php echo $item['in_stock'] ? '' : 'disabled'; ?>>
                                         <i class="fas fa-cart-plus mr-2"></i> Add to Cart
                                     </button>
-                                    <a href="order_item.php?id=<?php echo $item['id']; ?>" 
-                                       class="flex-1 inline-flex justify-center items-center px-3 py-2 border border-emerald-600 rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-white hover:bg-emerald-50 <?php echo $item['in_stock'] ? '' : 'opacity-50 cursor-not-allowed'; ?>" 
-                                       <?php echo $item['in_stock'] ? '' : 'onclick="return false;"'; ?>>
-                                        <i class="fas fa-shopping-bag mr-2"></i> Order Now
-                                    </a>
                                 </div>
                             </div>
                         <?php endwhile; ?>

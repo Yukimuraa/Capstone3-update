@@ -50,9 +50,6 @@ $logout_path .= 'logout.php?user_type=' . $user_type_logout;
        <!-- <a href="facilities.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
            <i class="fas fa-building mr-2"></i>Facilities
        </a> -->
-       <a href="requests.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
-           <i class="fas fa-clipboard-list mr-2"></i>Requests
-       </a>
        <a href="../admin/gym_bookings.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-dumbbell mr-2"></i>Gym reservations
        </a>

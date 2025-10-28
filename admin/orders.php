@@ -68,13 +68,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Get search parameter
+$search = isset($_GET['search']) ? sanitize_input($_GET['search']) : '';
+
 // Get all orders with user details and item information, grouped by batch_id
 $query = "SELECT o.*, u.name as user_name, u.email as user_email, i.name as item_name, i.price as item_price 
           FROM orders o 
           JOIN user_accounts u ON o.user_id = u.id 
-          JOIN inventory i ON o.inventory_id = i.id 
-          ORDER BY o.created_at DESC, o.batch_id, o.id";
-$orders = $conn->query($query);
+          JOIN inventory i ON o.inventory_id = i.id";
+
+// Add search filter if search term provided
+if (!empty($search)) {
+    $search_term = "%$search%";
+    $query .= " WHERE (o.order_id LIKE ? OR o.batch_id LIKE ? OR u.name LIKE ? OR i.name LIKE ?)";
+}
+
+$query .= " ORDER BY o.created_at DESC, o.batch_id, o.id";
+
+if (!empty($search)) {
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->execute();
+    $orders = $stmt->get_result();
+} else {
+    $orders = $conn->query($query);
+}
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -111,6 +129,46 @@ $orders = $conn->query($query);
                         <?php echo $error_message; ?>
                     </div>
                 <?php endif; ?>
+                
+                <!-- Search Bar -->
+                <div class="mb-6 bg-white rounded-lg shadow p-4">
+                    <form method="GET" action="orders.php" class="flex gap-4 items-end">
+                        <div class="flex-1">
+                            <label for="search" class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="fas fa-search mr-1"></i>Search Orders
+                            </label>
+                            <input 
+                                type="text" 
+                                name="search" 
+                                id="search" 
+                                value="<?php echo htmlspecialchars($search); ?>" 
+                                placeholder="Search by Order ID, Batch ID, Customer Name, or Item Name..."
+                                class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            >
+                        </div>
+                        <div class="flex gap-2">
+                            <button 
+                                type="submit" 
+                                class="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                                <i class="fas fa-search mr-1"></i>Search
+                            </button>
+                            <?php if (!empty($search)): ?>
+                                <a 
+                                    href="orders.php" 
+                                    class="px-6 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                                    <i class="fas fa-times mr-1"></i>Clear
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    </form>
+                    <?php if (!empty($search)): ?>
+                        <div class="mt-3 text-sm text-gray-600">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Showing results for: <strong>"<?php echo htmlspecialchars($search); ?>"</strong>
+                            (<?php echo $orders->num_rows; ?> order<?php echo $orders->num_rows != 1 ? 's' : ''; ?> found)
+                        </div>
+                    <?php endif; ?>
+                </div>
                 
                 <!-- Orders Table -->
                 <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -172,19 +230,31 @@ $orders = $conn->query($query);
                                                     </td>
                                                     <td class="px-6 py-4 text-sm">
                                                         <?php if ($first_item['status'] === 'pending'): ?>
-                                                            <form action="orders.php" method="POST" style="display: inline;">
-                                                                <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
-                                                                <input type="hidden" name="mark_complete_batch" value="1">
-                                                                <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                    <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                            <div class="flex gap-2">
+                                                                <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                                    <i class="fas fa-eye mr-1"></i> View
                                                                 </button>
-                                                            </form>
+                                                                <form action="orders.php" method="POST" style="display: inline;">
+                                                                    <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
+                                                                    <input type="hidden" name="mark_complete_batch" value="1">
+                                                                    <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                        <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                                    </button>
+                                                                </form>
+                                                            </div>
                                                         <?php elseif ($first_item['status'] === 'completed'): ?>
-                                                            <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
-                                                               class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                               target="_blank">
-                                                                <i class="fas fa-print mr-1"></i> Print Receipt
-                                                            </a>
+                                                            <div class="flex gap-2">
+                                                                <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                                                    <i class="fas fa-eye mr-1"></i> View
+                                                                </button>
+                                                                <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
+                                                                   class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                                   target="_blank">
+                                                                    <i class="fas fa-print mr-1"></i> Print Receipt
+                                                                </a>
+                                                            </div>
                                                         <?php endif; ?>
                                                     </td>
                                                 </tr>
@@ -234,19 +304,31 @@ $orders = $conn->query($query);
                                                 </td>
                                                 <td class="px-6 py-4 text-sm">
                                                     <?php if ($order['status'] === 'pending'): ?>
-                                                        <form action="orders.php" method="POST" style="display: inline;">
-                                                            <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
-                                                            <input type="hidden" name="mark_complete" value="1">
-                                                            <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                        <div class="flex gap-2">
+                                                            <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
+                                                                    class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                                <i class="fas fa-eye mr-1"></i> View
                                                             </button>
-                                                        </form>
+                                                            <form action="orders.php" method="POST" style="display: inline;">
+                                                                <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
+                                                                <input type="hidden" name="mark_complete" value="1">
+                                                                <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                    <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                                </button>
+                                                            </form>
+                                                        </div>
                                                     <?php elseif ($order['status'] === 'completed'): ?>
-                                                        <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
-                                                           class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                           target="_blank">
-                                                            <i class="fas fa-print mr-1"></i> Print Receipt
-                                                        </a>
+                                                        <div class="flex gap-2">
+                                                            <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
+                                                                    class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                                                <i class="fas fa-eye mr-1"></i> View
+                                                            </button>
+                                                            <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
+                                                               class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                               target="_blank">
+                                                                <i class="fas fa-print mr-1"></i> Print Receipt
+                                                            </a>
+                                                        </div>
                                                     <?php endif; ?>
                                                 </td>
                                             </tr>
@@ -289,19 +371,31 @@ $orders = $conn->query($query);
                                             </td>
                                             <td class="px-6 py-4 text-sm">
                                                 <?php if ($first_item['status'] === 'pending'): ?>
-                                                    <form action="orders.php" method="POST" style="display: inline;">
-                                                        <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
-                                                        <input type="hidden" name="mark_complete_batch" value="1">
-                                                        <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                            <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                    <div class="flex gap-2">
+                                                        <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                                class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                            <i class="fas fa-eye mr-1"></i> View
                                                         </button>
-                                                    </form>
+                                                        <form action="orders.php" method="POST" style="display: inline;">
+                                                            <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
+                                                            <input type="hidden" name="mark_complete_batch" value="1">
+                                                            <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                            </button>
+                                                        </form>
+                                                    </div>
                                                 <?php elseif ($first_item['status'] === 'completed'): ?>
-                                                    <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
-                                                       class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                       target="_blank">
-                                                        <i class="fas fa-print mr-1"></i> Print Receipt
-                                                    </a>
+                                                    <div class="flex gap-2">
+                                                        <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                                class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                                            <i class="fas fa-eye mr-1"></i> View
+                                                        </button>
+                                                        <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
+                                                           class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                           target="_blank">
+                                                            <i class="fas fa-print mr-1"></i> Print Receipt
+                                                        </a>
+                                                    </div>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -321,6 +415,22 @@ $orders = $conn->query($query);
                 </div>
             </div>
         </main>
+    </div>
+</div>
+
+<!-- Order Details Modal -->
+<div id="orderModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+        <div class="flex items-center justify-between border-b pb-3 mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Order Details</h3>
+            <button onclick="closeOrderModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div id="orderDetailsContent">
+            <!-- Content will be loaded dynamically -->
+        </div>
     </div>
 </div>
 
@@ -371,6 +481,159 @@ $orders = $conn->query($query);
     
     function closeStatusModal() {
         document.getElementById('statusModal').classList.add('hidden');
+    }
+    
+    // Store order data
+    let ordersData = <?php 
+        // Reset result pointer
+        $orders->data_seek(0);
+        $all_orders = [];
+        while ($row = $orders->fetch_assoc()) {
+            $all_orders[] = $row;
+        }
+        echo json_encode($all_orders); 
+    ?>;
+
+    function viewBatchOrder(batchId) {
+        const batchOrders = ordersData.filter(o => o.batch_id === batchId);
+        if (batchOrders.length === 0) return;
+        
+        const firstOrder = batchOrders[0];
+        let totalAmount = 0;
+        let itemsHtml = '';
+        
+        batchOrders.forEach(order => {
+            totalAmount += parseFloat(order.total_price);
+            itemsHtml += `
+                <tr class="border-b">
+                    <td class="py-2">${order.item_name}${order.size ? ' (' + order.size + ')' : ''}</td>
+                    <td class="py-2 text-center">${order.quantity}</td>
+                    <td class="py-2 text-right">₱${parseFloat(order.total_price).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+        
+        const content = `
+            <div class="space-y-4">
+                <div class="bg-blue-50 p-4 rounded">
+                    <h4 class="font-medium text-blue-900">Batch Order: ${batchId}</h4>
+                    <p class="text-sm text-blue-700">${batchOrders.length} items</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-600">Customer:</p>
+                        <p class="font-medium">${firstOrder.user_name}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Email:</p>
+                        <p class="font-medium">${firstOrder.user_email}</p>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="font-medium mb-2">Order Items:</h4>
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="py-2 text-left">Item</th>
+                                <th class="py-2 text-center">Qty</th>
+                                <th class="py-2 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>${itemsHtml}</tbody>
+                        <tfoot class="bg-gray-50 font-bold">
+                            <tr>
+                                <td class="py-2" colspan="2">TOTAL:</td>
+                                <td class="py-2 text-right">₱${totalAmount.toFixed(2)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                <div class="flex justify-end gap-3 pt-4 border-t">
+                    <button onclick="closeOrderModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <form action="orders.php" method="POST" style="display: inline;">
+                        <input type="hidden" name="batch_id" value="${batchId}">
+                        <input type="hidden" name="mark_complete_batch" value="1">
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                            <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                        </button>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('orderDetailsContent').innerHTML = content;
+        document.getElementById('orderModal').classList.remove('hidden');
+    }
+
+    function viewSingleOrder(orderId) {
+        const order = ordersData.find(o => o.id == orderId);
+        if (!order) return;
+        
+        const content = `
+            <div class="space-y-4">
+                <div class="bg-blue-50 p-4 rounded">
+                    <h4 class="font-medium text-blue-900">Order #${order.order_id}</h4>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-600">Customer:</p>
+                        <p class="font-medium">${order.user_name}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">Email:</p>
+                        <p class="font-medium">${order.user_email}</p>
+                    </div>
+                </div>
+                
+                <div class="border rounded p-4">
+                    <h4 class="font-medium mb-2">Order Details:</h4>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Item:</span>
+                            <span class="font-medium">${order.item_name}</span>
+                        </div>
+                        ${order.size ? `<div class="flex justify-between">
+                            <span class="text-gray-600">Size:</span>
+                            <span class="font-medium">${order.size}</span>
+                        </div>` : ''}
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Quantity:</span>
+                            <span class="font-medium">${order.quantity}</span>
+                        </div>
+                        <div class="flex justify-between border-t pt-2">
+                            <span class="font-bold">Total:</span>
+                            <span class="font-bold text-lg">₱${parseFloat(order.total_price).toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-3 pt-4 border-t">
+                    <button onclick="closeOrderModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <form action="orders.php" method="POST" style="display: inline;">
+                        <input type="hidden" name="order_id" value="${order.id}">
+                        <input type="hidden" name="mark_complete" value="1">
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                            <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                        </button>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('orderDetailsContent').innerHTML = content;
+        document.getElementById('orderModal').classList.remove('hidden');
+    }
+
+    function closeOrderModal() {
+        document.getElementById('orderModal').classList.add('hidden');
     }
 </script>
 

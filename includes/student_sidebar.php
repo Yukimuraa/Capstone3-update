@@ -54,9 +54,6 @@ $logout_path .= 'logout.php?user_type=student';
         <a href="orders.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-list mr-2"></i>My Orders
         </a>
-        <!-- <a href="request.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
-            <i class="fas fa-clipboard-list mr-2"></i>My Requests
-        </a> -->
         <a href="bus.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-bus mr-2"></i>Bus Schedule
         </a>

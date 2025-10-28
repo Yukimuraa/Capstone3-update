@@ -88,6 +88,9 @@ if (count($orders) === 0) {
 </head>
 <body>
     <div class="no-print" style="text-align: center; margin-bottom: 20px;">
+        <button class="print-button" onclick="window.location.href='orders.php'" style="background: #6b7280; margin-right: 10px;">
+            ← Back to Orders
+        </button>
         <button class="print-button" onclick="window.print()">
             🖨️ Print Receipt
         </button>

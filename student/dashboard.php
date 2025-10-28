@@ -13,39 +13,41 @@ $user_name = $_SESSION['user_sessions']['student']['user_name'];
 $page_title = "Student Dashboard - CHMSU BAO";
 $base_url = "..";
 
-// Get pending requests count
-$pending_requests_query = "SELECT COUNT(*) as count FROM requests WHERE user_id = ? AND status = 'pending'";
-$stmt = $conn->prepare($pending_requests_query);
+// Get pending orders count
+$pending_orders_query = "SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND status = 'pending'";
+$stmt = $conn->prepare($pending_orders_query);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $pending_result = $stmt->get_result();
 $pending_count = $pending_result->fetch_assoc()['count'];
 
-// Get orders ready for pickup
-$ready_orders_query = "SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND status = 'approved'";
-$stmt = $conn->prepare($ready_orders_query);
+// Get completed orders count
+$completed_orders_query = "SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND status = 'completed'";
+$stmt = $conn->prepare($completed_orders_query);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$ready_result = $stmt->get_result();
-$ready_count = $ready_result->fetch_assoc()['count'];
+$completed_result = $stmt->get_result();
+$completed_count = $completed_result->fetch_assoc()['count'];
 
 // Get recent activity count (last 30 days)
-$recent_activity_query = "SELECT COUNT(*) as count FROM 
-                         (SELECT id FROM requests WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                         UNION ALL
-                         SELECT id FROM orders WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as activity";
+$recent_activity_query = "SELECT COUNT(*) as count FROM orders WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
 $stmt = $conn->prepare($recent_activity_query);
-$stmt->bind_param("ii", $user_id, $user_id);
+$stmt->bind_param("i", $user_id);
 $stmt->execute();
 $activity_result = $stmt->get_result();
 $activity_count = $activity_result->fetch_assoc()['count'];
 
-// Get recent requests
-$recent_requests_query = "SELECT * FROM requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 6";
-$stmt = $conn->prepare($recent_requests_query);
+// Get recent orders with item details
+$recent_orders_query = "SELECT o.*, i.name as item_name, i.description as item_description, i.price as item_price 
+                        FROM orders o 
+                        JOIN inventory i ON o.inventory_id = i.id 
+                        WHERE o.user_id = ? 
+                        ORDER BY o.created_at DESC 
+                        LIMIT 6";
+$stmt = $conn->prepare($recent_orders_query);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$recent_requests = $stmt->get_result();
+$recent_orders = $stmt->get_result();
 
 // Get available inventory items
 $inventory_query = "SELECT * FROM inventory WHERE in_stock = 1 LIMIT 6";
@@ -75,12 +77,12 @@ $inventory_result = $conn->query($inventory_query);
         <!-- Main content -->
         <main class="flex-1 overflow-y-auto p-4">
             <div class="max-w-7xl mx-auto">
-                <!-- Tabs for Recent Requests and Available Items -->
+                <!-- Tabs for Recent Orders and Available Items -->
                 <div class="bg-white rounded-lg shadow mb-6">
                     <div class="border-b border-gray-200">
                         <nav class="flex -mb-px">
-                            <button id="tab-requests" class="tab-button active py-4 px-6 border-b-2 border-emerald-500 font-medium text-sm text-emerald-600">
-                                Recent Requests
+                            <button id="tab-orders" class="tab-button active py-4 px-6 border-b-2 border-emerald-500 font-medium text-sm text-emerald-600">
+                                Recent Orders
                             </button>
                             <!-- <button id="tab-inventory" class="tab-button py-4 px-6 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
                                 Available Items
@@ -88,41 +90,48 @@ $inventory_result = $conn->query($inventory_query);
                         </nav>
                     </div>
                     
-                    <!-- Recent Requests Tab Content -->
-                    <div id="content-requests" class="tab-content p-4">
+                    <!-- Recent Orders Tab Content -->
+                    <div id="content-orders" class="tab-content p-4">
                         <div class="grid gap-4 grid-cols-1 md:grid-cols-3 grid-rows-2">
-                            <?php if ($recent_requests->num_rows > 0): ?>
-                                <?php while ($request = $recent_requests->fetch_assoc()): ?>
+                            <?php if ($recent_orders->num_rows > 0): ?>
+                                <?php while ($order = $recent_orders->fetch_assoc()): ?>
                                     <div class="bg-white border rounded-lg shadow-sm p-4">
-                                        <h3 class="font-medium text-lg"><?php echo $request['type']; ?></h3>
-                                        <p class="text-sm text-gray-500 mb-2">Submitted on <?php echo format_date($request['created_at']); ?></p>
+                                        <h3 class="font-medium text-lg"><?php echo htmlspecialchars($order['item_name']); ?></h3>
+                                        <p class="text-sm text-gray-500 mb-2">Order #<?php echo htmlspecialchars($order['order_id']); ?></p>
+                                        <p class="text-sm text-gray-500 mb-2">Ordered on <?php echo format_date($order['created_at']); ?></p>
                                         <div class="flex items-center gap-2 mb-2">
-                                            <?php if ($request['status'] == 'pending'): ?>
+                                            <?php if ($order['status'] == 'pending'): ?>
                                                 <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
                                                     Pending
                                                 </span>
-                                            <?php elseif ($request['status'] == 'approved'): ?>
-                                                <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">
-                                                    Approved
+                                            <?php elseif ($order['status'] == 'completed'): ?>
+                                                <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">
+                                                    Completed
                                                 </span>
-                                            <?php else: ?>
-                                                <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
-                                                    Rejected
+                                            <?php elseif ($order['status'] == 'cancelled'): ?>
+                                                <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-800">
+                                                    Cancelled
                                                 </span>
                                             <?php endif; ?>
                                         </div>
-                                        <p class="text-sm text-gray-600"><?php echo $request['details']; ?></p>
+                                        <p class="text-sm text-gray-600">
+                                            Quantity: <?php echo $order['quantity']; ?>
+                                            <?php if (!empty($order['size'])): ?>
+                                                | Size: <?php echo htmlspecialchars($order['size']); ?>
+                                            <?php endif; ?>
+                                        </p>
+                                        <p class="text-sm font-medium text-gray-900 mt-2">₱<?php echo number_format($order['total_price'], 2); ?></p>
                                     </div>
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <div class="col-span-3 text-center py-4 text-gray-500">
-                                    No recent requests found. <a href="requests.php" class="text-emerald-600 hover:underline">Submit a request</a>
+                                    No recent orders found. <a href="inventory.php" class="text-emerald-600 hover:underline">Browse items</a>
                                 </div>
                             <?php endif; ?>
                         </div>
                         <div class="mt-4 text-right">
-                            <a href="requests.php" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                View All Requests
+                            <a href="orders.php" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                View All Orders
                             </a>
                         </div>
                     </div>
