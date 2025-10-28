@@ -1,0 +1,156 @@
+═══════════════════════════════════════════════════════════════
+    SHOPPING CART SYSTEM - QUICK START GUIDE
+═══════════════════════════════════════════════════════════════
+
+✅ STEP 1: RUN DATABASE SETUP
+────────────────────────────────────────────────────────────────
+Open your browser and navigate to:
+
+   http://localhost/Capstone-3/database/setup_cart_system.php
+
+This will automatically:
+   • Create the cart table
+   • Add batch_id column to orders table
+   • Add size column to orders table
+   • Create necessary indexes
+
+✅ STEP 2: TEST STUDENT CART FEATURE
+────────────────────────────────────────────────────────────────
+1. Login as a student
+2. Go to "Available Items"
+3. Click "Add to Cart" on any item
+4. Click "Shopping Cart" or "View Cart" button
+5. Add more items or proceed to checkout
+6. Place your order
+7. View the batch receipt
+
+✅ STEP 3: TEST STAFF CART FEATURE
+────────────────────────────────────────────────────────────────
+1. Login as staff
+2. Go to "Inventory Management"
+3. Click "Order Items" tab at the top
+4. Click "Add to Cart" on any item
+5. Click "View Cart" button
+6. Complete checkout process
+
+═══════════════════════════════════════════════════════════════
+    KEY FEATURES
+═══════════════════════════════════════════════════════════════
+
+✓ ADD MULTIPLE ITEMS
+  - Click "Add to Cart" from inventory
+  - Select size for clothing items
+  - Choose quantity
+
+✓ MANAGE CART
+  - View all items in cart
+  - Update quantities
+  - Remove items
+  - Clear entire cart
+
+✓ BATCH CHECKOUT
+  - Review all items
+  - See total cost
+  - Confirm order
+  - Get batch order ID
+
+✓ BATCH RECEIPT
+  - View all items in one receipt
+  - Print-friendly format
+  - Shows individual order IDs
+  - Total amount breakdown
+
+═══════════════════════════════════════════════════════════════
+    FILES CREATED
+═══════════════════════════════════════════════════════════════
+
+STUDENT FILES:
+  ✓ student/add_to_cart.php - Add items to cart
+  ✓ student/cart.php - View shopping cart
+  ✓ student/checkout.php - Checkout page
+  ✓ student/order_success.php - Order confirmation
+  ✓ student/batch_receipt.php - View batch receipt
+
+STAFF FILES:
+  ✓ staff/add_to_cart.php - Add items to cart
+  ✓ staff/cart.php - View shopping cart
+  ✓ staff/checkout.php - Checkout page
+  ✓ staff/order_success.php - Order confirmation
+
+DATABASE:
+  ✓ database/cart_table.sql - Cart table schema
+  ✓ database/setup_cart_system.php - Setup script
+
+UPDATED FILES:
+  ✓ student/inventory.php - Added cart buttons
+  ✓ staff/inventory.php - Added shop/manage toggle
+  ✓ includes/student_sidebar.php - Added cart link
+
+DOCUMENTATION:
+  ✓ CART_SYSTEM_README.md - Full documentation
+  ✓ CART_QUICK_START.txt - This file
+
+═══════════════════════════════════════════════════════════════
+    USER FLOW
+═══════════════════════════════════════════════════════════════
+
+For Students/Faculty/Staff:
+
+1. Browse Items → 2. Add to Cart → 3. View Cart → 4. Checkout
+   ↓                   ↓                ↓            ↓
+   [Inventory]     [Quick Modal]   [Cart Page]  [Review Items]
+                                        ↓            ↓
+                                  [Update Qty]  [Confirm Order]
+                                        ↓            ↓
+                                  [Remove Item] [Success Page]
+                                                     ↓
+                                              [View Receipt]
+
+═══════════════════════════════════════════════════════════════
+    IMPORTANT NOTES
+═══════════════════════════════════════════════════════════════
+
+⚠ Cart persists across sessions
+⚠ Stock is validated at checkout
+⚠ Size selection required for clothing items
+⚠ Both single-item and batch ordering work
+⚠ Cart badge shows item count
+⚠ Staff can toggle between manage and shop mode
+
+═══════════════════════════════════════════════════════════════
+    TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+Problem: Cart badge not updating
+Solution: Check JavaScript console, verify add_to_cart.php works
+
+Problem: Items disappear from cart
+Solution: Check cart table exists, verify user login
+
+Problem: Can't add items
+Solution: Run setup_cart_system.php, check inventory stock
+
+Problem: Checkout fails
+Solution: Check orders table has batch_id column
+
+═══════════════════════════════════════════════════════════════
+    WHAT'S NEXT?
+═══════════════════════════════════════════════════════════════
+
+After setup, users can:
+✓ Order multiple items at once
+✓ Save time with batch orders
+✓ Review cart before checkout
+✓ Get consolidated receipts
+
+The system maintains:
+✓ Individual order tracking
+✓ Inventory management
+✓ Request system integration
+✓ Payment workflow
+
+═══════════════════════════════════════════════════════════════
+For detailed documentation, see: CART_SYSTEM_README.md
+═══════════════════════════════════════════════════════════════
+
+

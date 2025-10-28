@@ -37,8 +37,22 @@ $logout_path .= 'logout.php?user_type=student';
         <a href="inventory.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-box mr-2"></i>Available Items
         </a>
+        <a href="cart.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700 relative">
+            <i class="fas fa-shopping-cart mr-2"></i>Shopping Cart
+            <?php
+            if (isset($_SESSION['user_id'])) {
+                $cart_count_query = $conn->prepare("SELECT COUNT(*) as count FROM cart WHERE user_id = ?");
+                $cart_count_query->bind_param("i", $_SESSION['user_id']);
+                $cart_count_query->execute();
+                $cart_count = $cart_count_query->get_result()->fetch_assoc()['count'];
+                if ($cart_count > 0) {
+                    echo '<span class="absolute top-2 right-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-blue-800 bg-yellow-400 rounded-full">' . $cart_count . '</span>';
+                }
+            }
+            ?>
+        </a>
         <a href="orders.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
-            <i class="fas fa-shopping-cart mr-2"></i>My Orders
+            <i class="fas fa-list mr-2"></i>My Orders
         </a>
         <!-- <a href="request.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-clipboard-list mr-2"></i>My Requests
