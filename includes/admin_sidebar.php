@@ -15,22 +15,6 @@ require_once __DIR__ . '/functions.php';
 $user_type_logout = is_secretary() ? 'secretary' : 'admin';
 $logout_path .= 'logout.php?user_type=' . $user_type_logout;
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Sidebar</title>
-
-    <!-- Tailwind CSS CDN -->
-     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-dyZt8UU+W7CPVczCTjLRNV5LFSKNtXZb+h7PZGn8Nq0D/R+0vHf4kzjqPQ0PqI5YlfRqcfqY6DnmUz4K5eLqQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <!-- Font Awesome CDN (This makes your icons work) -->
-    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-dyZt8UU+W7CPVczCTjLRNV5LFSKNtXZb+h7PZGn8Nq0D/R+0vHf4kzjqPQ0PqI5YlfRqcfqY6DnmUz4K5eLqQA==" crossorigin="anonymous" referrerpolicy="no-referrer" /> -->
-
-</head>
-<body>
 
 <div class="bg-blue-900 text-white w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out" id="sidebar">
    <div class="flex items-center space-x-2 px-4">
@@ -62,9 +46,9 @@ $logout_path .= 'logout.php?user_type=' . $user_type_logout;
        <a href="bus.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-bus mr-2"></i>Bus Schedule
        </a>
-       <a href="reports.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
-           <i class="fas fa-chart-bar mr-2"></i>Reports
-       </a>
+      <a href="reports_index.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
+          <i class="fas fa-chart-bar mr-2"></i>Reports
+      </a>
        
        <!-- <a href="gym.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-blue-800">
            <i class="fas fa-calendar-alt mr-2"></i>Gym Bookings
@@ -89,6 +73,3 @@ $logout_path .= 'logout.php?user_type=' . $user_type_logout;
        </a>
    </nav>
 </div>
-
-</body>
-</html>

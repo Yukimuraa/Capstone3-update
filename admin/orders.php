@@ -17,40 +17,122 @@ $base_url = "..";
 // Handle status updates and mark complete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['mark_complete_batch']) && isset($_POST['batch_id'])) {
-        // Mark all orders in batch as completed
+        // Mark all orders in batch as completed and deduct inventory
         $batch_id = $_POST['batch_id'];
         
+        // Start transaction
+        $conn->begin_transaction();
+        
+        try {
+            // Get all orders in batch
+            $get_orders = $conn->prepare("SELECT o.*, i.quantity as current_quantity, i.size_quantities FROM orders o JOIN inventory i ON o.inventory_id = i.id WHERE o.batch_id = ? AND o.status = 'pending'");
+            $get_orders->bind_param("s", $batch_id);
+            $get_orders->execute();
+            $orders_result = $get_orders->get_result();
+            
+            // Deduct inventory for each order
+            while ($order = $orders_result->fetch_assoc()) {
+                $new_quantity = $order['current_quantity'] - $order['quantity'];
+                $in_stock = $new_quantity > 0 ? 1 : 0;
+                
+                // Handle size_quantities if size is provided
+                $size_quantities_json = $order['size_quantities'] ?? null;
+                if (!empty($order['size']) && !empty($size_quantities_json)) {
+                    $size_quantities = json_decode($size_quantities_json, true);
+                    if (is_array($size_quantities) && isset($size_quantities[$order['size']])) {
+                        // Decrease the specific size quantity
+                        $size_quantities[$order['size']] = max(0, $size_quantities[$order['size']] - $order['quantity']);
+                        // Re-encode the updated size quantities
+                        $size_quantities_json = json_encode($size_quantities);
+                    }
+                }
+                
+                // Update inventory
+                $update_inventory = $conn->prepare("UPDATE inventory SET quantity = ?, in_stock = ?, size_quantities = ? WHERE id = ?");
+                $update_inventory->bind_param("iiss", $new_quantity, $in_stock, $size_quantities_json, $order['inventory_id']);
+                $update_inventory->execute();
+            }
+            
+            // Mark all orders as completed
         $update_query = "UPDATE orders SET status = 'completed' WHERE batch_id = ?";
         $stmt = $conn->prepare($update_query);
         $stmt->bind_param("s", $batch_id);
+            $stmt->execute();
+            
+            // Commit transaction
+            $conn->commit();
         
-        if ($stmt->execute()) {
             // Redirect to batch receipt for printing
             header("Location: print_batch_receipt.php?batch_id=" . urlencode($batch_id));
             exit();
-        } else {
-            $error_message = "Error completing order.";
+        } catch (Exception $e) {
+            // Rollback on error
+            $conn->rollback();
+            $error_message = "Error completing order: " . $e->getMessage();
         }
     } elseif (isset($_POST['mark_complete']) && isset($_POST['order_id'])) {
-        // Mark single order as completed
+        // Mark single order as completed and deduct inventory
         $order_id = (int)$_POST['order_id'];
         
-        $update_query = "UPDATE orders SET status = 'completed' WHERE id = ?";
-        $stmt = $conn->prepare($update_query);
-        $stmt->bind_param("i", $order_id);
+        // Start transaction
+        $conn->begin_transaction();
         
-        if ($stmt->execute()) {
-            // Get order details for receipt
-            $get_order = $conn->prepare("SELECT order_id FROM orders WHERE id = ?");
+        try {
+            // Get order details with current inventory
+            $get_order = $conn->prepare("SELECT o.*, i.quantity as current_quantity, i.size_quantities FROM orders o JOIN inventory i ON o.inventory_id = i.id WHERE o.id = ? AND o.status = 'pending'");
             $get_order->bind_param("i", $order_id);
             $get_order->execute();
-            $order_data = $get_order->get_result()->fetch_assoc();
+            $order_result = $get_order->get_result();
+            
+            if ($order_result->num_rows === 0) {
+                throw new Exception("Order not found or already processed");
+            }
+            
+            $order = $order_result->fetch_assoc();
+            
+            // Deduct inventory
+            $new_quantity = $order['current_quantity'] - $order['quantity'];
+            $in_stock = $new_quantity > 0 ? 1 : 0;
+            
+            // Handle size_quantities if size is provided
+            $size_quantities_json = $order['size_quantities'] ?? null;
+            if (!empty($order['size']) && !empty($size_quantities_json)) {
+                $size_quantities = json_decode($size_quantities_json, true);
+                if (is_array($size_quantities) && isset($size_quantities[$order['size']])) {
+                    // Decrease the specific size quantity
+                    $size_quantities[$order['size']] = max(0, $size_quantities[$order['size']] - $order['quantity']);
+                    // Re-encode the updated size quantities
+                    $size_quantities_json = json_encode($size_quantities);
+                }
+            }
+            
+            // Update inventory
+            $update_inventory = $conn->prepare("UPDATE inventory SET quantity = ?, in_stock = ?, size_quantities = ? WHERE id = ?");
+            $update_inventory->bind_param("iiss", $new_quantity, $in_stock, $size_quantities_json, $order['inventory_id']);
+            $update_inventory->execute();
+            
+            // Mark order as completed
+            $update_query = "UPDATE orders SET status = 'completed' WHERE id = ?";
+            $stmt = $conn->prepare($update_query);
+            $stmt->bind_param("i", $order_id);
+            $stmt->execute();
+            
+            // Commit transaction
+            $conn->commit();
+            
+            // Get order_id for receipt
+            $order_data = $conn->prepare("SELECT order_id FROM orders WHERE id = ?");
+            $order_data->bind_param("i", $order_id);
+            $order_data->execute();
+            $order_info = $order_data->get_result()->fetch_assoc();
             
             // Redirect to receipt
-            header("Location: print_order_receipt.php?order_id=" . urlencode($order_data['order_id']));
+            header("Location: print_order_receipt.php?order_id=" . urlencode($order_info['order_id']));
             exit();
-        } else {
-            $error_message = "Error completing order.";
+        } catch (Exception $e) {
+            // Rollback on error
+            $conn->rollback();
+            $error_message = "Error completing order: " . $e->getMessage();
         }
     } elseif (isset($_POST['order_id']) && isset($_POST['status'])) {
         $order_id = (int)$_POST['order_id'];

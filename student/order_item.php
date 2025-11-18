@@ -49,9 +49,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $quantity = intval($_POST['quantity']);
   $size = isset($_POST['size']) ? sanitize_input($_POST['size']) : '';
   
-  if ($quantity <= 0 || $quantity > $item['quantity']) {
-      $error = "Invalid quantity. Please select a quantity between 1 and " . $item['quantity'];
+  // Validate quantity - check size-specific stock if size is provided
+  $valid_quantity = true;
+  $max_quantity = $item['quantity'];
+  
+  if (!empty($size) && !empty($item['size_quantities'])) {
+      $size_quantities = json_decode($item['size_quantities'], true);
+      if (is_array($size_quantities) && isset($size_quantities[$size])) {
+          $max_quantity = $size_quantities[$size];
   } else {
+          $error = "Size " . $size . " is not available for this item.";
+          $valid_quantity = false;
+      }
+  }
+  
+  if ($valid_quantity && ($quantity <= 0 || $quantity > $max_quantity)) {
+      $error = "Invalid quantity. Please select a quantity between 1 and " . $max_quantity;
+  } else if ($valid_quantity) {
       // Start transaction to ensure all operations succeed or fail together
       $conn->begin_transaction();
       
@@ -83,18 +97,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               }
           }
           
-          // Create order
-          $stmt = $conn->prepare("INSERT INTO orders (order_id, user_id, inventory_id, quantity, total_price, status) VALUES (?, ?, ?, ?, ?, 'pending')");
-          $stmt->bind_param("siiid", $order_id, $_SESSION['user_id'], $item_id, $quantity, $total_price);
+          // Create order (inventory will be deducted when admin marks as complete)
+          $stmt = $conn->prepare("INSERT INTO orders (order_id, user_id, inventory_id, quantity, size, total_price, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
+          $size_for_order = !empty($size) ? $size : null;
+          $stmt->bind_param("siiisd", $order_id, $_SESSION['user_id'], $item_id, $quantity, $size_for_order, $total_price);
           $stmt->execute();
-          
-          // Update inventory quantity
-          $new_quantity = $item['quantity'] - $quantity;
-          $in_stock = $new_quantity > 0 ? 1 : 0;
-          
-          $update_stmt = $conn->prepare("UPDATE inventory SET quantity = ?, in_stock = ? WHERE id = ?");
-          $update_stmt->bind_param("iii", $new_quantity, $in_stock, $item_id);
-          $update_stmt->execute();
           
           // Commit transaction
           $conn->commit();

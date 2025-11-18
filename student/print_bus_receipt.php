@@ -34,9 +34,33 @@ if ($result->num_rows === 0) {
 
 $billing = $result->fetch_assoc();
 
-// Set default from_location if empty
-if (empty($billing['from_location'])) {
-    $billing['from_location'] = 'CHMSU - Carlos Hilado Memorial State University, Talisay City';
+// Normalize missing/legacy itinerary fields and force desired display rules
+// Always set CHMSU Talisay as the "From"
+$billing['from_location'] = 'CHMSU - Carlos Hilado Memorial State University, Talisay City';
+
+// Ensure we have a destination for "To"
+if (empty($billing['to_location']) || $billing['to_location'] === '0') {
+    // Derive from bus_schedules.destination formatted as "FROM - TO"
+    if (!empty($billing['destination']) && strpos($billing['destination'], ' - ') !== false) {
+        list($derivedFrom, $derivedTo) = array_map('trim', explode(' - ', $billing['destination'], 2));
+        if (!empty($derivedTo)) { $billing['to_location'] = $derivedTo; }
+    }
+}
+
+// Clean up: remove any CHMSU campus text from the "To" field if present
+$campusPatterns = [
+    'CHMSU - Carlos Hilado Memorial State University, Talisay City',
+    'Carlos Hilado Memorial State University, Talisay City',
+    'CHMSU Talisay',
+];
+if (!empty($billing['to_location'])) {
+    foreach ($campusPatterns as $pat) {
+        if (stripos($billing['to_location'], $pat) !== false) {
+            $billing['to_location'] = trim(str_ireplace($pat, '', $billing['to_location']));
+        }
+    }
+    // Remove leading/trailing dashes and spaces after replacement
+    $billing['to_location'] = trim($billing['to_location'], " -\t\n\r\0\x0B");
 }
 ?>
 

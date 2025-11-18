@@ -133,6 +133,7 @@ $result = $conn->query($query);
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
@@ -161,6 +162,17 @@ $result = $conn->query($query);
                                                 <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $user['organization'] ?: '-'; ?></td>
+                                            <td class="px-6 py-4 text-sm text-gray-500">
+                                                <?php 
+                                                if (!empty($user['created_at'])) {
+                                                    $created_at = new DateTime($user['created_at']);
+                                                    echo '<div>' . $created_at->format('M d, Y') . '</div>';
+                                                    echo '<div class="text-xs text-gray-400">' . $created_at->format('g:i A') . '</div>';
+                                                } else {
+                                                    echo '-';
+                                                }
+                                                ?>
+                                            </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <?php if ($user['id'] !== $_SESSION['user_id']): ?>
                                                     <form method="POST" action="users.php" class="inline">
@@ -176,7 +188,7 @@ $result = $conn->query($query);
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
+                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>

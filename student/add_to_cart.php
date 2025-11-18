@@ -38,9 +38,36 @@ if ($result->num_rows === 0) {
 
 $item = $result->fetch_assoc();
 
+// Check size-specific stock if size is provided
+$available_quantity = $item['quantity'];
+if ($size && !empty($item['size_quantities'])) {
+    $size_quantities = json_decode($item['size_quantities'], true);
+    if (is_array($size_quantities) && isset($size_quantities[$size])) {
+        $available_quantity = $size_quantities[$size];
+        
+        // Subtract items already in cart for this size (current user only)
+        $cart_check = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) as in_cart FROM cart WHERE user_id = ? AND inventory_id = ? AND size = ?");
+        $cart_check->bind_param("iis", $_SESSION['user_id'], $item_id, $size);
+        $cart_check->execute();
+        $cart_result = $cart_check->get_result();
+        $in_cart = $cart_result->fetch_assoc()['in_cart'];
+        $available_quantity -= $in_cart;
+        
+        // Subtract items already in PENDING orders for this size from ALL users
+        // Note: Completed orders have already reduced the database stock, so we only need to count pending orders
+        // Stock is shared, so we need to check all pending orders, not just current user's
+        $orders_check = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) as in_orders FROM orders WHERE inventory_id = ? AND size = ? AND status = 'pending'");
+        $orders_check->bind_param("is", $item_id, $size);
+        $orders_check->execute();
+        $orders_result = $orders_check->get_result();
+        $in_orders = $orders_result->fetch_assoc()['in_orders'];
+        $available_quantity -= $in_orders;
+    }
+}
+
 // Check if requested quantity is available
-if ($quantity <= 0 || $quantity > $item['quantity']) {
-    echo json_encode(['success' => false, 'message' => 'Invalid quantity. Available: ' . $item['quantity']]);
+if ($quantity <= 0 || $quantity > $available_quantity) {
+    echo json_encode(['success' => false, 'message' => 'Invalid quantity. Available: ' . $available_quantity]);
     exit();
 }
 
@@ -62,9 +89,35 @@ try {
         $cart_item = $check_result->fetch_assoc();
         $new_quantity = $cart_item['quantity'] + $quantity;
         
-        // Check if new quantity exceeds available stock
-        if ($new_quantity > $item['quantity']) {
-            echo json_encode(['success' => false, 'message' => 'Total quantity would exceed available stock']);
+        // Check if new quantity exceeds available stock (consider size-specific stock and orders)
+        $max_allowed = $item['quantity'];
+        if ($size && !empty($item['size_quantities'])) {
+            $size_quantities = json_decode($item['size_quantities'], true);
+            if (is_array($size_quantities) && isset($size_quantities[$size])) {
+                $max_allowed = $size_quantities[$size];
+                
+                // Subtract items already in PENDING orders for this size from ALL users
+                // Note: Completed orders have already reduced the database stock
+                $orders_check = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) as in_orders FROM orders WHERE inventory_id = ? AND size = ? AND status = 'pending'");
+                $orders_check->bind_param("is", $item_id, $size);
+                $orders_check->execute();
+                $orders_result = $orders_check->get_result();
+                $in_orders = $orders_result->fetch_assoc()['in_orders'];
+                $max_allowed -= $in_orders;
+                
+                // Subtract items already in cart for this size (current user only)
+                // BUT exclude the current cart item being updated (we'll add it back with new quantity)
+                $cart_check = $conn->prepare("SELECT COALESCE(SUM(quantity), 0) as in_cart FROM cart WHERE user_id = ? AND inventory_id = ? AND size = ? AND id != ?");
+                $cart_check->bind_param("iisi", $_SESSION['user_id'], $item_id, $size, $cart_item['id']);
+                $cart_check->execute();
+                $cart_result = $cart_check->get_result();
+                $in_cart = $cart_result->fetch_assoc()['in_cart'];
+                $max_allowed -= $in_cart;
+            }
+        }
+        
+        if ($new_quantity > $max_allowed) {
+            echo json_encode(['success' => false, 'message' => 'Total quantity would exceed available stock. Available: ' . $max_allowed]);
             exit();
         }
         

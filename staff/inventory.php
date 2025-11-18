@@ -323,6 +323,23 @@ $low_stock = $conn->query($low_stock_query);
     </div>
 </div>
 
+<!-- Notification Toast Modal -->
+<div id="notificationToast" class="fixed top-4 right-4 z-50 transform translate-x-full transition-transform duration-300 ease-in-out">
+    <div class="bg-white rounded-lg shadow-lg border-l-4 p-4 min-w-[300px] max-w-md">
+        <div class="flex items-start">
+            <div id="notificationIcon" class="flex-shrink-0 mr-3">
+                <i class="fas fa-check-circle text-2xl"></i>
+            </div>
+            <div class="flex-1">
+                <p id="notificationMessage" class="text-sm font-medium text-gray-900"></p>
+            </div>
+            <button onclick="hideNotification()" class="ml-3 text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
     // Mobile menu toggle
     document.getElementById('menu-button').addEventListener('click', function() {
@@ -371,33 +388,50 @@ $low_stock = $conn->query($low_stock_query);
             sizeSelect.required = true;
             sizeSelect.innerHTML = '<option value="">Select Size</option>';
             
+            // Parse size_quantities for later use
+            let sizeQuantities = {};
+            if (item.size_quantities) {
+                try {
+                    sizeQuantities = JSON.parse(item.size_quantities);
+                } catch (e) {
+                    console.error('Error parsing size_quantities:', e);
+                }
+            }
+            
+            // Add sizes - only show sizes with available stock
             if (item.sizes) {
                 try {
                     const sizes = JSON.parse(item.sizes);
+                    
+                    // Only add sizes that have stock > 0
                     sizes.forEach(size => {
+                        const stock = sizeQuantities[size] || 0;
+                        if (stock > 0) {
                         const option = document.createElement('option');
                         option.value = size;
-                        option.textContent = size;
+                            option.textContent = size + ' (Stock: ' + stock + ')';
+                            option.dataset.stock = stock;
                         sizeSelect.appendChild(option);
+                        }
                     });
                 } catch (e) {
-                    const defaultSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
-                    defaultSizes.forEach(size => {
-                        const option = document.createElement('option');
-                        option.value = size;
-                        option.textContent = size;
-                        sizeSelect.appendChild(option);
-                    });
+                    console.error('Error parsing sizes:', e);
+                    // If parsing fails, don't show any sizes
                 }
-            } else {
-                const defaultSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
-                defaultSizes.forEach(size => {
-                    const option = document.createElement('option');
-                    option.value = size;
-                    option.textContent = size;
-                    sizeSelect.appendChild(option);
-                });
             }
+            
+            // Update quantity max when size is selected
+            // Use onchange to avoid duplicate listeners
+            sizeSelect.onchange = function() {
+                const quantityInput = document.getElementById('modal-quantity');
+                const selectedOption = this.options[this.selectedIndex];
+                if (selectedOption && selectedOption.dataset.stock) {
+                    quantityInput.max = selectedOption.dataset.stock;
+                    quantityInput.value = Math.min(parseInt(quantityInput.value) || 1, parseInt(selectedOption.dataset.stock));
+                } else {
+                    quantityInput.max = item.quantity;
+                }
+            };
         } else {
             sizeSection.classList.add('hidden');
             sizeSelect.required = false;
@@ -409,6 +443,46 @@ $low_stock = $conn->query($low_stock_query);
     function closeQuickAddModal() {
         document.getElementById('quickAddModal').classList.add('hidden');
         document.getElementById('quick-add-form').reset();
+    }
+    
+    // Notification Toast Functions
+    function showNotification(message, type = 'success') {
+        const toast = document.getElementById('notificationToast');
+        const icon = document.getElementById('notificationIcon');
+        const messageEl = document.getElementById('notificationMessage');
+        
+        // Set message
+        messageEl.textContent = message;
+        
+        // Set icon and color based on type
+        if (type === 'success') {
+            icon.innerHTML = '<i class="fas fa-check-circle text-2xl text-emerald-500"></i>';
+            toast.querySelector('.border-l-4').classList.remove('border-red-500', 'border-yellow-500');
+            toast.querySelector('.border-l-4').classList.add('border-emerald-500');
+        } else if (type === 'error') {
+            icon.innerHTML = '<i class="fas fa-exclamation-circle text-2xl text-red-500"></i>';
+            toast.querySelector('.border-l-4').classList.remove('border-emerald-500', 'border-yellow-500');
+            toast.querySelector('.border-l-4').classList.add('border-red-500');
+        } else {
+            icon.innerHTML = '<i class="fas fa-info-circle text-2xl text-yellow-500"></i>';
+            toast.querySelector('.border-l-4').classList.remove('border-emerald-500', 'border-red-500');
+            toast.querySelector('.border-l-4').classList.add('border-yellow-500');
+        }
+        
+        // Show notification
+        toast.classList.remove('translate-x-full');
+        toast.classList.add('translate-x-0');
+        
+        // Auto hide after 3 seconds
+        setTimeout(() => {
+            hideNotification();
+        }, 3000);
+    }
+    
+    function hideNotification() {
+        const toast = document.getElementById('notificationToast');
+        toast.classList.remove('translate-x-0');
+        toast.classList.add('translate-x-full');
     }
     
     // Handle quick add form submission
@@ -432,15 +506,17 @@ $low_stock = $conn->query($low_stock_query);
                         cartBadge.textContent = data.cart_count;
                     }
                     
-                    alert(data.message);
+                    // Show success notification
+                    showNotification(data.message, 'success');
                     closeQuickAddModal();
                 } else {
-                    alert(data.message);
+                    // Show error notification
+                    showNotification(data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while adding to cart');
+                showNotification('An error occurred while adding to cart', 'error');
             });
         });
     }

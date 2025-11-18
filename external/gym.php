@@ -44,19 +44,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			elseif ($start_time >= $end_time) {
                 $error_message = "End time must be after start time.";
 			}
-			// Check if booking overlaps with lunch break (11:30 AM - 1:00 PM)
+			// Check if booking overlaps with lunch break (12:00 PM - 1:00 PM)
 			// Allow full-day bookings (08:00-18:00) to bypass this check
-			// Block bookings that start before 13:00 AND end after 11:30
+			// Block bookings that start before 13:00 AND end after 12:00
 			elseif (!(($start_normalized === '08:00:00') && ($end_normalized === '18:00:00'))) {
 				// Convert times to comparable integers (remove colons)
 				$start_int = (int)str_replace(':', '', $start_normalized);
 				$end_int = (int)str_replace(':', '', $end_normalized);
-				$lunch_start_int = 113000; // 11:30:00
+				$lunch_start_int = 120000; // 12:00:00
 				$lunch_end_int = 130000;   // 13:00:00
 				
-				// Check if booking overlaps with lunch: starts before 13:00 AND ends after 11:30
+				// Check if booking overlaps with lunch: starts before 13:00 AND ends after 12:00
 				if ($start_int < $lunch_end_int && $end_int > $lunch_start_int) {
-					$error_message = "The gymnasium is unavailable from 11:30 AM to 1:00 PM (Lunch Break).";
+					$error_message = "The gymnasium is unavailable from 12:00 PM to 1:00 PM (Lunch Break).";
 				}
 			}
             
@@ -201,12 +201,6 @@ $bookings_result = $bookings_stmt->get_result();
                     </div>
                 <?php endif; ?>
                 
-                <!-- Book button -->
-                <div class="mb-6">
-                    <button type="button" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2" onclick="openBookingModal()">
-                        <i class="fas fa-calendar-plus mr-1"></i> Reservation Gymnasium
-                    </button>
-                </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Booking Calendar -->
@@ -693,9 +687,9 @@ $bookings_result = $bookings_stmt->get_result();
                                 });
                                 
                                 // Additionally, compute dynamic free windows (like 14:30 - 18:00) and offer as custom slots
-                                // Respect lunch break: 11:30 - 13:00
+                                // Respect lunch break: 12:00 - 13:00
                                 const dayStart = '08:00:00';
-                                const lunchStart = '11:30:00';
+                                const lunchStart = '12:00:00';
                                 const lunchEnd = '13:00:00';
                                 const dayEnd = '18:00:00';
                                 const bookedTimes = (data.booked || []).map(b => ({ start: b.start, end: b.end }))

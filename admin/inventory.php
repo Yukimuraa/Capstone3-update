@@ -15,6 +15,12 @@ if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0777, true);
 }
 
+// Ensure size_quantities column exists
+$check_size_quantities = $conn->query("SHOW COLUMNS FROM inventory LIKE 'size_quantities'");
+if ($check_size_quantities->num_rows == 0) {
+    $conn->query("ALTER TABLE inventory ADD COLUMN size_quantities TEXT NULL AFTER sizes");
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    if (isset($_POST['action'])) {
@@ -47,12 +53,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                // For clothing items, use the selected sizes from checkboxes
                if (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                    $sizes = json_encode($_POST['sizes']);
+                   
+                   // Handle size quantities
+                   $size_quantities = [];
+                   foreach ($_POST['sizes'] as $size) {
+                       $qty_key = 'size_qty_' . $size;
+                       $qty = isset($_POST[$qty_key]) ? intval($_POST[$qty_key]) : 0;
+                       $size_quantities[$size] = $qty;
+                   }
+                   $size_quantities_json = json_encode($size_quantities);
+                   
+                   // Calculate total quantity from size quantities
+                   $quantity = array_sum($size_quantities);
                } else {
                    // If no sizes selected, set to empty array
                    $sizes = json_encode([]);
+                   $size_quantities_json = json_encode([]);
                }
            } elseif (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                $sizes = json_encode($_POST['sizes']);
+               $size_quantities_json = json_encode([]);
+           } else {
+               $size_quantities_json = json_encode([]);
            }
            
            // Handle image upload
@@ -73,8 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                }
            }
            
-           $stmt = $conn->prepare("INSERT INTO inventory (name, description, price, quantity, in_stock, image_path, sizes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-           $stmt->bind_param("ssdisss", $name, $description, $price, $quantity, $in_stock, $image_path, $sizes);
+           $stmt = $conn->prepare("INSERT INTO inventory (name, description, price, quantity, in_stock, image_path, sizes, size_quantities) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+           $stmt->bind_param("ssdissss", $name, $description, $price, $quantity, $in_stock, $image_path, $sizes, $size_quantities_json);
            
            if ($stmt->execute()) {
                $success_message = "Item added successfully";
@@ -110,12 +132,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                // For clothing items, use the selected sizes from checkboxes
                if (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                    $sizes = json_encode($_POST['sizes']);
+                   
+                   // Handle size quantities
+                   $size_quantities = [];
+                   foreach ($_POST['sizes'] as $size) {
+                       $qty_key = 'size_qty_' . $size;
+                       $qty = isset($_POST[$qty_key]) ? intval($_POST[$qty_key]) : 0;
+                       $size_quantities[$size] = $qty;
+                   }
+                   $size_quantities_json = json_encode($size_quantities);
+                   
+                   // Calculate total quantity from size quantities
+                   $quantity = array_sum($size_quantities);
                } else {
                    // If no sizes selected, set to empty array
                    $sizes = json_encode([]);
+                   $size_quantities_json = json_encode([]);
                }
            } elseif (isset($_POST['sizes']) && !empty($_POST['sizes'])) {
                $sizes = json_encode($_POST['sizes']);
+               $size_quantities_json = json_encode([]);
+           } else {
+               $size_quantities_json = json_encode([]);
            }
            
            // Get current image path
@@ -157,8 +195,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                $image_path = null;
            }
            
-           $stmt = $conn->prepare("UPDATE inventory SET name = ?, description = ?, price = ?, quantity = ?, in_stock = ?, image_path = ?, sizes = ? WHERE id = ?");
-           $stmt->bind_param("ssdisssi", $name, $description, $price, $quantity, $in_stock, $image_path, $sizes, $id);
+           $stmt = $conn->prepare("UPDATE inventory SET name = ?, description = ?, price = ?, quantity = ?, in_stock = ?, image_path = ?, sizes = ?, size_quantities = ? WHERE id = ?");
+           $stmt->bind_param("ssdissssi", $name, $description, $price, $quantity, $in_stock, $image_path, $sizes, $size_quantities_json, $id);
            
            if ($stmt->execute()) {
                $success_message = "Item updated successfully";
@@ -197,6 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get inventory items
 $query = "SELECT * FROM inventory ORDER BY name";
 $result = $conn->query($query);
+
 
 // Get low stock items count (less than 20)
 $low_stock_query = "SELECT COUNT(*) as low_stock_count FROM inventory WHERE quantity < 20";
@@ -340,10 +379,32 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                                                    </div>
                                                <?php endif; ?>
                                            </td>
-                                           <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $item['name']; ?></td>
-                                           <td class="px-6 py-4 text-sm text-gray-500"><?php echo $item['description']; ?></td>
+                                           <td class="px-6 py-4 text-sm font-medium text-gray-900 max-w-xs">
+                                               <div class="truncate" title="<?php echo htmlspecialchars($item['name']); ?>"><?php echo htmlspecialchars($item['name']); ?></div>
+                                           </td>
+                                           <td class="px-6 py-4 text-sm text-gray-500 max-w-md">
+                                               <div class="line-clamp-2" title="<?php echo htmlspecialchars($item['description']); ?>"><?php echo htmlspecialchars($item['description']); ?></div>
+                                           </td>
                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">₱<?php echo number_format($item['price'], 2); ?></td>
-                                           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right"><?php echo $item['quantity']; ?></td>
+                                           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                                               <?php 
+                                               if (!empty($item['size_quantities'])) {
+                                                   $size_qty = json_decode($item['size_quantities'], true);
+                                                   if ($size_qty && is_array($size_qty)) {
+                                                       echo '<div class="text-xs">';
+                                                       foreach ($size_qty as $size => $qty) {
+                                                           echo '<div>' . $size . ': <strong>' . $qty . '</strong></div>';
+                                                       }
+                                                       echo '</div>';
+                                                       echo '<div class="text-xs text-gray-400 mt-1">Total: ' . $item['quantity'] . '</div>';
+                                                   } else {
+                                                       echo $item['quantity'];
+                                                   }
+                                               } else {
+                                                   echo $item['quantity'];
+                                               }
+                                               ?>
+                                           </td>
                                            <td class="px-6 py-4 whitespace-nowrap">
                                                <?php if ($item['in_stock']): ?>
                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">In Stock</span>
@@ -376,8 +437,8 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
 </div>
 
 <!-- Add Item Modal -->
-<div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+<div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto py-4">
+   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
        <div class="flex justify-between items-center mb-4">
            <h3 class="text-lg font-medium text-gray-900">Add New Item</h3>
            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeAddModal()">
@@ -395,36 +456,14 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                <textarea id="description" name="description" rows="3" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"></textarea>
            </div>
            <div id="sizes-container" class="mb-4 hidden">
-               <label class="block text-sm font-medium text-gray-700 mb-1">Available Sizes</label>
-               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_xs" name="sizes[]" value="XS" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_xs" class="ml-2 block text-sm text-gray-700">Extra Small (XS)</label>
+               <label class="block text-sm font-medium text-gray-700 mb-2">Available Sizes & Stock</label>
+               <div class="space-y-3 border rounded-lg p-4 bg-gray-50">
+                   <div id="size-entries-container" class="max-h-64 overflow-y-auto space-y-2">
+                       <!-- Size entries will be added dynamically -->
                    </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_s" name="sizes[]" value="S" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_s" class="ml-2 block text-sm text-gray-700">Small (S)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_m" name="sizes[]" value="M" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_m" class="ml-2 block text-sm text-gray-700">Medium (M)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_l" name="sizes[]" value="L" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_l" class="ml-2 block text-sm text-gray-700">Large (L)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_xl" name="sizes[]" value="XL" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_xl" class="ml-2 block text-sm text-gray-700">Extra Large (XL)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_2xl" name="sizes[]" value="2XL" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_2xl" class="ml-2 block text-sm text-gray-700">2XL</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="size_3xl" name="sizes[]" value="3XL" class="rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="size_3xl" class="ml-2 block text-sm text-gray-700">3XL</label>
-                   </div>
+                   <button type="button" id="add-size-btn" class="w-full px-4 py-2 text-sm font-medium text-emerald-600 bg-white border border-emerald-600 rounded-md hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                       <i class="fas fa-plus mr-2"></i> Add Size
+                   </button>
                </div>
            </div>
            <div class="grid grid-cols-2 gap-4 mb-4">
@@ -432,8 +471,8 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                    <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Price (₱)</label>
                    <input type="number" id="price" name="price" step="0.01" min="0" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
                </div>
-               <div>
-                   <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+               <div id="quantity-container">
+                   <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity <span id="quantity-note" class="text-xs text-gray-500 hidden">(Auto-calculated from sizes)</span></label>
                    <input type="number" id="quantity" name="quantity" min="0" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
                </div>
            </div>
@@ -477,8 +516,8 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
 </div>
 
 <!-- Edit Item Modal -->
-<div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+<div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto py-4">
+   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
        <div class="flex justify-between items-center mb-4">
            <h3 class="text-lg font-medium text-gray-900">Edit Item</h3>
            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeEditModal()">
@@ -497,36 +536,14 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                <textarea id="edit_description" name="description" rows="3" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"></textarea>
            </div>
            <div id="edit_sizes_container" class="mb-4 hidden">
-               <label class="block text-sm font-medium text-gray-700 mb-1">Available Sizes</label>
-               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_xs" name="sizes[]" value="XS" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_xs" class="ml-2 block text-sm text-gray-700">Extra Small (XS)</label>
+               <label class="block text-sm font-medium text-gray-700 mb-2">Available Sizes & Stock</label>
+               <div class="space-y-3 border rounded-lg p-4 bg-gray-50">
+                   <div id="edit-size-entries-container" class="max-h-64 overflow-y-auto space-y-2">
+                       <!-- Size entries will be added dynamically -->
                    </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_s" name="sizes[]" value="S" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_s" class="ml-2 block text-sm text-gray-700">Small (S)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_m" name="sizes[]" value="M" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_m" class="ml-2 block text-sm text-gray-700">Medium (M)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_l" name="sizes[]" value="L" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_l" class="ml-2 block text-sm text-gray-700">Large (L)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_xl" name="sizes[]" value="XL" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_xl" class="ml-2 block text-sm text-gray-700">Extra Large (XL)</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_2xl" name="sizes[]" value="2XL" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_2xl" class="ml-2 block text-sm text-gray-700">2XL</label>
-                   </div>
-                   <div class="flex items-center">
-                       <input type="checkbox" id="edit_size_3xl" name="sizes[]" value="3XL" class="size-checkbox rounded border-gray-300 text-emerald-600 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                       <label for="edit_size_3xl" class="ml-2 block text-sm text-gray-700">3XL</label>
-                   </div>
+                   <button type="button" id="edit-add-size-btn" class="w-full px-4 py-2 text-sm font-medium text-emerald-600 bg-white border border-emerald-600 rounded-md hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                       <i class="fas fa-plus mr-2"></i> Add Size
+                   </button>
                </div>
            </div>
            <div class="grid grid-cols-2 gap-4 mb-4">
@@ -534,8 +551,8 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                    <label for="edit_price" class="block text-sm font-medium text-gray-700 mb-1">Price (₱)</label>
                    <input type="number" id="edit_price" name="price" step="0.01" min="0" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
                </div>
-               <div>
-                   <label for="edit_quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+               <div id="edit-quantity-container">
+                   <label for="edit_quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity <span id="edit-quantity-note" class="text-xs text-gray-500 hidden">(Auto-calculated from sizes)</span></label>
                    <input type="number" id="edit_quantity" name="quantity" min="0" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
                </div>
            </div>
@@ -589,6 +606,15 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
    </div>
 </div>
 
+<style>
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+</style>
+
 <script>
    // Mobile menu toggle
    document.getElementById('menu-button').addEventListener('click', function() {
@@ -604,6 +630,9 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
        document.getElementById('addModal').classList.add('hidden');
        document.getElementById('image-preview-container').classList.add('hidden');
        document.getElementById('image').value = '';
+       // Clear size entries
+       document.getElementById('size-entries-container').innerHTML = '';
+       sizeEntryCounter = 0;
    }
    
    // Edit modal functions
@@ -620,27 +649,56 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
        const needsSizes = clothingKeywords.some(keyword => itemNameLower.includes(keyword));
        const sizesContainer = document.getElementById('edit_sizes_container');
        
-       // Clear all checkboxes first
-       document.querySelectorAll('.size-checkbox').forEach(checkbox => {
-           checkbox.checked = false;
-       });
+       // Clear existing size entries
+       document.getElementById('edit-size-entries-container').innerHTML = '';
+       editSizeEntryCounter = 0;
+       
+       const quantityField = document.getElementById('edit_quantity');
+       const quantityNote = document.getElementById('edit-quantity-note');
        
        if (needsSizes) {
            sizesContainer.classList.remove('hidden');
+           quantityField.readOnly = true;
+           quantityField.classList.add('bg-gray-100');
+           if (quantityNote) quantityNote.classList.remove('hidden');
            
-           // If we have sizes stored, check the appropriate boxes
+           // Parse sizes and size quantities
+           let sizeArray = [];
+           let sizeQuantities = {};
+           
            if (item.sizes) {
                try {
-                   const sizeArray = JSON.parse(item.sizes);
-                   document.querySelectorAll('.size-checkbox').forEach(checkbox => {
-                       checkbox.checked = sizeArray.includes(checkbox.value);
-                   });
+                   sizeArray = JSON.parse(item.sizes);
                } catch (e) {
                    console.error('Error parsing sizes JSON:', e);
                }
            }
+           
+           if (item.size_quantities) {
+               try {
+                   sizeQuantities = JSON.parse(item.size_quantities);
+               } catch (e) {
+                   console.error('Error parsing size_quantities JSON:', e);
+               }
+           }
+           
+           // Create size entries for each existing size
+           if (sizeArray && sizeArray.length > 0) {
+               sizeArray.forEach(size => {
+                   const qty = sizeQuantities[size] || 0;
+                   createSizeEntry('edit-size-entries-container', size, qty, true);
+               });
+           }
+           
+           // Calculate and set total quantity
+           setTimeout(() => {
+               quantityField.value = calculateTotalQuantity('edit-size-entries-container');
+           }, 100);
        } else {
            sizesContainer.classList.add('hidden');
+           quantityField.readOnly = false;
+           quantityField.classList.remove('bg-gray-100');
+           if (quantityNote) quantityNote.classList.add('hidden');
        }
        
        // Handle existing image display
@@ -747,18 +805,194 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
        'jersey'
    ];
    
+   const availableSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
+   let sizeEntryCounter = 0;
+   let editSizeEntryCounter = 0;
+   
+   // Function to calculate total quantity from size quantities
+   function calculateTotalQuantity(containerId) {
+       let total = 0;
+       const container = document.getElementById(containerId);
+       if (container) {
+           container.querySelectorAll('.size-qty-input').forEach(input => {
+               if (input.value) {
+                   total += parseInt(input.value) || 0;
+               }
+           });
+       }
+       return total;
+   }
+   
+   // Function to create a size entry row
+   function createSizeEntry(containerId, size = '', qty = 0, isEdit = false) {
+       const container = document.getElementById(containerId);
+       const entryId = isEdit ? 'edit-size-entry-' + (editSizeEntryCounter++) : 'size-entry-' + (sizeEntryCounter++);
+       
+       const sizeEntry = document.createElement('div');
+       sizeEntry.className = 'flex items-end gap-2 p-3 bg-white rounded border size-entry-row';
+       sizeEntry.id = entryId;
+       
+       // Size label and select container
+       const sizeContainer = document.createElement('div');
+       sizeContainer.className = 'flex-1';
+       
+       const sizeLabel = document.createElement('label');
+       sizeLabel.className = 'block text-xs font-medium text-gray-700 mb-1';
+       sizeLabel.textContent = 'Size';
+       
+       const sizeSelect = document.createElement('select');
+       sizeSelect.name = 'sizes[]';
+       sizeSelect.className = 'w-full size-select px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500';
+       sizeSelect.required = true;
+       
+       // Add empty option
+       const emptyOption = document.createElement('option');
+       emptyOption.value = '';
+       emptyOption.textContent = 'Select Size';
+       sizeSelect.appendChild(emptyOption);
+       
+       // Add all available sizes
+       availableSizes.forEach(s => {
+           const option = document.createElement('option');
+           option.value = s;
+           option.textContent = s;
+           if (s === size) option.selected = true;
+           sizeSelect.appendChild(option);
+       });
+       
+       sizeContainer.appendChild(sizeLabel);
+       sizeContainer.appendChild(sizeSelect);
+       
+       // Quantity label and input container
+       const qtyContainer = document.createElement('div');
+       qtyContainer.className = 'w-32';
+       
+       const qtyLabel = document.createElement('label');
+       qtyLabel.className = 'block text-xs font-medium text-gray-700 mb-1';
+       qtyLabel.textContent = 'Quantity';
+       
+       const qtyInput = document.createElement('input');
+       qtyInput.type = 'number';
+       qtyInput.name = 'size_qty_' + (size || '');
+       qtyInput.className = 'w-full size-qty-input px-2 py-2 text-sm border border-gray-300 rounded-md focus:border-emerald-500 focus:ring focus:ring-emerald-500';
+       qtyInput.min = 0;
+       qtyInput.value = qty;
+       qtyInput.placeholder = '0';
+       qtyInput.required = true;
+       
+       qtyContainer.appendChild(qtyLabel);
+       qtyContainer.appendChild(qtyInput);
+       
+       const removeBtn = document.createElement('button');
+       removeBtn.type = 'button';
+       removeBtn.className = 'px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md mb-0.5';
+       removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+       removeBtn.onclick = function() {
+           sizeEntry.remove();
+           updateSizeDropdowns(containerId);
+           updateTotalQuantity();
+       };
+       
+       sizeEntry.appendChild(sizeContainer);
+       sizeEntry.appendChild(qtyContainer);
+       sizeEntry.appendChild(removeBtn);
+       
+       // Update quantity input name when size changes
+       sizeSelect.addEventListener('change', function() {
+           qtyInput.name = 'size_qty_' + this.value;
+           updateSizeDropdowns(containerId);
+           updateTotalQuantity();
+       });
+       
+       // Update total when quantity changes
+       qtyInput.addEventListener('input', function() {
+           updateTotalQuantity();
+       });
+       
+       container.appendChild(sizeEntry);
+       
+       // Update dropdowns after adding to DOM
+       updateSizeDropdowns(containerId);
+       
+       return sizeEntry;
+   }
+   
+   // Function to update size dropdowns to prevent duplicates
+   function updateSizeDropdowns(containerId) {
+       const container = document.getElementById(containerId);
+       const selects = container.querySelectorAll('.size-select');
+       const selectedValues = [];
+       
+       // Get all selected values
+       selects.forEach(select => {
+           if (select.value) {
+               selectedValues.push(select.value);
+           }
+       });
+       
+       // Update each dropdown
+       selects.forEach(select => {
+           const currentValue = select.value;
+           select.innerHTML = '<option value="">Select Size</option>';
+           
+           availableSizes.forEach(size => {
+               // Show size if it's not selected elsewhere, or if it's the current selection
+               if (!selectedValues.includes(size) || size === currentValue) {
+                   const option = document.createElement('option');
+                   option.value = size;
+                   option.textContent = size;
+                   if (size === currentValue) option.selected = true;
+                   select.appendChild(option);
+               }
+           });
+       });
+   }
+   
+   // Function to update total quantity
+   function updateTotalQuantity() {
+       const addQuantity = document.getElementById('quantity');
+       const editQuantity = document.getElementById('edit_quantity');
+       
+       if (addQuantity && addQuantity.readOnly) {
+           addQuantity.value = calculateTotalQuantity('size-entries-container');
+       }
+       if (editQuantity && editQuantity.readOnly) {
+           editQuantity.value = calculateTotalQuantity('edit-size-entries-container');
+       }
+   }
+   
+   // Add size button handlers
+   document.getElementById('add-size-btn').addEventListener('click', function() {
+       createSizeEntry('size-entries-container');
+   });
+   
+   document.getElementById('edit-add-size-btn').addEventListener('click', function() {
+       createSizeEntry('edit-size-entries-container', '', 0, true);
+   });
+   
    // For the add item form
    document.getElementById('name').addEventListener('input', function() {
        const itemName = this.value.trim().toLowerCase();
        const sizesContainer = document.getElementById('sizes-container');
+       const quantityField = document.getElementById('quantity');
+       const quantityNote = document.getElementById('quantity-note');
        
        // Check if current item name contains clothing keywords
        const needsSizes = clothingKeywords.some(keyword => itemName.includes(keyword));
        
        if (needsSizes) {
            sizesContainer.classList.remove('hidden');
+           quantityField.readOnly = true;
+           quantityField.classList.add('bg-gray-100');
+           if (quantityNote) quantityNote.classList.remove('hidden');
        } else {
            sizesContainer.classList.add('hidden');
+           quantityField.readOnly = false;
+           quantityField.classList.remove('bg-gray-100');
+           if (quantityNote) quantityNote.classList.add('hidden');
+           // Clear all size entries
+           document.getElementById('size-entries-container').innerHTML = '';
+           quantityField.value = 0;
        }
    });
 </script>

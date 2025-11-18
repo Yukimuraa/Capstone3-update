@@ -8,9 +8,18 @@ require_admin();
 
 $title = "Bus Management System";
 $page_title = $title;
+$base_url = "..";
 
 $error = '';
 $success = '';
+
+// Get success/error messages from URL parameters (for redirects)
+if (isset($_GET['success'])) {
+    $success = urldecode($_GET['success']);
+}
+if (isset($_GET['error'])) {
+    $error = urldecode($_GET['error']);
+}
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -20,6 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $vehicle_type = trim($_POST['vehicle_type']);
             $capacity = intval($_POST['capacity']);
             $status = $_POST['status'];
+            $plate_number = isset($_POST['plate_number']) ? trim($_POST['plate_number']) : '';
+            
+            // Ensure plate_number column exists
+            $check_column = $conn->query("SHOW COLUMNS FROM buses LIKE 'plate_number'");
+            if ($check_column->num_rows == 0) {
+                $conn->query("ALTER TABLE buses ADD COLUMN plate_number VARCHAR(20) NULL AFTER bus_number");
+            }
             
             // Validate inputs
             if (empty($bus_number) || empty($vehicle_type) || $capacity <= 0) {
@@ -34,14 +50,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($result->num_rows > 0) {
                     $error = 'Bus number already exists. Please use a different number.';
                 } else {
-                    // Insert new bus
-                    $insert_stmt = $conn->prepare("INSERT INTO buses (bus_number, vehicle_type, capacity, status) VALUES (?, ?, ?, ?)");
-                    $insert_stmt->bind_param("ssis", $bus_number, $vehicle_type, $capacity, $status);
+                    // Insert new bus with plate number
+                    $insert_stmt = $conn->prepare("INSERT INTO buses (bus_number, plate_number, vehicle_type, capacity, status) VALUES (?, ?, ?, ?, ?)");
+                    $insert_stmt->bind_param("sssis", $bus_number, $plate_number, $vehicle_type, $capacity, $status);
                     
                     if ($insert_stmt->execute()) {
                         $success = 'Bus added successfully!';
                     } else {
                         $error = 'Error adding bus: ' . $conn->error;
+                    }
+                }
+            }
+        } elseif ($_POST['action'] === 'update_bus') {
+            $bus_id = intval($_POST['bus_id']);
+            $bus_number = trim($_POST['bus_number']);
+            $plate_number = isset($_POST['plate_number']) ? trim($_POST['plate_number']) : '';
+            $vehicle_type = trim($_POST['vehicle_type']);
+            $capacity = intval($_POST['capacity']);
+            $status = $_POST['status'];
+            
+            // Validate inputs
+            if (empty($bus_number) || empty($vehicle_type) || $capacity <= 0) {
+                $error = 'Please fill in all required fields correctly.';
+            } else {
+                // Check if bus number already exists (excluding current bus)
+                $check_stmt = $conn->prepare("SELECT id FROM buses WHERE bus_number = ? AND id != ?");
+                $check_stmt->bind_param("si", $bus_number, $bus_id);
+                $check_stmt->execute();
+                $result = $check_stmt->get_result();
+                
+                if ($result->num_rows > 0) {
+                    $error = 'Bus number already exists. Please use a different number.';
+                } else {
+                    // Update bus details
+                    $update_stmt = $conn->prepare("UPDATE buses SET bus_number = ?, plate_number = ?, vehicle_type = ?, capacity = ?, status = ? WHERE id = ?");
+                    $update_stmt->bind_param("sssisi", $bus_number, $plate_number, $vehicle_type, $capacity, $status, $bus_id);
+                    
+                    if ($update_stmt->execute()) {
+                        // Redirect to refresh the page and show updated data
+                        header("Location: bus.php?tab=buses&success=" . urlencode('Bus updated successfully!'));
+                        exit();
+                    } else {
+                        $error = 'Error updating bus: ' . $conn->error;
                     }
                 }
             }
@@ -60,23 +110,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($_POST['action'] === 'delete_bus') {
             $bus_id = intval($_POST['bus_id']);
             
-            // Check if bus has active bookings
-            $check_stmt = $conn->prepare("SELECT COUNT(*) as count FROM bus_bookings WHERE bus_id = ? AND status = 'active'");
-            $check_stmt->bind_param("i", $bus_id);
-            $check_stmt->execute();
-            $result = $check_stmt->get_result()->fetch_assoc();
+            // Start transaction to ensure data integrity
+            $conn->begin_transaction();
             
-            if ($result['count'] > 0) {
-                $error = 'Cannot delete bus with active bookings. Please complete or cancel the bookings first.';
-            } else {
+            try {
+                // Delete associated bookings first
+                $delete_bookings = $conn->prepare("DELETE FROM bus_bookings WHERE bus_id = ?");
+                $delete_bookings->bind_param("i", $bus_id);
+                $delete_bookings->execute();
+                
+                // Now delete the bus
                 $delete_stmt = $conn->prepare("DELETE FROM buses WHERE id = ?");
                 $delete_stmt->bind_param("i", $bus_id);
                 
                 if ($delete_stmt->execute()) {
-                    $success = 'Bus deleted successfully!';
+                    $conn->commit();
+                    // Redirect to refresh the page and show updated count
+                    header("Location: bus.php?tab=buses&success=" . urlencode('Bus deleted successfully! All associated bookings have been removed.'));
+                    exit();
                 } else {
-                    $error = 'Error deleting bus: ' . $conn->error;
+                    throw new Exception('Error deleting bus: ' . $conn->error);
                 }
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = 'Error deleting bus: ' . $e->getMessage();
             }
         } elseif ($_POST['action'] === 'update_fuel_rate') {
             $new_fuel_rate = floatval($_POST['fuel_rate']);
@@ -103,6 +160,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Error updating fuel rate: ' . $conn->error;
                 }
             }
+        } elseif ($_POST['action'] === 'update_cost_settings') {
+            // Create settings table if not exists
+            $conn->query("CREATE TABLE IF NOT EXISTS bus_settings (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                setting_key VARCHAR(50) UNIQUE NOT NULL,
+                setting_value VARCHAR(255) NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )");
+            
+            // Get and validate all cost settings
+            $runtime_liters = floatval($_POST['runtime_liters']);
+            $maintenance_cost = floatval($_POST['maintenance_cost']);
+            $standby_cost = floatval($_POST['standby_cost']);
+            $additive_cost = floatval($_POST['additive_cost']);
+            $rate_per_bus = floatval($_POST['rate_per_bus']);
+            
+            $errors = [];
+            if ($runtime_liters < 0) $errors[] = 'Run Time must be 0 or greater.';
+            if ($maintenance_cost < 0) $errors[] = 'Maintenance Cost must be 0 or greater.';
+            if ($standby_cost < 0) $errors[] = 'Standby Cost must be 0 or greater.';
+            if ($additive_cost < 0) $errors[] = 'Additive Cost must be 0 or greater.';
+            if ($rate_per_bus < 0) $errors[] = 'Rate per Bus must be 0 or greater.';
+            
+            if (empty($errors)) {
+                $settings = [
+                    'runtime_liters' => $runtime_liters,
+                    'maintenance_cost' => $maintenance_cost,
+                    'standby_cost' => $standby_cost,
+                    'additive_cost' => $additive_cost,
+                    'rate_per_bus' => $rate_per_bus
+                ];
+                
+                $all_success = true;
+                foreach ($settings as $key => $value) {
+                    $stmt = $conn->prepare("INSERT INTO bus_settings (setting_key, setting_value) VALUES (?, ?) 
+                                           ON DUPLICATE KEY UPDATE setting_value = ?");
+                    $stmt->bind_param("sss", $key, $value, $value);
+                    if (!$stmt->execute()) {
+                        $all_success = false;
+                        break;
+                    }
+                }
+                
+                if ($all_success) {
+                    $success = 'Cost breakdown settings updated successfully!';
+                } else {
+                    $error = 'Error updating cost settings: ' . $conn->error;
+                }
+            } else {
+                $error = implode(' ', $errors);
+            }
         } elseif ($_POST['action'] === 'approve_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
             
@@ -122,11 +230,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $schedule_stmt->execute();
                 $schedule = $schedule_stmt->get_result()->fetch_assoc();
                 
-                // Create bus bookings for each vehicle
-                $available_buses = $conn->query("SELECT id FROM buses WHERE status = 'available' LIMIT " . $schedule['no_of_vehicles']);
+                // Check if bus booking already exists (created when student submitted)
+                $existing_booking = $conn->prepare("SELECT bus_id FROM bus_bookings WHERE schedule_id = ?");
+                $existing_booking->bind_param("i", $schedule_id);
+                $existing_booking->execute();
+                $existing_result = $existing_booking->get_result();
+                
+                if ($existing_result->num_rows > 0) {
+                    // Booking already exists - just ensure bus status is booked
                 $bus_ids = [];
+                    while ($row = $existing_result->fetch_assoc()) {
+                        $bus_ids[] = $row['bus_id'];
+                    }
+                    
+                    // Update bus status to booked (in case it wasn't updated)
+                    if (count($bus_ids) > 0) {
+                        $bus_update_stmt = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id IN (" . implode(',', array_fill(0, count($bus_ids), '?')) . ")");
+                        $bus_update_stmt->bind_param(str_repeat('i', count($bus_ids)), ...$bus_ids);
+                        $bus_update_stmt->execute();
+                    }
+                } else {
+                    // No existing booking - create new ones using the requested bus number or available buses
+                    $bus_ids = [];
+                    
+                    if (!empty($schedule['bus_no'])) {
+                        // Use the specific bus number requested
+                        $requested_bus = $conn->prepare("SELECT id FROM buses WHERE bus_number = ?");
+                        $requested_bus->bind_param("s", $schedule['bus_no']);
+                        $requested_bus->execute();
+                        $requested_result = $requested_bus->get_result();
+                        
+                        if ($requested_result->num_rows > 0) {
+                            $bus_row = $requested_result->fetch_assoc();
+                            $bus_ids[] = $bus_row['id'];
+                        }
+                    }
+                    
+                    // If we need more buses or didn't find the requested one, get available buses
+                    if (count($bus_ids) < $schedule['no_of_vehicles']) {
+                        $needed = $schedule['no_of_vehicles'] - count($bus_ids);
+                        $available_buses = $conn->query("SELECT id FROM buses WHERE status = 'available' LIMIT " . $needed);
                 while ($bus = $available_buses->fetch_assoc()) {
                     $bus_ids[] = $bus['id'];
+                        }
                 }
                 
                 if (count($bus_ids) >= $schedule['no_of_vehicles']) {
@@ -140,25 +286,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $bus_update_stmt = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id IN (" . implode(',', array_fill(0, count($bus_ids), '?')) . ")");
                     $bus_update_stmt->bind_param(str_repeat('i', count($bus_ids)), ...$bus_ids);
                     $bus_update_stmt->execute();
-                    
-                    $conn->commit();
-                    $success = 'Schedule approved and buses allocated successfully!';
                 } else {
                     throw new Exception('Not enough buses available for this booking.');
                 }
+                }
+                
+                $conn->commit();
+                $success = 'Schedule approved and buses allocated successfully!';
             } catch (Exception $e) {
                 $conn->rollback();
                 $error = $e->getMessage();
             }
         } elseif ($_POST['action'] === 'reject_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
+            
+            // Start transaction
+            $conn->begin_transaction();
+            
+            try {
+                // Update schedule status
             $update_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'rejected' WHERE id = ?");
             $update_stmt->bind_param("i", $schedule_id);
-            
-            if ($update_stmt->execute()) {
+                $update_stmt->execute();
+                
+                // Get bus IDs from bookings for this schedule
+                $bus_ids_query = $conn->prepare("SELECT bus_id FROM bus_bookings WHERE schedule_id = ?");
+                $bus_ids_query->bind_param("i", $schedule_id);
+                $bus_ids_query->execute();
+                $bus_ids_result = $bus_ids_query->get_result();
+                
+                $bus_ids = [];
+                while ($row = $bus_ids_result->fetch_assoc()) {
+                    $bus_ids[] = $row['bus_id'];
+                }
+                
+                // Update bus status back to available if booking is rejected
+                if (count($bus_ids) > 0) {
+                    $bus_update_stmt = $conn->prepare("UPDATE buses SET status = 'available' WHERE id IN (" . implode(',', array_fill(0, count($bus_ids), '?')) . ")");
+                    $bus_update_stmt->bind_param(str_repeat('i', count($bus_ids)), ...$bus_ids);
+                    $bus_update_stmt->execute();
+                }
+                
+                $conn->commit();
                 $success = 'Schedule rejected successfully!';
-            } else {
-                $error = 'Error rejecting schedule: ' . $conn->error;
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = 'Error rejecting schedule: ' . $e->getMessage();
             }
         }
     }
@@ -177,8 +350,63 @@ if ($fuel_rate_query && $fuel_rate_query->num_rows > 0) {
     $current_fuel_rate = floatval($fuel_rate_query->fetch_assoc()['setting_value']);
 }
 
+// Get current cost breakdown settings
+$cost_settings = [
+    'runtime_liters' => 25.00,
+    'maintenance_cost' => 5000.00,
+    'standby_cost' => 1500.00,
+    'additive_cost' => 1500.00,
+    'rate_per_bus' => 1500.00
+];
+
+// Ensure bus_settings table exists
+$conn->query("CREATE TABLE IF NOT EXISTS bus_settings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    setting_key VARCHAR(50) UNIQUE NOT NULL,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)");
+
+// Load cost settings from database
+foreach ($cost_settings as $key => $default_value) {
+    $setting_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = '$key'");
+    if ($setting_query && $setting_query->num_rows > 0) {
+        $cost_settings[$key] = floatval($setting_query->fetch_assoc()['setting_value']);
+    }
+}
+
+// Ensure plate_number column exists
+$check_column = $conn->query("SHOW COLUMNS FROM buses LIKE 'plate_number'");
+if ($check_column->num_rows == 0) {
+    $conn->query("ALTER TABLE buses ADD COLUMN plate_number VARCHAR(20) NULL AFTER bus_number");
+}
+
+// Auto-add the requested vehicles if they don't exist
+// NOTE: This auto-adds buses on every page load. If you delete these buses, they will be re-added.
+// To permanently remove this feature, comment out or remove the code below.
+// $vehicles_to_add = [
+//     ['bus_number' => 'van-20', 'vehicle_type' => 'Van', 'capacity' => 20, 'plate_number' => ''],
+//     ['bus_number' => 'travis-15', 'vehicle_type' => 'Travis', 'capacity' => 15, 'plate_number' => ''],
+//     ['bus_number' => '49', 'vehicle_type' => 'Bus', 'capacity' => 49, 'plate_number' => '']
+// ];
+// 
+// foreach ($vehicles_to_add as $vehicle) {
+//     $check_stmt = $conn->prepare("SELECT id FROM buses WHERE bus_number = ?");
+//     $check_stmt->bind_param("s", $vehicle['bus_number']);
+//     $check_stmt->execute();
+//     $result = $check_stmt->get_result();
+//     
+//     if ($result->num_rows == 0) {
+//         // Vehicle doesn't exist, add it
+//         $insert_stmt = $conn->prepare("INSERT INTO buses (bus_number, plate_number, vehicle_type, capacity, status) VALUES (?, ?, ?, ?, 'available')");
+//         $insert_stmt->bind_param("sssi", $vehicle['bus_number'], $vehicle['plate_number'], $vehicle['vehicle_type'], $vehicle['capacity']);
+//         $insert_stmt->execute();
+//     }
+// }
+
 // Get all buses for management
 $all_buses = $conn->query("SELECT * FROM buses ORDER BY bus_number ASC");
+$total_buses_count = $all_buses->num_rows;
 
 include '../includes/header.php';
 ?>
@@ -493,7 +721,14 @@ include '../includes/header.php';
                         <label class="block text-sm font-medium text-gray-700 mb-1">Bus Number <span class="text-red-500">*</span></label>
                         <input type="text" name="bus_number" required
                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                               placeholder="e.g., 4, 5, Bus-001">
+                               placeholder="e.g., 4, 5, Bus-001, van-20">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Plate Number</label>
+                        <input type="text" name="plate_number"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="e.g., ABC-1234">
                     </div>
                     
                     <div>
@@ -501,6 +736,8 @@ include '../includes/header.php';
                         <select name="vehicle_type" required
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="Bus">Bus</option>
+                            <option value="Van">Van</option>
+                            <option value="Travis">Travis</option>
                         </select>
                     </div>
                     
@@ -530,13 +767,14 @@ include '../includes/header.php';
             <!-- Buses List -->
             <div class="lg:col-span-2 bg-white shadow rounded-lg p-6">
                 <h3 class="font-bold text-lg mb-4 flex items-center text-blue-900">
-                    <i class="fas fa-list mr-2"></i>All Buses (<?php echo $all_buses->num_rows; ?>)
+                    <i class="fas fa-list mr-2"></i>All Buses (<?php echo $total_buses_count; ?>)
                 </h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm border rounded-lg overflow-hidden">
                         <thead>
                             <tr class="bg-blue-100 text-blue-900">
                                 <th class="border px-4 py-2">Bus #</th>
+                                <th class="border px-4 py-2">Plate Number</th>
                                 <th class="border px-4 py-2">Type</th>
                                 <th class="border px-4 py-2">Capacity</th>
                                 <th class="border px-4 py-2">Status</th>
@@ -549,6 +787,7 @@ include '../includes/header.php';
                                 <?php while ($bus = $all_buses->fetch_assoc()): ?>
                                     <tr class="hover:bg-blue-50 transition">
                                         <td class="border px-4 py-2 font-semibold"><?php echo htmlspecialchars($bus['bus_number']); ?></td>
+                                        <td class="border px-4 py-2"><?php echo !empty($bus['plate_number']) ? htmlspecialchars($bus['plate_number']) : '-'; ?></td>
                                         <td class="border px-4 py-2"><?php echo htmlspecialchars($bus['vehicle_type']); ?></td>
                                         <td class="border px-4 py-2 text-center"><?php echo $bus['capacity']; ?> seats</td>
                                         <td class="border px-4 py-2 text-center">
@@ -580,8 +819,8 @@ include '../includes/header.php';
                                         </td>
                                         <td class="border px-4 py-2 text-center">
                                             <div class="flex space-x-2 justify-center">
-                                                <button onclick="openStatusModal(<?php echo $bus['id']; ?>, '<?php echo htmlspecialchars($bus['bus_number']); ?>', '<?php echo $bus['status']; ?>')" 
-                                                        class="text-blue-600 hover:text-blue-900" title="Change Status">
+                                                <button onclick="openEditBusModal(<?php echo $bus['id']; ?>, '<?php echo htmlspecialchars($bus['bus_number'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($bus['plate_number'] ?? '', ENT_QUOTES); ?>', '<?php echo htmlspecialchars($bus['vehicle_type'], ENT_QUOTES); ?>', <?php echo $bus['capacity']; ?>, '<?php echo $bus['status']; ?>')" 
+                                                        class="text-blue-600 hover:text-blue-900" title="Edit Bus">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                                 <button onclick="deleteBus(<?php echo $bus['id']; ?>, '<?php echo htmlspecialchars($bus['bus_number']); ?>')" 
@@ -594,7 +833,7 @@ include '../includes/header.php';
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="border px-4 py-8 text-center text-gray-500">
+                                    <td colspan="7" class="border px-4 py-8 text-center text-gray-500">
                                         <i class="fas fa-bus text-4xl mb-2"></i>
                                         <p>No buses found. Add your first bus above!</p>
                                     </td>
@@ -634,13 +873,10 @@ include '../includes/header.php';
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">New Fuel Rate (₱ per liter) <span class="text-red-500">*</span></label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-2 text-gray-500">₱</span>
-                            <input type="number" name="fuel_rate" required min="0.01" step="0.01" 
-                                   value="<?php echo $current_fuel_rate; ?>"
-                                   class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                   placeholder="e.g., 75.50">
-                        </div>
+                        <input type="number" name="fuel_rate" required min="0.01" step="0.01" 
+                               value="<?php echo $current_fuel_rate; ?>"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="e.g., 75.50">
                         <p class="text-xs text-gray-500 mt-1">Enter the current market price for diesel/gasoline per liter</p>
                     </div>
                     
@@ -659,6 +895,106 @@ include '../includes/header.php';
                     
                     <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition">
                         <i class="fas fa-save mr-2"></i>Update Fuel Rate
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Cost Breakdown Settings -->
+            <div class="bg-white shadow rounded-lg p-6 mt-6">
+                <h3 class="font-bold text-lg mb-4 flex items-center text-blue-900">
+                    <i class="fas fa-calculator mr-2"></i>Cost Breakdown Settings
+                </h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    <i class="fas fa-info-circle mr-1"></i>Configure the cost breakdown values used in bus rental calculations.
+                </p>
+                
+                <!-- Current Values Display -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <h4 class="font-semibold text-sm text-gray-700 mb-3">Current Values:</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                        <div>
+                            <span class="text-gray-600">Run Time (L):</span>
+                            <span class="font-semibold text-gray-900 ml-2"><?php echo number_format($cost_settings['runtime_liters'], 2); ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Maintenance Cost:</span>
+                            <span class="font-semibold text-gray-900 ml-2">₱<?php echo number_format($cost_settings['maintenance_cost'], 2); ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Standby Cost:</span>
+                            <span class="font-semibold text-gray-900 ml-2">₱<?php echo number_format($cost_settings['standby_cost'], 2); ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Additive Cost:</span>
+                            <span class="font-semibold text-gray-900 ml-2">₱<?php echo number_format($cost_settings['additive_cost'], 2); ?></span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Rate per Bus:</span>
+                            <span class="font-semibold text-gray-900 ml-2">₱<?php echo number_format($cost_settings['rate_per_bus'], 2); ?></span>
+                        </div>
+                    </div>
+                </div>
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="action" value="update_cost_settings">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Run Time (L) <span class="text-red-500">*</span></label>
+                            <input type="number" name="runtime_liters" required min="0" step="0.01" 
+                                   value="<?php echo $cost_settings['runtime_liters']; ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="25.00">
+                            <p class="text-xs text-gray-500 mt-1">Runtime in liters</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Maintenance Cost (₱) <span class="text-red-500">*</span></label>
+                            <input type="number" name="maintenance_cost" required min="0" step="0.01" 
+                                   value="<?php echo $cost_settings['maintenance_cost']; ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="5000.00">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Standby Cost (₱) <span class="text-red-500">*</span></label>
+                            <input type="number" name="standby_cost" required min="0" step="0.01" 
+                                   value="<?php echo $cost_settings['standby_cost']; ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="1500.00">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Additive Cost (₱) <span class="text-red-500">*</span></label>
+                            <input type="number" name="additive_cost" required min="0" step="0.01" 
+                                   value="<?php echo $cost_settings['additive_cost']; ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="1500.00">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Rate per Bus (₱) <span class="text-red-500">*</span></label>
+                            <input type="number" name="rate_per_bus" required min="0" step="0.01" 
+                                   value="<?php echo $cost_settings['rate_per_bus']; ?>"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="1500.00">
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-info-circle text-blue-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-blue-700">
+                                    <strong>Note:</strong> These settings will be used for all new bus rental calculations. Existing bookings will not be affected.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition">
+                        <i class="fas fa-save mr-2"></i>Update Cost Breakdown Settings
                     </button>
                 </form>
             </div>
@@ -740,6 +1076,78 @@ include '../includes/header.php';
     </div>
 </div>
 
+<!-- Edit Bus Modal -->
+<div id="editBusModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                <i class="fas fa-edit text-blue-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Edit Bus</h3>
+            </div>
+        </div>
+        
+        <form method="POST" id="editBusForm">
+            <input type="hidden" name="action" value="update_bus">
+            <input type="hidden" name="bus_id" id="edit-bus-id">
+            
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bus Number <span class="text-red-500">*</span></label>
+                    <input type="text" name="bus_number" id="edit-bus-number" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="e.g., 4, 5, Bus-001, van-20">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Plate Number</label>
+                    <input type="text" name="plate_number" id="edit-plate-number"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="e.g., ABC-1234">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle Type <span class="text-red-500">*</span></label>
+                    <select name="vehicle_type" id="edit-vehicle-type" required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="Bus">Bus</option>
+                        <option value="Van">Van</option>
+                        <option value="Travis">Travis</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Capacity <span class="text-red-500">*</span></label>
+                    <input type="number" name="capacity" id="edit-capacity" required min="1"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="e.g., 50">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status <span class="text-red-500">*</span></label>
+                    <select name="status" id="edit-status" required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="available">Available</option>
+                        <option value="booked">Booked</option>
+                        <option value="maintenance">Maintenance</option>
+                        <option value="out_of_service">Out of Service</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeEditBusModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    <i class="fas fa-save mr-2"></i>Update Bus
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Change Bus Status Modal -->
 <div id="statusModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -782,11 +1190,42 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- Delete Bus Form (Hidden) -->
-<form method="POST" id="deleteBusForm" style="display: none;">
-    <input type="hidden" name="action" value="delete_bus">
-    <input type="hidden" name="bus_id" id="delete-bus-id">
-</form>
+<!-- Delete Bus Confirmation Modal -->
+<div id="deleteBusModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Delete Bus</h3>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <p class="text-sm text-gray-600 mb-2">
+                Are you sure you want to delete <strong id="delete-bus-number"></strong>?
+            </p>
+            <p class="text-sm text-red-600 font-semibold">
+                ⚠️ Warning: This action cannot be undone and will also delete all associated bookings.
+            </p>
+        </div>
+        
+        <form method="POST" id="deleteBusForm">
+            <input type="hidden" name="action" value="delete_bus">
+            <input type="hidden" name="bus_id" id="delete-bus-id">
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeDeleteBusModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                    <i class="fas fa-trash mr-2"></i>Delete Bus
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
 // Schedule Rejection Functions
@@ -813,12 +1252,30 @@ function closeStatusModal() {
     document.getElementById('statusModal').classList.add('hidden');
 }
 
-// Bus Deletion Function
+// Bus Edit Functions
+function openEditBusModal(busId, busNumber, plateNumber, vehicleType, capacity, status) {
+    document.getElementById('edit-bus-id').value = busId;
+    document.getElementById('edit-bus-number').value = busNumber;
+    document.getElementById('edit-plate-number').value = plateNumber || '';
+    document.getElementById('edit-vehicle-type').value = vehicleType;
+    document.getElementById('edit-capacity').value = capacity;
+    document.getElementById('edit-status').value = status;
+    document.getElementById('editBusModal').classList.remove('hidden');
+}
+
+function closeEditBusModal() {
+    document.getElementById('editBusModal').classList.add('hidden');
+}
+
+// Bus Deletion Functions
 function deleteBus(busId, busNumber) {
-    if (confirm('Are you sure you want to delete Bus ' + busNumber + '? This action cannot be undone.\n\nNote: Buses with active bookings cannot be deleted.')) {
-        document.getElementById('delete-bus-id').value = busId;
-        document.getElementById('deleteBusForm').submit();
-    }
+    document.getElementById('delete-bus-id').value = busId;
+    document.getElementById('delete-bus-number').textContent = 'Bus ' + busNumber;
+    document.getElementById('deleteBusModal').classList.remove('hidden');
+}
+
+function closeDeleteBusModal() {
+    document.getElementById('deleteBusModal').classList.add('hidden');
 }
 
 // Close modals when clicking outside
@@ -829,6 +1286,12 @@ document.addEventListener('click', function(event) {
     if (event.target.id === 'statusModal') {
         closeStatusModal();
     }
+    if (event.target.id === 'editBusModal') {
+        closeEditBusModal();
+    }
+    if (event.target.id === 'deleteBusModal') {
+        closeDeleteBusModal();
+    }
 });
 
 // Close modals with Escape key
@@ -836,6 +1299,8 @@ document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         closeRejectModal();
         closeStatusModal();
+        closeEditBusModal();
+        closeDeleteBusModal();
     }
 });
 </script>

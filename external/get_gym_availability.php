@@ -86,7 +86,7 @@ try {
         exit();
     }
 
-    // Define gym operating hours (8 AM to 6 PM)
+    // Define gym operating hours (8 AM to 12 PM in 2-hour sessions, then 1 PM to 6 PM)
     $operating_hours = [
         ['start' => '08:00:00', 'end' => '18:00:00', 'label' => 'Whole Day Booking (8:00 AM - 6:00 PM)', 'type' => 'whole_day'],
         ['start' => '08:00:00', 'end' => '10:00:00', 'label' => 'Morning Session (8:00 AM - 10:00 AM)', 'type' => 'session'],
@@ -96,17 +96,6 @@ try {
         ['start' => '17:00:00', 'end' => '18:00:00', 'label' => 'Evening Session (5:00 PM - 6:00 PM)', 'type' => 'session']
     ];
 
-    // Special session configuration for Wednesday, October 8, 2025 (2025-10-08)
-    // Requirement: remove Late Morning 10:00-12:00; make Morning 08:00-12:00
-    if ($date === '2025-10-08') {
-        $operating_hours = [
-            ['start' => '08:00:00', 'end' => '18:00:00', 'label' => 'Whole Day Booking (8:00 AM - 6:00 PM)', 'type' => 'whole_day'],
-            ['start' => '08:00:00', 'end' => '12:00:00', 'label' => 'Morning Session (8:00 AM - 12:00 PM)', 'type' => 'session'],
-            ['start' => '13:00:00', 'end' => '15:00:00', 'label' => 'Afternoon Session (1:00 PM - 3:00 PM)', 'type' => 'session'],
-            ['start' => '15:00:00', 'end' => '17:00:00', 'label' => 'Late Afternoon Session (3:00 PM - 5:00 PM)', 'type' => 'session'],
-            ['start' => '17:00:00', 'end' => '18:00:00', 'label' => 'Evening Session (5:00 PM - 6:00 PM)', 'type' => 'session']
-        ];
-    }
 
     // Get existing bookings for the date
     $bookings_query = "SELECT start_time, end_time, status FROM bookings 

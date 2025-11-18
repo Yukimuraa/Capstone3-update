@@ -122,11 +122,18 @@ function getDistanceBetweenLocations($from, $to) {
 }
 
 // Function to calculate billing statement
-function calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days) {
+function calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation = '') {
     global $conn;
     
-    // Get distance between locations
+    // Get distance from CHMSU to first location
     $distance_km = getDistanceBetweenLocations($from_location, $to_location);
+    
+    // If continuation exists, add distance from first location to continuation
+    if (!empty($to_location_continuation)) {
+        $continuation_distance = getDistanceBetweenLocations($to_location, $to_location_continuation);
+        $distance_km += $continuation_distance;
+    }
+    
     $total_distance_km = $distance_km * 2; // Round trip
     
     // Get current fuel rate from settings (default to 70.00 if not set)
@@ -138,14 +145,32 @@ function calculateBillingStatement($from_location, $to_location, $destination, $
     
     // Cost calculations per vehicle
     $computed_distance = $distance_km; // 2Km/L rate
-    $runtime_liters = 25.00; // Default runtime in liters
+    
+    // Get cost breakdown settings from database (with defaults)
+    $cost_settings = [
+        'runtime_liters' => 25.00,
+        'maintenance_cost' => 5000.00,
+        'standby_cost' => 1500.00,
+        'additive_cost' => 1500.00,
+        'rate_per_bus' => 1500.00
+    ];
+    
+    // Load cost settings from database
+    foreach ($cost_settings as $key => $default_value) {
+        $setting_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = '$key'");
+        if ($setting_query && $setting_query->num_rows > 0) {
+            $cost_settings[$key] = floatval($setting_query->fetch_assoc()['setting_value']);
+        }
+    }
+    
+    $runtime_liters = $cost_settings['runtime_liters'];
+    $maintenance_cost = $cost_settings['maintenance_cost'];
+    $standby_cost = $cost_settings['standby_cost'];
+    $additive_cost = $cost_settings['additive_cost'];
+    $rate_per_bus = $cost_settings['rate_per_bus'];
     
     $fuel_cost = $computed_distance * $fuel_rate;
     $runtime_cost = $runtime_liters * $fuel_rate;
-    $maintenance_cost = 5000.00;
-    $standby_cost = 1500.00;
-    $additive_cost = 1500.00;
-    $rate_per_bus = 1500.00;
     
     $subtotal_per_vehicle = $fuel_cost + $runtime_cost + $maintenance_cost + $standby_cost + $additive_cost + $rate_per_bus;
     $total_amount = $subtotal_per_vehicle * $no_of_vehicles;
@@ -207,7 +232,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $client = sanitize_input($_POST['client']);
             $from_location = sanitize_input($_POST['from_location']);
             $to_location = sanitize_input($_POST['to_location']);
-            $destination = $from_location . ' - ' . $to_location; // Combined for destination field
+            $to_location_continuation = isset($_POST['to_location_continuation']) ? trim(sanitize_input($_POST['to_location_continuation'])) : '';
+            
+            // Build destination string with optional continuation
+            $destination = $from_location . ' - ' . $to_location;
+            if (!empty($to_location_continuation)) {
+                $destination .= ' - ' . $to_location_continuation;
+            }
             $purpose = sanitize_input($_POST['purpose']);
             $date_covered = $_POST['date_covered'];
             $vehicle = sanitize_input($_POST['vehicle']);
@@ -251,8 +282,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw new Exception('Error creating bus booking: ' . $conn->error);
                         }
                         
-                        // Calculate billing statement
-                        $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days);
+                        // Update bus status to booked when booking is created
+                        $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
+                        $update_bus_status->bind_param("i", $bus_id);
+                        $update_bus_status->execute();
+                        
+                        // Calculate billing statement (include continuation if provided)
+                        $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation);
                         
                         // Insert billing statement
                         $billing_stmt = $conn->prepare("INSERT INTO billing_statements 
@@ -654,6 +690,28 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-database text-green-600 mr-1"></i>
                         Distance calculated from CHMSU using local database (all Negros Occidental locations)
+                    </p>
+                </div>
+                
+                <div>
+                    <label for="to_location_continuation" class="block text-sm font-medium text-gray-700 mb-1">To Another Location (Optional)</label>
+                    <div class="relative">
+                        <input type="text" id="to_location_continuation" name="to_location_continuation" 
+                               class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
+                               placeholder="e.g., CHMSU Fortune Towne Campus, CHMSU Binalbagan Campus"
+                               value=""
+                               autocomplete="off"
+                               oninput="handleLocationInputContinuation(event); updateDistance();"
+                               onfocus="showLocationSuggestionsContinuation()"
+                               onblur="hideLocationSuggestionsContinuation()"
+                               onchange="updateDistance()">
+                        <div id="location-suggestions-continuation" class="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden max-h-60 overflow-y-auto">
+                            <!-- Suggestions will be populated here -->
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-info-circle text-blue-600 mr-1"></i>
+                        Optional: Add a continuation destination (e.g., another CHMSU campus)
                     </p>
                 </div>
                 
@@ -1373,6 +1431,76 @@ function hideLocationSuggestions() {
     }, 300); // Increased delay to 300ms
 }
 
+// Continuation location input handlers
+function handleLocationInputContinuation(event) {
+    const input = event.target.value;
+    const suggestionsDiv = document.getElementById('location-suggestions-continuation');
+    
+    // Clear previous timeout
+    if (suggestionTimeout) {
+        clearTimeout(suggestionTimeout);
+    }
+    
+    if (input.length < 2) {
+        suggestionsDiv.classList.add('hidden');
+        return;
+    }
+    
+    // Debounce the search
+    suggestionTimeout = setTimeout(() => {
+        showSuggestionsContinuation(input);
+    }, 300);
+}
+
+function showLocationSuggestionsContinuation() {
+    const input = document.getElementById('to_location_continuation').value;
+    if (input.length >= 2) {
+        showSuggestionsContinuation(input);
+    }
+}
+
+function hideLocationSuggestionsContinuation() {
+    // Delay hiding to allow clicking on suggestions
+    setTimeout(() => {
+        const suggestionsDiv = document.getElementById('location-suggestions-continuation');
+        suggestionsDiv.classList.add('hidden');
+    }, 300); // Increased delay to 300ms
+}
+
+function showSuggestionsContinuation(query) {
+    const suggestionsDiv = document.getElementById('location-suggestions-continuation');
+    const normalizedQuery = query.toLowerCase().trim();
+    
+    // Filter local suggestions only - no API calls
+    const matches = localSuggestions.filter(suggestion => 
+        suggestion.toLowerCase().includes(normalizedQuery)
+    ).slice(0, 10);
+    
+    if (matches.length === 0) {
+        suggestionsDiv.classList.add('hidden');
+        return;
+    }
+    
+    // Display suggestions - use onmousedown instead of onclick (fires before blur)
+    suggestionsDiv.innerHTML = matches.map(suggestion => `
+        <div class="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0" 
+             onmousedown="selectSuggestionContinuation('${suggestion.replace(/'/g, "\\'")}'); event.preventDefault();">
+            <div class="flex items-center">
+                <i class="fas fa-map-marker-alt text-blue-500 mr-2"></i>
+                <span class="text-sm">${suggestion}</span>
+            </div>
+        </div>
+    `).join('');
+    
+    suggestionsDiv.classList.remove('hidden');
+}
+
+function selectSuggestionContinuation(suggestion) {
+    document.getElementById('to_location_continuation').value = suggestion;
+    document.getElementById('location-suggestions-continuation').classList.add('hidden');
+    updateDistance(); // Recalculate distance when continuation is selected
+}
+
 function showSuggestions(query) {
     const suggestionsDiv = document.getElementById('location-suggestions');
     const normalizedQuery = query.toLowerCase().trim();
@@ -1463,6 +1591,7 @@ document.addEventListener('keydown', function(event) {
 async function updateDistance() {
     const fromLocation = document.getElementById('from_location').value.trim();
     const toLocation = document.getElementById('to_location').value.trim();
+    const toLocationContinuation = document.getElementById('to_location_continuation').value.trim();
     const distanceDisplay = document.getElementById('distance-display');
     
     if (!fromLocation || !toLocation) {
@@ -1488,19 +1617,22 @@ async function updateDistance() {
     `;
     
     try {
-        // Call local PHP endpoint with BOTH locations for proper campus-to-campus calculation
-        const formData = new FormData();
-        formData.append('from_location', fromLocation);
-        formData.append('to_location', toLocation);
+        let totalDistanceOneWay = 0;
+        let routeDetails = [];
         
-        const response = await fetch('calculate_distance.php', {
+        // Calculate distance from CHMSU to first location
+        const formData1 = new FormData();
+        formData1.append('from_location', fromLocation);
+        formData1.append('to_location', toLocation);
+        
+        const response1 = await fetch('calculate_distance.php', {
             method: 'POST',
-            body: formData
+            body: formData1
         });
         
-        const result = await response.json();
+        const result1 = await response1.json();
         
-        if (result.error) {
+        if (result1.error) {
             distanceDisplay.className = 'p-3 rounded-md text-sm bg-yellow-100 text-yellow-800';
             distanceDisplay.innerHTML = `
                 <div>
@@ -1508,7 +1640,7 @@ async function updateDistance() {
                     <span class="font-semibold">Location not found</span>
                 </div>
                 <div class="mt-2 text-xs">
-                    "${destination}" could not be found in the database. Try using: Bacolod City, Talisay City, or specific barangays.
+                    "${toLocation}" could not be found in the database. Try using: Bacolod City, Talisay City, or specific barangays.
                 </div>
                 <div class="mt-2 text-xs text-gray-600">
                     Using estimated distance: <span class="font-bold">50 km</span> (one-way), <span class="font-bold">100 km</span> (round trip)
@@ -1517,31 +1649,70 @@ async function updateDistance() {
             return;
         }
         
+        totalDistanceOneWay += result1.distance_km;
+        routeDetails.push({
+            from: result1.from_location || CHMSU_ORIGIN_NAME,
+            to: result1.destination,
+            distance: result1.distance_km
+        });
+        
+        // If continuation exists, calculate distance from first location to continuation
+        if (toLocationContinuation) {
+            const formData2 = new FormData();
+            formData2.append('from_location', toLocation);
+            formData2.append('to_location', toLocationContinuation);
+            
+            const response2 = await fetch('calculate_distance.php', {
+                method: 'POST',
+                body: formData2
+            });
+            
+            const result2 = await response2.json();
+            
+            if (!result2.error) {
+                totalDistanceOneWay += result2.distance_km;
+                routeDetails.push({
+                    from: result2.from_location || toLocation,
+                    to: result2.destination,
+                    distance: result2.distance_km
+                });
+            }
+        }
+        
+        const totalDistanceRoundTrip = totalDistanceOneWay * 2;
+        
         // Display result
         distanceDisplay.className = 'p-3 rounded-md text-sm bg-green-100 text-green-800 border border-green-300';
+        
+        let routeHtml = '';
+        routeDetails.forEach((route, index) => {
+            routeHtml += `
+                <div class="${index > 0 ? 'mt-2' : ''}">
+                    <i class="fas fa-map-marker-alt mr-1 text-green-600"></i>
+                    <span class="font-semibold">${index === 0 ? 'To' : 'Then to'}:</span> ${route.to} <span class="text-gray-600">(${route.distance} km)</span>
+                </div>
+            `;
+        });
         
         distanceDisplay.innerHTML = `
             <div class="flex items-center justify-between">
                 <span><i class="fas fa-route mr-2"></i>Distance (one-way):</span>
-                <span class="font-bold text-lg">${result.distance_km} km</span>
+                <span class="font-bold text-lg">${totalDistanceOneWay.toFixed(1)} km</span>
             </div>
             <div class="flex items-center justify-between mt-1">
                 <span><i class="fas fa-exchange-alt mr-2"></i>Total Distance (round trip):</span>
-                <span class="font-bold text-lg">${result.total_distance_km} km</span>
+                <span class="font-bold text-lg">${totalDistanceRoundTrip.toFixed(1)} km</span>
             </div>
             <div class="mt-3 pt-2 border-t border-green-200 text-xs text-gray-700">
                 <div class="mb-2">
                     <i class="fas fa-university mr-1 text-blue-600"></i>
-                    <span class="font-semibold">From:</span> ${result.from_location || CHMSU_ORIGIN_NAME}
+                    <span class="font-semibold">From:</span> ${routeDetails[0].from}
                 </div>
-                <div>
-                    <i class="fas fa-map-marker-alt mr-1 text-green-600"></i>
-                    <span class="font-semibold">To:</span> ${result.destination}
-                </div>
+                ${routeHtml}
             </div>
             <div class="mt-2 text-xs text-gray-600 flex items-center">
                 <i class="fas fa-database mr-1"></i>
-                Calculated using local Negros Occidental database (${result.type})
+                Calculated using local Negros Occidental database
             </div>
         `;
         

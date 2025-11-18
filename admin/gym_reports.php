@@ -33,13 +33,12 @@ if ($report_type === 'usage') {
     $start_date = isset($_GET['start_date']) ? sanitize_input($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
     $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : date('Y-m-d');
     
-    // Get usage data
-    $query = "SELECT b.booking_date, f.name as facility_name, COUNT(*) as booking_count 
-              FROM gym_bookings b 
-              JOIN gym_facilities f ON b.facility_id = f.id 
-              WHERE b.booking_date BETWEEN ? AND ? 
-              GROUP BY b.booking_date, f.name 
-              ORDER BY b.booking_date ASC, f.name ASC";
+    // Get usage data - bookings table doesn't have facility_id, so we just group by date
+    $query = "SELECT b.date as booking_date, 'Gymnasium' as facility_name, COUNT(*) as booking_count 
+              FROM bookings b 
+              WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ? 
+              GROUP BY b.date 
+              ORDER BY b.date ASC";
     
     $stmt = $conn->prepare($query);
     $stmt->bind_param("ss", $start_date, $end_date);
@@ -50,13 +49,12 @@ if ($report_type === 'usage') {
         $report_data[] = $row;
     }
     
-    // Prepare chart data
-    $chart_query = "SELECT f.name as facility_name, COUNT(*) as booking_count 
-                   FROM gym_bookings b 
-                   JOIN gym_facilities f ON b.facility_id = f.id 
-                   WHERE b.booking_date BETWEEN ? AND ? 
-                   GROUP BY f.name 
-                   ORDER BY booking_count DESC";
+    // Prepare chart data - show total bookings per date
+    $chart_query = "SELECT b.date, COUNT(*) as booking_count 
+                   FROM bookings b 
+                   WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ? 
+                   GROUP BY b.date 
+                   ORDER BY b.date ASC";
     
     $chart_stmt = $conn->prepare($chart_query);
     $chart_stmt->bind_param("ss", $start_date, $end_date);
@@ -67,7 +65,7 @@ if ($report_type === 'usage') {
     $data = [];
     
     while ($row = $chart_result->fetch_assoc()) {
-        $labels[] = $row['facility_name'];
+        $labels[] = date('M j', strtotime($row['date']));
         $data[] = $row['booking_count'];
     }
     
@@ -83,36 +81,57 @@ if ($report_type === 'usage') {
     $start_date = $month . '-01';
     $end_date = date('Y-m-t', strtotime($start_date));
     
-    // Build query based on facility filter
-    $query = "SELECT f.id, f.name as facility_name, f.capacity,
-              COUNT(b.id) as booking_count,
-              COUNT(CASE WHEN b.status = 'approved' THEN 1 ELSE NULL END) as approved_count,
-              COUNT(CASE WHEN b.status = 'rejected' THEN 1 ELSE NULL END) as rejected_count,
-              COUNT(CASE WHEN b.status = 'cancelled' THEN 1 ELSE NULL END) as cancelled_count
-              FROM gym_facilities f
-              LEFT JOIN gym_bookings b ON f.id = b.facility_id AND b.booking_date BETWEEN ? AND ?";
-    
-    $params = [$start_date, $end_date];
-    $types = "ss";
+    // Since bookings don't have facility_id, we'll show overall gym utilization
+    // Get all gym facilities and show overall booking stats (same for all since we can't distinguish)
+    $facilities_query = "SELECT id, name as facility_name, capacity FROM gym_facilities";
+    $facility_params = [];
+    $facility_types = "";
     
     if ($facility_id > 0) {
-        $query .= " WHERE f.id = ?";
-        $params[] = $facility_id;
-        $types .= "i";
+        $facilities_query .= " WHERE id = ?";
+        $facility_params[] = $facility_id;
+        $facility_types = "i";
     }
     
-    $query .= " GROUP BY f.id, f.name, f.capacity ORDER BY f.name ASC";
+    $facilities_query .= " ORDER BY name ASC";
+    $facility_stmt = $conn->prepare($facilities_query);
+    if (!empty($facility_params)) {
+        $facility_stmt->bind_param($facility_types, ...$facility_params);
+    }
+    $facility_stmt->execute();
+    $facilities_result = $facility_stmt->get_result();
     
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // Get overall booking stats for the period
+    $stats_query = "SELECT 
+              COUNT(*) as booking_count,
+              COUNT(CASE WHEN status = 'confirmed' OR status = 'approved' THEN 1 ELSE NULL END) as approved_count,
+              COUNT(CASE WHEN status = 'rejected' THEN 1 ELSE NULL END) as rejected_count,
+              COUNT(CASE WHEN status = 'cancelled' THEN 1 ELSE NULL END) as cancelled_count
+              FROM bookings 
+              WHERE facility_type = 'gym' AND date BETWEEN ? AND ?";
     
-    while ($row = $result->fetch_assoc()) {
+    $stats_stmt = $conn->prepare($stats_query);
+    $stats_stmt->bind_param("ss", $start_date, $end_date);
+    $stats_stmt->execute();
+    $stats_result = $stats_stmt->get_result();
+    $stats = $stats_result->fetch_assoc();
+    
+    // Assign same stats to all facilities (since we can't distinguish)
+    while ($facility = $facilities_result->fetch_assoc()) {
+        $row = [
+            'id' => $facility['id'],
+            'facility_name' => $facility['facility_name'],
+            'capacity' => $facility['capacity'],
+            'booking_count' => $stats['booking_count'] ?? 0,
+            'approved_count' => $stats['approved_count'] ?? 0,
+            'rejected_count' => $stats['rejected_count'] ?? 0,
+            'cancelled_count' => $stats['cancelled_count'] ?? 0
+        ];
+        
         // Calculate utilization percentage
         $days_in_month = date('t', strtotime($start_date));
         $max_possible_bookings = $days_in_month; // Assuming 1 booking per day
-        $utilization_rate = ($row['approved_count'] / $max_possible_bookings) * 100;
+        $utilization_rate = $max_possible_bookings > 0 ? (($row['approved_count'] / $max_possible_bookings) * 100) : 0;
         
         $row['utilization_rate'] = round($utilization_rate, 2);
         $report_data[] = $row;
@@ -154,22 +173,26 @@ if ($report_type === 'usage') {
             $start_date = date('Y-m-d', strtotime('-1 month'));
     }
     
-    // Build query based on status filter
-    $query = "SELECT b.status, f.name as facility_name, COUNT(*) as booking_count 
-              FROM gym_bookings b 
-              JOIN gym_facilities f ON b.facility_id = f.id 
-              WHERE b.booking_date BETWEEN ? AND ?";
+    // Build query based on status filter - bookings don't have facility_id
+    $query = "SELECT b.status, 'Gymnasium' as facility_name, COUNT(*) as booking_count 
+              FROM bookings b 
+              WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ?";
     
     $params = [$start_date, $end_date];
     $types = "ss";
     
     if (!empty($status)) {
-        $query .= " AND b.status = ?";
-        $params[] = $status;
-        $types .= "s";
+        // Handle both 'approved' and 'confirmed' status
+        if ($status === 'approved') {
+            $query .= " AND (b.status = 'approved' OR b.status = 'confirmed')";
+        } else {
+            $query .= " AND b.status = ?";
+            $params[] = $status;
+            $types .= "s";
+        }
     }
     
-    $query .= " GROUP BY b.status, f.name ORDER BY b.status, f.name";
+    $query .= " GROUP BY b.status ORDER BY b.status";
     
     $stmt = $conn->prepare($query);
     $stmt->bind_param($types, ...$params);
@@ -182,16 +205,20 @@ if ($report_type === 'usage') {
     
     // Prepare chart data
     $status_query = "SELECT b.status, COUNT(*) as count 
-                    FROM gym_bookings b 
-                    WHERE b.booking_date BETWEEN ? AND ?";
+                    FROM bookings b 
+                    WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ?";
     
     $status_params = [$start_date, $end_date];
     $status_types = "ss";
     
     if (!empty($status)) {
-        $status_query .= " AND b.status = ?";
-        $status_params[] = $status;
-        $status_types .= "s";
+        if ($status === 'approved') {
+            $status_query .= " AND (b.status = 'approved' OR b.status = 'confirmed')";
+        } else {
+            $status_query .= " AND b.status = ?";
+            $status_params[] = $status;
+            $status_types .= "s";
+        }
     }
     
     $status_query .= " GROUP BY b.status";
@@ -205,7 +232,12 @@ if ($report_type === 'usage') {
     $data = [];
     
     while ($row = $status_result->fetch_assoc()) {
-        $labels[] = ucfirst($row['status']);
+        $status_label = $row['status'];
+        // Normalize status labels
+        if ($status_label === 'confirmed') {
+            $status_label = 'approved';
+        }
+        $labels[] = ucfirst($status_label);
         $data[] = $row['count'];
     }
     
