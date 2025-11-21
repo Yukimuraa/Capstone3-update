@@ -250,6 +250,8 @@ $user_info = $user_stmt->get_result()->fetch_assoc();
     }
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>
 
 

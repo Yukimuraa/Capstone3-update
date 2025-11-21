@@ -150,19 +150,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     }
 }
 
-// Get student's order history
-$stmt = $conn->prepare("
-    SELECT o.*, i.name as item_name 
-    FROM orders o 
-    JOIN inventory i ON o.inventory_id = i.id 
-    WHERE o.user_id = ? 
-    ORDER BY o.created_at DESC 
-    LIMIT 5
-");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$recent_orders = $stmt->get_result();
-$stmt->close();
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -325,123 +312,6 @@ $stmt->close();
                         </div>
                     </div>
                 </div>
-
-                <!-- Recent Orders -->
-                <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
-                    <div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Recent Orders</h3>
-                            <p class="mt-1 text-sm text-gray-500">Your most recent orders from the Business Affairs Office.</p>
-                        </div>
-                        <a href="orders.php" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
-                            View All Orders
-                        </a>
-                    </div>
-                    
-                    <div class="overflow-x-auto">
-                        <?php if ($recent_orders->num_rows > 0): ?>
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    <?php while ($order = $recent_orders->fetch_assoc()): ?>
-                                        <tr>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                <?php echo $order['order_id']; ?>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                <?php echo $order['item_name']; ?>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                <?php echo $order['quantity']; ?>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                                                ₱<?php echo number_format($order['total_price'], 2); ?>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <?php if ($order['status'] == 'pending'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                                        Pending
-                                                    </span>
-                                                <?php elseif ($order['status'] == 'approved'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                                        Ready for Pickup
-                                                    </span>
-                                                <?php elseif ($order['status'] == 'completed'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                                        Completed
-                                                    </span>
-                                                <?php else: ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                                        Rejected
-                                                    </span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                <?php echo format_date($order['created_at']); ?>
-                                            </td>
-                                        </tr>
-                                    <?php endwhile; ?>
-                                </tbody>
-                            </table>
-                        <?php else: ?>
-                            <div class="text-center py-8">
-                                <i class="fas fa-shopping-cart text-gray-400 text-4xl mb-2"></i>
-                                <p class="text-gray-500 mb-4">You haven't placed any orders yet.</p>
-                                <a href="inventory.php" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
-                                    Browse Items
-                                </a>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Account Security -->
-                <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
-                    <div class="px-4 py-5 border-b border-gray-200 sm:px-6">
-                        <h3 class="text-lg font-medium text-gray-900">Account Security</h3>
-                        <p class="mt-1 text-sm text-gray-500">Tips to keep your account secure.</p>
-                    </div>
-                    <div class="p-6">
-                        <div class="space-y-4">
-                            <div class="flex items-start">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-shield-alt text-emerald-500 mt-1"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <h4 class="text-sm font-medium text-gray-900">Use a strong password</h4>
-                                    <p class="text-sm text-gray-500">Create a unique password with a mix of letters, numbers, and symbols.</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-user-lock text-emerald-500 mt-1"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <h4 class="text-sm font-medium text-gray-900">Keep your login information private</h4>
-                                    <p class="text-sm text-gray-500">Never share your password or account details with others.</p>
-                                </div>
-                            </div>
-                            <div class="flex items-start">
-                                <div class="flex-shrink-0">
-                                    <i class="fas fa-sign-out-alt text-emerald-500 mt-1"></i>
-                                </div>
-                                <div class="ml-3">
-                                    <h4 class="text-sm font-medium text-gray-900">Log out from shared devices</h4>
-                                    <p class="text-sm text-gray-500">Always log out when using public or shared computers.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </main>
     </div>
@@ -454,4 +324,6 @@ $stmt->close();
     });
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

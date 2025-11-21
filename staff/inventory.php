@@ -539,4 +539,6 @@ $low_stock = $conn->query($low_stock_query);
     }
 </script>
 
-<?php include '../includes/footer.php'; ?> 
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html> 

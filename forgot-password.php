@@ -165,8 +165,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     <?php endif; ?>
                 </div>
-            <?php endif; ?>
-
+                <div class="text-center mt-6">
+                    <p class="text-gray-600 mb-4">
+                        Remember your password? 
+                        <a href="login.php" class="text-blue-600 hover:underline">Back to Login</a>
+                    </p>
+                </div>
+            <?php else: ?>
             <form action="forgot-password.php" method="POST">
                 <div class="mb-4">
                     <label for="user_type" class="block text-gray-700 font-medium mb-2">User Type</label>
@@ -202,6 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </p>
                 </div>
             </form>
+            <?php endif; ?>
         </div>
     </div>
 </body>

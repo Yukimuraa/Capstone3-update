@@ -159,6 +159,8 @@ arsort($svc); $top_service = key($svc);
 	window.onafterprint = function() { document.querySelectorAll('button').forEach(function(el){ el.style.display=''; }); };
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>
 
 

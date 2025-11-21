@@ -25,6 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $organization = sanitize_input($_POST['organization']);
             $contact_person = sanitize_input($_POST['contact_person']);
             $contact_number = sanitize_input($_POST['contact_number']);
+            $equipment = isset($_POST['equipment']) ? sanitize_input($_POST['equipment']) : '';
+            $chair_pairs = isset($_POST['chair_pairs']) ? intval($_POST['chair_pairs']) : 0;
             
             // Normalize times to HH:MM:SS format for proper comparison
             $start_time = trim($start_time);
@@ -77,12 +79,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($check_result->num_rows > 0) {
                     $error_message = "The gymnasium is already booked for this time slot.";
                 } else {
+					// Calculate hours first
+					$start_datetime = new DateTime($date . ' ' . $start_time);
+					$end_datetime = new DateTime($date . ' ' . $end_time);
+					$duration = $start_datetime->diff($end_datetime);
+					$hours = $duration->h + ($duration->i / 60); // Convert minutes to decimal
+					
+					// Base gymnasium cost: 700 per hour
+					$gym_cost = $hours * 700;
+					
+					// Equipment costs
+					$sound_system_cost = 0;
+					$electricity_cost = 0;
+					$led_wall_cost = 0;
+					$chairs_cost = 0;
+					
+					if (strpos($equipment, 'Sound System') !== false) {
+						$sound_system_cost = 150; // One-time fee
+					}
+					if (strpos($equipment, 'Electricity') !== false) {
+						$electricity_cost = $hours * 150; // Per hour
+					}
+					if (strpos($equipment, 'LED WALL') !== false) {
+						$led_wall_cost = $hours * 200; // Per hour
+					}
+					if (strpos($equipment, 'Chairs') !== false) {
+						// Calculate cost based on individual chairs
+						$chairs_cost = max(0, $chair_pairs) * 20; // ₱20 per individual chair
+						$number_of_pairs = 0; // Not used anymore, but keep for compatibility
+					} else {
+						$number_of_pairs = 0;
+					}
+					
+					$total_cost = $gym_cost + $sound_system_cost + $electricity_cost + $led_wall_cost + $chairs_cost;
+					
 					// Generate a collision-resistant booking ID and retry on duplicates
 					$year = date('Y');
 					$additional_info = json_encode([
 						'organization' => $organization,
 						'contact_person' => $contact_person,
-						'contact_number' => $contact_number
+						'contact_number' => $contact_number,
+						'equipment' => $equipment,
+						'cost_breakdown' => [
+							'gymnasium' => $gym_cost,
+							'sound_system' => $sound_system_cost,
+							'electricity' => $electricity_cost,
+							'led_wall' => $led_wall_cost,
+							'chairs' => $chairs_cost,
+							'total' => $total_cost,
+							'hours' => round($hours, 2)
+						]
 					]);
 					
 					$attempts = 0;
@@ -109,7 +155,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 						try {
 							if ($stmt->execute()) {
 								$success = true;
+								// Store booking details for receipt display
+								$_SESSION['booking_receipt'] = [
+									'booking_id' => $booking_id,
+									'date' => $date,
+									'start_time' => $start_time,
+									'end_time' => $end_time,
+									'purpose' => $purpose,
+									'attendees' => $attendees,
+									'organization' => $organization,
+									'contact_person' => $contact_person,
+									'contact_number' => $contact_number,
+									'equipment' => $equipment,
+									'hours' => round($hours, 2),
+									'chairs_pairs' => isset($number_of_pairs) ? $number_of_pairs : 0,
+									'chairs_count' => $chair_pairs,
+									'cost_breakdown' => [
+										'gymnasium' => $gym_cost,
+										'sound_system' => $sound_system_cost,
+										'electricity' => $electricity_cost,
+										'led_wall' => $led_wall_cost,
+										'chairs' => $chairs_cost,
+										'total' => $total_cost
+									]
+								];
 								$success_message = "Your gymnasium booking request has been submitted successfully. Booking ID: " . $booking_id;
+								// Redirect to show receipt
+								header("Location: gym.php?show_receipt=1");
+								exit();
 							}
 						} catch (mysqli_sql_exception $e) {
 							// Duplicate key, retry by recomputing next sequence
@@ -254,6 +327,17 @@ $bookings_result = $bookings_stmt->get_result();
                                 <li>Any damages to the facility will be charged to the Reservation organization.</li>
                                 <li>For inquiries, please contact the BAO office at (034) 123-4567.</li>
                             </ul>
+                            
+                            <div class="mt-6 pt-4 border-t border-gray-200">
+                                <h4 class="font-semibold text-gray-800 mb-3">Pricing Information</h4>
+                                <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Gymnasium:</strong> ₱700 per hour</li>
+                                    <li><strong>Sound System:</strong> ₱150 (one-time fee)</li>
+                                    <li><strong>Electricity:</strong> ₱150 per hour</li>
+                                    <li><strong>LED WALL Electricity:</strong> ₱200 per hour</li>
+                                    <li><strong>Chairs:</strong> ₱20 per chair</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -345,9 +429,36 @@ $bookings_result = $bookings_stmt->get_result();
     </div>
 </div>
 
+<!-- Reminder Modal -->
+<div id="reminderModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">
+                <i class="fas fa-exclamation-circle text-amber-500 mr-2"></i>Important Reminder
+            </h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeReminderModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="mb-6">
+            <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded">
+                <p class="text-gray-700 font-medium">
+                    <i class="fas fa-info-circle text-amber-500 mr-2"></i>
+                    Please ensure that the letter from the president is completed before making a booking.
+                </p>
+            </div>
+        </div>
+        <div class="flex justify-end">
+            <button type="button" class="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="proceedToBooking()">
+                I Understand, Continue
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Booking Modal -->
 <div id="bookingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium text-gray-900">Reservation Gymnasium</h3>
             <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeBookingModal()">
@@ -373,7 +484,7 @@ $bookings_result = $bookings_stmt->get_result();
             </div>
             <div class="mb-4">
                 <label for="purpose" class="block text-sm font-medium text-gray-700 mb-1">Purpose/Event Type</label>
-                <select id="purpose" name="purpose" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                <select id="purpose" name="purpose" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50" onchange="toggleEquipmentDropdown()">
                     <option value="">Select event type</option>
                     <option value="Graduation Ceremony">Graduation Ceremony</option>
                     <option value="Sports Tournament">Sports Tournament</option>
@@ -382,6 +493,33 @@ $bookings_result = $bookings_stmt->get_result();
                     <option value="School Program">School Program</option>
                     <option value="Other">Other</option>
                 </select>
+            </div>
+            <div class="mb-4" id="equipmentDropdown" style="display: none;">
+                <label for="equipment" class="block text-sm font-medium text-gray-700 mb-1">Equipment/Services Needed</label>
+                <select id="equipment" name="equipment" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50" onchange="toggleChairPairsField()">
+                    <option value="">Select equipment/service</option>
+                    <option value="Sound System">Sound System</option>
+                    <option value="Electricity">Electricity</option>
+                    <option value="LED WALL">LED WALL</option>
+                    <option value="Chairs">Chairs</option>
+                    <option value="Sound System + Electricity">Sound System + Electricity</option>
+                    <option value="Sound System + LED WALL">Sound System + LED WALL</option>
+                    <option value="Sound System + Chairs">Sound System + Chairs</option>
+                    <option value="Electricity + LED WALL">Electricity + LED WALL</option>
+                    <option value="Electricity + Chairs">Electricity + Chairs</option>
+                    <option value="LED WALL + Chairs">LED WALL + Chairs</option>
+                    <option value="Sound System + Electricity + LED WALL">Sound System + Electricity + LED WALL</option>
+                    <option value="Sound System + Electricity + Chairs">Sound System + Electricity + Chairs</option>
+                    <option value="Sound System + LED WALL + Chairs">Sound System + LED WALL + Chairs</option>
+                    <option value="Electricity + LED WALL + Chairs">Electricity + LED WALL + Chairs</option>
+                    <option value="Sound System + Electricity + LED WALL + Chairs">Sound System + Electricity + LED WALL + Chairs</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Select the equipment or services you need for your event</p>
+            </div>
+            <div class="mb-4" id="chairPairsField" style="display: none;">
+                <label for="chair_pairs" class="block text-sm font-medium text-gray-700 mb-1">Number of Chairs</label>
+                <input type="number" id="chair_pairs" name="chair_pairs" min="0" value="0" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                <p class="mt-1 text-xs text-gray-500">Enter the number of individual chairs needed (₱20 per chair)</p>
             </div>
             <div class="mb-4">
                 <label for="attendees" class="block text-sm font-medium text-gray-700 mb-1">Expected Number of Attendees</label>
@@ -411,6 +549,145 @@ $bookings_result = $bookings_stmt->get_result();
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Receipt Modal -->
+<div id="receiptModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-900">
+                <i class="fas fa-receipt text-green-500 mr-2"></i>Booking Receipt
+            </h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeReceiptModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <?php if (isset($_SESSION['booking_receipt'])): 
+            $receipt = $_SESSION['booking_receipt'];
+            $costs = $receipt['cost_breakdown'];
+        ?>
+        <div class="space-y-4">
+            <!-- Booking Information -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3">Booking Information</h4>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-gray-600">Booking ID:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['booking_id']; ?></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Date:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo date('F j, Y', strtotime($receipt['date'])); ?></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Time:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo date('h:i A', strtotime($receipt['start_time'])); ?> - <?php echo date('h:i A', strtotime($receipt['end_time'])); ?></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Duration:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['hours']; ?> hours</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Purpose:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['purpose']; ?></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Attendees:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['attendees']; ?></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Organization Information -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3">Organization Information</h4>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-gray-600">Organization:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['organization']; ?></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-600">Contact Person:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['contact_person']; ?></span>
+                    </div>
+                    <div class="col-span-2">
+                        <span class="text-gray-600">Contact Number:</span>
+                        <span class="font-medium text-gray-900 ml-2"><?php echo $receipt['contact_number']; ?></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Equipment -->
+            <?php if (!empty($receipt['equipment'])): ?>
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3">Equipment/Services</h4>
+                <p class="text-sm text-gray-900"><?php echo $receipt['equipment']; ?></p>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Cost Breakdown -->
+            <div class="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                <h4 class="font-semibold text-gray-800 mb-4">Cost Breakdown</h4>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">Gymnasium (₱700/hour × <?php echo $receipt['hours']; ?> hrs):</span>
+                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['gymnasium'], 2); ?></span>
+                    </div>
+                    <?php if ($costs['sound_system'] > 0): ?>
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">Sound System:</span>
+                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['sound_system'], 2); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($costs['electricity'] > 0): ?>
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">Electricity (₱150/hour × <?php echo $receipt['hours']; ?> hrs):</span>
+                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['electricity'], 2); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($costs['led_wall'] > 0): ?>
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">LED WALL Electricity (₱200/hour × <?php echo $receipt['hours']; ?> hrs):</span>
+                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['led_wall'], 2); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($costs['chairs'] > 0): 
+                        $chairs_count = isset($receipt['chairs_count']) ? $receipt['chairs_count'] : 0;
+                    ?>
+                    <div class="flex justify-between">
+                        <span class="text-gray-700">Chairs (<?php echo $chairs_count; ?> chairs × ₱20):</span>
+                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['chairs'], 2); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <div class="border-t-2 border-blue-300 pt-2 mt-2">
+                        <div class="flex justify-between">
+                            <span class="font-bold text-lg text-gray-900">Total Amount:</span>
+                            <span class="font-bold text-lg text-green-600">₱<?php echo number_format($costs['total'], 2); ?></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Status Note -->
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+                <p class="text-sm text-yellow-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> This booking is pending approval. You will be notified once the booking is confirmed.
+                </p>
+            </div>
+        </div>
+        
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="bg-gray-200 text-gray-700 py-2 px-6 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="printReceipt()">
+                <i class="fas fa-print mr-2"></i>Print Receipt
+            </button>
+            <button type="button" class="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="closeReceiptModal()">
+                Close
+            </button>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -452,6 +729,10 @@ $bookings_result = $bookings_stmt->get_result();
                 <h4 class="text-sm font-medium text-gray-500">Contact Number</h4>
                 <p id="detail-contact-number" class="mt-1 text-sm text-gray-900"></p>
             </div>
+            <div id="detail-equipment-container">
+                <h4 class="text-sm font-medium text-gray-500">Equipment/Services</h4>
+                <p id="detail-equipment" class="mt-1 text-sm text-gray-900"></p>
+            </div>
             <div>
                 <h4 class="text-sm font-medium text-gray-500">Status</h4>
                 <p id="detail-status" class="mt-1 text-sm"></p>
@@ -478,13 +759,98 @@ $bookings_result = $bookings_stmt->get_result();
         document.getElementById('sidebar').classList.toggle('-translate-x-full');
     });
     
-    // Booking modal functions
-    function openBookingModal() {
+    // Toggle equipment dropdown when event type is selected
+    function toggleEquipmentDropdown() {
+        const purposeSelect = document.getElementById('purpose');
+        const equipmentDropdown = document.getElementById('equipmentDropdown');
+        
+        if (purposeSelect.value !== '') {
+            equipmentDropdown.style.display = 'block';
+        } else {
+            equipmentDropdown.style.display = 'none';
+            // Also hide chair pairs field if equipment dropdown is hidden
+            document.getElementById('chairPairsField').style.display = 'none';
+        }
+        // Check if chairs field should be shown
+        toggleChairPairsField();
+    }
+    
+    // Toggle chair pairs field when Chairs is selected in equipment
+    function toggleChairPairsField() {
+        const equipmentSelect = document.getElementById('equipment');
+        const chairPairsField = document.getElementById('chairPairsField');
+        
+        if (equipmentSelect && equipmentSelect.value && equipmentSelect.value.includes('Chairs')) {
+            chairPairsField.style.display = 'block';
+        } else {
+            chairPairsField.style.display = 'none';
+            // Reset the value when hidden
+            if (document.getElementById('chair_pairs')) {
+                document.getElementById('chair_pairs').value = 0;
+            }
+        }
+    }
+    
+    // Reminder modal functions
+    let pendingBookingAction = null;
+    let isNavigationReminder = false; // Track if reminder is for navigation or booking
+    
+    // Global function to show reminder modal from sidebar
+    function showGymReminderModal() {
+        isNavigationReminder = true;
+        document.getElementById('reminderModal').classList.remove('hidden');
+    }
+    
+    function openReminderModal() {
+        isNavigationReminder = false;
+        document.getElementById('reminderModal').classList.remove('hidden');
+    }
+    
+    function closeReminderModal() {
+        document.getElementById('reminderModal').classList.add('hidden');
+        isNavigationReminder = false;
+    }
+    
+    function proceedToBooking() {
+        closeReminderModal();
+        
+        // If this is a navigation reminder, just close the modal (we're already on gym.php)
+        if (isNavigationReminder) {
+            // Scroll to top of page to show the booking calendar
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+        
+        // If there was a pending action (like setting times), execute it
+        if (pendingBookingAction) {
+            if (pendingBookingAction.startTime && pendingBookingAction.endTime) {
+                document.getElementById('start_time').value = pendingBookingAction.startTime;
+                document.getElementById('end_time').value = pendingBookingAction.endTime;
+            }
+            pendingBookingAction = null;
+        }
         document.getElementById('bookingModal').classList.remove('hidden');
+    }
+    
+    // Booking modal functions
+    function openBookingModal(startTime = null, endTime = null) {
+        // Store the times if provided
+        if (startTime && endTime) {
+            pendingBookingAction = { startTime: startTime, endTime: endTime };
+        }
+        // Show reminder modal first
+        openReminderModal();
     }
     
     function closeBookingModal() {
         document.getElementById('bookingModal').classList.add('hidden');
+        pendingBookingAction = null;
+        // Reset form fields
+        document.getElementById('purpose').value = '';
+        document.getElementById('equipment').value = '';
+        document.getElementById('equipmentDropdown').style.display = 'none';
+        document.getElementById('chairPairsField').style.display = 'none';
+        document.getElementById('chair_pairs').value = 0;
     }
     
     // Details modal functions
@@ -498,6 +864,17 @@ $bookings_result = $bookings_stmt->get_result();
         document.getElementById('detail-organization').textContent = additionalInfo.organization;
         document.getElementById('detail-contact-person').textContent = additionalInfo.contact_person;
         document.getElementById('detail-contact-number').textContent = additionalInfo.contact_number;
+        
+        // Display equipment information
+        const equipmentContainer = document.getElementById('detail-equipment-container');
+        const equipmentElement = document.getElementById('detail-equipment');
+        if (additionalInfo.equipment && additionalInfo.equipment !== '') {
+            equipmentElement.textContent = additionalInfo.equipment;
+            equipmentContainer.style.display = 'block';
+        } else {
+            equipmentElement.textContent = 'None selected';
+            equipmentContainer.style.display = 'block';
+        }
         
         // Set status with appropriate styling
         const statusElement = document.getElementById('detail-status');
@@ -540,6 +917,30 @@ $bookings_result = $bookings_stmt->get_result();
         document.getElementById('detailsModal').classList.add('hidden');
     }
     
+    // Receipt modal functions
+    function closeReceiptModal() {
+        document.getElementById('receiptModal').classList.add('hidden');
+        // Clear the receipt from session by reloading without the parameter
+        if (window.location.search.includes('show_receipt=1')) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+    
+    function printReceipt() {
+        // Get receipt data from the modal
+        <?php if (isset($_SESSION['booking_receipt'])): ?>
+        const bookingId = '<?php echo $_SESSION['booking_receipt']['booking_id']; ?>';
+        if (bookingId) {
+            // Open print receipt page in new window
+            window.open('print_gym_receipt.php?booking_id=' + bookingId, '_blank');
+        } else {
+            alert('Receipt data not available');
+        }
+        <?php else: ?>
+        alert('Receipt data not available');
+        <?php endif; ?>
+    }
+    
     // Helper functions
     function formatDate(dateString) {
         const options = { year: 'numeric', month: 'long', day: 'numeric' };
@@ -556,6 +957,12 @@ $bookings_result = $bookings_stmt->get_result();
     
     // Initialize calendar
     document.addEventListener('DOMContentLoaded', function() {
+        // Show receipt modal if needed
+        <?php if (isset($_GET['show_receipt']) && isset($_SESSION['booking_receipt'])): ?>
+        setTimeout(function() {
+            document.getElementById('receiptModal').classList.remove('hidden');
+        }, 500);
+        <?php endif; ?>
         // Initialize flatpickr calendar (do not disable entire dates)
         flatpickr("#booking-calendar", {
             inline: true,
@@ -679,9 +1086,7 @@ $bookings_result = $bookings_stmt->get_result();
                                     `;
                                     btn.className = btnClass;
                                     btn.addEventListener('click', () => {
-                                        document.getElementById('start_time').value = s.start.slice(0,5);
-                                        document.getElementById('end_time').value = s.end.slice(0,5);
-                                        openBookingModal();
+                                        openBookingModal(s.start.slice(0,5), s.end.slice(0,5));
                                     });
                                     sessionsDiv.appendChild(btn);
                                 });
@@ -756,9 +1161,7 @@ $bookings_result = $bookings_stmt->get_result();
                                             </div>
                                         `;
                                         btn.addEventListener('click', () => {
-                                            document.getElementById('start_time').value = w.start.slice(0,5);
-                                            document.getElementById('end_time').value = w.end.slice(0,5);
-                                            openBookingModal();
+                                            openBookingModal(w.start.slice(0,5), w.end.slice(0,5));
                                         });
                                         sessionsDiv.appendChild(btn);
                                     }
@@ -836,4 +1239,6 @@ $bookings_result = $bookings_stmt->get_result();
     });
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

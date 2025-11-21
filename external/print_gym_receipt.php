@@ -3,66 +3,66 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
-// Check if user is admin
-require_admin();
+// Check if user is external
+require_external();
 
-$page_title = "Print Batch Receipt - CHMSU BAO";
+$page_title = "Print Gym Booking Receipt - CHMSU BAO";
 $base_url = "..";
 
-// Get batch ID
-if (!isset($_GET['batch_id'])) {
-    header("Location: orders.php");
+// Get booking ID
+if (!isset($_GET['booking_id'])) {
+    header("Location: gym.php");
     exit();
 }
 
-$batch_id = sanitize_input($_GET['batch_id']);
+$booking_id = sanitize_input($_GET['booking_id']);
+$user_id = $_SESSION['user_id'];
 
-// Get all orders in this batch
-$stmt = $conn->prepare("SELECT o.*, i.name as item_name, i.description, u.name as customer_name, u.email as customer_email
-                        FROM orders o
-                        JOIN inventory i ON o.inventory_id = i.id
-                        JOIN user_accounts u ON o.user_id = u.id
-                        WHERE o.batch_id = ?
-                        ORDER BY o.id ASC");
-$stmt->bind_param("s", $batch_id);
+// Get booking details (only for current user)
+$stmt = $conn->prepare("SELECT b.*, u.name as user_name, u.email as user_email, u.organization 
+                        FROM bookings b
+                        JOIN user_accounts u ON b.user_id = u.id
+                        WHERE b.booking_id = ? AND b.facility_type = 'gym' AND b.user_id = ?");
+$stmt->bind_param("si", $booking_id, $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
 
-$orders = [];
-$total_amount = 0;
-$customer_name = '';
-$customer_email = '';
-$order_date = '';
-
-while ($row = $result->fetch_assoc()) {
-    $orders[] = $row;
-    $total_amount += $row['total_price'];
-    if (empty($customer_name)) {
-        $customer_name = $row['customer_name'];
-        $customer_email = $row['customer_email'];
-        $order_date = $row['created_at'];
-    }
-}
-
-if (count($orders) === 0) {
-    header("Location: orders.php");
+if ($result->num_rows === 0) {
+    header("Location: gym.php");
     exit();
 }
 
-// Generate control number (using batch_id)
-$control_no = $batch_id;
-$order_date_formatted = date('F j, Y', strtotime($order_date));
-$order_time = date('g:i A', strtotime($order_date));
+$booking = $result->fetch_assoc();
+
+// Parse additional_info JSON
+$additional_info = [];
+if (!empty($booking['additional_info'])) {
+    $additional_info = json_decode($booking['additional_info'], true);
+}
+
+// Extract cost breakdown
+$cost_breakdown = isset($additional_info['cost_breakdown']) ? $additional_info['cost_breakdown'] : [];
+$total_cost = isset($cost_breakdown['total']) ? $cost_breakdown['total'] : 0;
+
+// Generate control number (using booking_id)
+$control_no = $booking_id;
+$booking_date_formatted = date('F j, Y', strtotime($booking['date']));
+$booking_time = date('g:i A', strtotime($booking['start_time'])) . ' - ' . date('g:i A', strtotime($booking['end_time']));
 
 // Generate official receipt number
-$receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
+$receipt_no = 'OR-GYM-' . date('Ymd') . '-' . substr($booking_id, -6);
+
+// Calculate hours
+$start = new DateTime($booking['start_time']);
+$end = new DateTime($booking['end_time']);
+$hours = $start->diff($end)->h + ($start->diff($end)->i / 60);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORDER OF PAYMENT - <?php echo $batch_id; ?></title>
+    <title>ORDER OF PAYMENT - <?php echo $booking_id; ?></title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         @page { 
@@ -95,26 +95,16 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
             width: 100%;
         }
         .copy {
-            border-top: 1px solid #ddd;
-            border-bottom: 1px solid #ddd;
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
             padding: 4mm 6mm;
             position: relative;
             width: 100%;
             display: flex;
             flex-direction: column;
-            height: calc((100% - 4px) / 3);
+            height: 100%;
             box-sizing: border-box;
             flex-shrink: 0;
-        }
-        .copy:first-child {
-            border-top: 2px solid #000;
-        }
-        .copy:last-child {
-            border-bottom: 2px solid #000;
-        }
-        .copy:not(:first-child):not(:last-child) {
-            border-top: 1px dashed #999;
-            border-bottom: 1px dashed #999;
         }
         
         /* Header Section - All in one row */
@@ -384,18 +374,9 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
                 gap: 0;
             }
             .copy {
-                border-top: 1px solid #000;
-                border-bottom: 1px solid #000;
-            }
-            .copy:first-child {
                 border-top: 2px solid #000;
-            }
-            .copy:last-child {
                 border-bottom: 2px solid #000;
-            }
-            .copy:not(:first-child):not(:last-child) {
-                border-top: 1px dashed #000;
-                border-bottom: 1px dashed #000;
+                height: 100%;
             }
             @page {
                 size: A4 portrait;
@@ -415,8 +396,8 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
 </head>
 <body>
     <div class="no-print">
-        <button class="print-button" onclick="window.location.href='orders.php'">
-            ← Back to Orders
+        <button class="print-button" onclick="window.location.href='gym.php'">
+            ← Back to Gym Reservations
         </button>
         <button class="print-button" onclick="window.print()">
             🖨️ Print Receipt
@@ -426,15 +407,14 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
     <div class="page">
         <div class="copies-container">
             <?php 
+            // Only show Customer's Copy for external users
             $copies = [
-                ['name' => "Business Affairs Office's Copy", 'class' => ''],
-                ['name' => "Cashier's Copy", 'class' => ''],
                 ['name' => "Customer's Copy", 'class' => '']
             ];
             
             foreach ($copies as $copy): 
             ?>
-            <div class="copy">
+            <div class="copy" style="height: 100%;">
                 <!-- Header Section - All in one row -->
                 <div class="header-top">
                     <div class="logo">
@@ -451,55 +431,98 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
                         <div class="copy-label-top"><?php echo $copy['name']; ?></div>
                         <div class="status-box">
                             <div style="font-weight: bold; margin-bottom: 2px;">STATUS</div>
-                            <div class="status-stamp">CONFIRMED</div>
+                            <div class="status-stamp"><?php echo strtoupper($booking['status']); ?></div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Form Fields Section -->
                 <div class="form-section">
-                        <div class="form-left">
+                    <div class="form-left">
                         <div class="form-field">
                             <span class="form-label">Control No.:</span>
                             <span class="form-value"><?php echo htmlspecialchars($control_no); ?></span>
                         </div>
                         <div class="form-field">
                             <span class="form-label">Date:</span>
-                            <span class="form-value"><?php echo $order_date_formatted; ?></span>
+                            <span class="form-value"><?php echo $booking_date_formatted; ?></span>
                         </div>
                     </div>
                     <div class="form-middle">
                         <div class="form-field">
                             <span class="form-label">Payor:</span>
-                            <span class="form-value"><?php echo htmlspecialchars($customer_name); ?></span>
+                            <span class="form-value"><?php echo htmlspecialchars($booking['user_name']); ?></span>
                         </div>
                         <div style="margin-top: 4px;">
                             <div style="font-weight: bold; font-size: 7pt; margin-bottom: 2px;">NATURE OF PAYMENT</div>
                             <div class="form-value-large">
                                 <?php 
                                 $payment_nature = [];
-                                foreach ($orders as $order) {
-                        $item_desc = htmlspecialchars($order['item_name']);
-                        if (!empty($order['size'])) {
-                            $item_desc .= ' (Size: ' . htmlspecialchars($order['size']) . ')';
-                        }
-                                    $payment_nature[] = $order['quantity'] . 'x ' . $item_desc;
-                        }
+                                $payment_nature[] = "Gymnasium Reservation";
+                                $payment_nature[] = "Date: " . $booking_date_formatted;
+                                $payment_nature[] = "Time: " . $booking_time;
+                                $payment_nature[] = "Duration: " . number_format($hours, 2) . " hours";
+                                $payment_nature[] = "Purpose: " . htmlspecialchars($booking['purpose']);
+                                $payment_nature[] = "Attendees: " . $booking['attendees'];
+                                if (!empty($additional_info['equipment'])) {
+                                    $payment_nature[] = "Equipment: " . htmlspecialchars($additional_info['equipment']);
+                                }
+                                if (!empty($additional_info['organization'])) {
+                                    $payment_nature[] = "Organization: " . htmlspecialchars($additional_info['organization']);
+                                }
                                 echo implode("\n", $payment_nature);
-                    ?>
+                                ?>
                             </div>
                         </div>
                     </div>
                     <div class="form-right">
                         <div style="font-weight: bold; font-size: 7pt; margin-bottom: 2px; text-align: center;">AMOUNT</div>
                         <div style="display: flex; flex-direction: column; gap: 2px;">
-                            <?php foreach ($orders as $order): ?>
-                            <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
-                            ₱<?php echo number_format($order['total_price'], 2); ?>
-                            </div>
-                            <?php endforeach; ?>
+                            <?php if (!empty($cost_breakdown)): ?>
+                                <?php if ($cost_breakdown['gymnasium'] > 0): ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($cost_breakdown['gymnasium'], 2); ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php if (isset($cost_breakdown['sound_system']) && $cost_breakdown['sound_system'] > 0): ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($cost_breakdown['sound_system'], 2); ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php if (isset($cost_breakdown['electricity']) && $cost_breakdown['electricity'] > 0): ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($cost_breakdown['electricity'], 2); ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php if (isset($cost_breakdown['led_wall']) && $cost_breakdown['led_wall'] > 0): ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($cost_breakdown['led_wall'], 2); ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php if (isset($cost_breakdown['chairs']) && $cost_breakdown['chairs'] > 0): ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($cost_breakdown['chairs'], 2); ?>
+                                </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                                    ₱<?php echo number_format($total_cost, 2); ?>
+                                </div>
+                            <?php endif; ?>
                             <!-- Fill remaining space -->
-                            <?php for ($i = count($orders); $i < 3; $i++): ?>
+                            <?php 
+                            $item_count = 0;
+                            if (!empty($cost_breakdown)) {
+                                if ($cost_breakdown['gymnasium'] > 0) $item_count++;
+                                if (isset($cost_breakdown['sound_system']) && $cost_breakdown['sound_system'] > 0) $item_count++;
+                                if (isset($cost_breakdown['electricity']) && $cost_breakdown['electricity'] > 0) $item_count++;
+                                if (isset($cost_breakdown['led_wall']) && $cost_breakdown['led_wall'] > 0) $item_count++;
+                                if (isset($cost_breakdown['chairs']) && $cost_breakdown['chairs'] > 0) $item_count++;
+                            } else {
+                                $item_count = 1;
+                            }
+                            for ($i = $item_count; $i < 3; $i++): 
+                            ?>
                             <div style="border-bottom: 1px solid #000; padding: 2px 3px; min-height: 14px;"></div>
                             <?php endfor; ?>
                         </div>
@@ -507,8 +530,8 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
                 </div>
                     
                 <!-- Total -->
-                    <div class="total-box">
-                        TOTAL: ₱<?php echo number_format($total_amount, 2); ?>
+                <div class="total-box">
+                    TOTAL: ₱<?php echo number_format($total_cost, 2); ?>
                 </div>
 
                 <!-- Receipt Info Section -->
@@ -519,30 +542,30 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
                     </div>
                     <div class="receipt-field">
                         <span class="receipt-label">Date:</span>
-                        <span class="receipt-value"><?php echo $order_date_formatted; ?></span>
+                        <span class="receipt-value"><?php echo $booking_date_formatted; ?></span>
                     </div>
                     <div class="receipt-field">
                         <span class="receipt-label">Amount:</span>
-                        <span class="receipt-value">₱<?php echo number_format($total_amount, 2); ?></span>
+                        <span class="receipt-value">₱<?php echo number_format($total_cost, 2); ?></span>
                     </div>
                 </div>
 
                 <!-- Bottom Section - Signatures Aligned -->
                 <div class="bottom-section">
-                <div class="signature-section">
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Issued by:</div>
-                        <div class="signature-role">Business Affairs Clerk</div>
-                    </div>
+                    <div class="signature-section">
+                        <div class="signature-box">
+                            <div class="signature-line"></div>
+                            <div class="signature-label">Issued by:</div>
+                            <div class="signature-role">Business Affairs Clerk</div>
+                        </div>
                     </div>
                     <div class="signature-section">
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Payment Received by:</div>
-                        <div class="signature-role">Cashier Clerk</div>
+                        <div class="signature-box">
+                            <div class="signature-line"></div>
+                            <div class="signature-label">Payment Received by:</div>
+                            <div class="signature-role">Cashier Clerk</div>
+                        </div>
                     </div>
-                </div>
                 </div>
             </div>
             <?php endforeach; ?>
@@ -557,3 +580,4 @@ $receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
     </script>
 </body>
 </html>
+

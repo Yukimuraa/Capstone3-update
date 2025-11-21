@@ -410,6 +410,39 @@ $total_buses_count = $all_buses->num_rows;
 
 include '../includes/header.php';
 ?>
+<style>
+    /* Make sidebar not scrollable in bus.php - override all overflow classes */
+    #sidebar {
+        overflow: hidden !important;
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+    /* Target nav element with highest specificity */
+    #sidebar nav,
+    #sidebar nav.overflow-y-auto,
+    div#sidebar nav.overflow-y-auto {
+        overflow: hidden !important;
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+    /* Ensure the sidebar container itself doesn't scroll */
+    .flex.min-h-screen > #sidebar,
+    div.flex.min-h-screen > div#sidebar {
+        overflow: hidden !important;
+    }
+</style>
+<script>
+    // Force remove overflow-y-auto class from sidebar nav when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        const sidebarNav = document.querySelector('#sidebar nav');
+        if (sidebarNav) {
+            sidebarNav.classList.remove('overflow-y-auto');
+            sidebarNav.style.overflow = 'hidden';
+            sidebarNav.style.overflowY = 'hidden';
+            sidebarNav.style.overflowX = 'hidden';
+        }
+    });
+</script>
 <div class="flex min-h-screen">
     <?php include '../includes/admin_sidebar.php'; ?>
     <main class="flex-1 p-8 bg-gray-100">
@@ -682,7 +715,7 @@ include '../includes/header.php';
                                                 </button>
                                             <?php endif; ?>
                                             <?php if ($row['total_amount']): ?>
-                                                <a href="../student/print_bus_receipt.php?id=<?php echo $row['id']; ?>" 
+                                                <a href="print_bus_receipt.php?id=<?php echo $row['id']; ?>" 
                                                    target="_blank" class="text-blue-600 hover:text-blue-900">
                                                     <i class="fas fa-print"></i>
                                                 </a>
@@ -1305,4 +1338,6 @@ document.addEventListener('keydown', function(event) {
 });
 </script>
 
-<?php include '../includes/footer.php'; ?> 
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html> 

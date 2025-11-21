@@ -249,4 +249,6 @@ $upcoming_bookings_result = $conn->query($upcoming_bookings_query);
     });
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

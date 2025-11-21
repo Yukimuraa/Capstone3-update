@@ -60,15 +60,29 @@ $current_script_dir = dirname($_SERVER['SCRIPT_NAME']);
 // Remove any user type subdirectory if present
 $base_path = preg_replace('/(\/admin|\/student|\/staff|\/external)$/', '', $current_script_dir);
 
+// Determine which login page to redirect to based on user type
+// Use the $user_type captured at the beginning before session was cleared
+$logged_out_user_type = $user_type;
+
 // If we're already at the root, don't add an extra slash
 if ($base_path === '') {
-    $login_path = '/login.php';
+    // Redirect to admin_login.php for admin/secretary, otherwise login.php
+    if ($logged_out_user_type === 'admin' || $logged_out_user_type === 'secretary') {
+        $login_path = '/admin_login.php';
+    } else {
+        $login_path = '/login.php';
+    }
 } else {
     // Make sure we have a trailing slash
     if (substr($base_path, -1) !== '/') {
         $base_path .= '/';
     }
-    $login_path = $base_path . 'login.php';
+    // Redirect to admin_login.php for admin/secretary, otherwise login.php
+    if ($logged_out_user_type === 'admin' || $logged_out_user_type === 'secretary') {
+        $login_path = $base_path . 'admin_login.php';
+    } else {
+        $login_path = $base_path . 'login.php';
+    }
 }
 
 // Redirect to login page

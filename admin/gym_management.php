@@ -207,7 +207,7 @@ $facilities_management_result = $conn->query($facilities_management_query);
 
 <?php include '../includes/header.php'; ?>
 
-<div class="flex h-screen bg-gray-100">
+<div class="flex h-screen bg-gray-100 overflow-hidden">
     <?php include '../includes/admin_sidebar.php'; ?>
     
     <div class="flex-1 flex flex-col overflow-hidden">
@@ -438,29 +438,31 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                                     </span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <button type="button" class="text-blue-600 hover:text-blue-900 mr-3" onclick="viewBookingDetails(<?php echo htmlspecialchars(json_encode([
-                                                        'id' => $request['booking_id'],
-                                                        'user_name' => $request['user_name'],
-                                                        'user_email' => $request['user_email'],
-                                                        'facility_name' => $request['facility_type'],
-                                                        'booking_date' => $request['date'],
-                                                        'time_slot' => date('h:i A', strtotime($request['start_time'])) . ' - ' . date('h:i A', strtotime($request['end_time'])),
-                                                        'purpose' => $request['purpose'],
-                                                        'participants' => $request['attendees'],
-                                                        'status' => $request['status'],
-                                                        'admin_remarks' => $admin_remarks
-                                                    ])); ?>)">
-                                                        View
-                                                    </button>
-                                                    
-                                                    <?php if ($request['status'] === 'pending'): ?>
-                                                        <button type="button" class="text-green-600 hover:text-green-900 mr-3" onclick="openApproveModal('<?php echo $request['booking_id']; ?>')">
-                                                            Approve
+                                                    <div class="flex items-center justify-end gap-2">
+                                                        <button type="button" class="inline-flex items-center px-3 py-1.5 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" onclick="viewBookingDetails(<?php echo htmlspecialchars(json_encode([
+                                                            'id' => $request['booking_id'],
+                                                            'user_name' => $request['user_name'],
+                                                            'user_email' => $request['user_email'],
+                                                            'facility_name' => $request['facility_type'],
+                                                            'booking_date' => $request['date'],
+                                                            'time_slot' => date('h:i A', strtotime($request['start_time'])) . ' - ' . date('h:i A', strtotime($request['end_time'])),
+                                                            'purpose' => $request['purpose'],
+                                                            'participants' => $request['attendees'],
+                                                            'status' => $request['status'],
+                                                            'admin_remarks' => $admin_remarks
+                                                        ])); ?>)">
+                                                            <i class="fas fa-eye mr-1.5"></i>View
                                                         </button>
-                                                        <button type="button" class="text-red-600 hover:text-red-900" onclick="openRejectModal('<?php echo $request['booking_id']; ?>')">
-                                                            Reject
-                                                        </button>
-                                                    <?php endif; ?>
+                                                        
+                                                        <?php if ($request['status'] === 'pending'): ?>
+                                                            <button type="button" class="inline-flex items-center px-3 py-1.5 border border-green-300 shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500" onclick="openApproveModal('<?php echo $request['booking_id']; ?>')">
+                                                                <i class="fas fa-check mr-1.5"></i>Approve
+                                                            </button>
+                                                            <button type="button" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" onclick="openRejectModal('<?php echo $request['booking_id']; ?>')">
+                                                                <i class="fas fa-times mr-1.5"></i>Reject
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         <?php endwhile; ?>
@@ -682,7 +684,10 @@ $facilities_management_result = $conn->query($facilities_management_query);
                 <p id="detail-remarks" class="mt-1 text-sm text-gray-900"></p>
             </div>
         </div>
-        <div class="mt-6 flex justify-end">
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" onclick="printGymReceipt()" class="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i class="fas fa-print mr-2"></i>Print Receipt
+            </button>
             <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeBookingDetailsModal()">
                 Close
             </button>
@@ -881,8 +886,12 @@ $facilities_management_result = $conn->query($facilities_management_query);
         });
     });
     
+    // Store current booking ID for print receipt
+    let currentBookingIdForPrint = '';
+    
     // Booking details modal functions
     function viewBookingDetails(booking) {
+        currentBookingIdForPrint = booking.id;
         document.getElementById('detail-booking-id').textContent = booking.id;
         document.getElementById('detail-user').textContent = booking.user_name;
         document.getElementById('detail-email').textContent = booking.user_email;
@@ -995,6 +1004,17 @@ $facilities_management_result = $conn->query($facilities_management_query);
     function closeDeleteFacilityModal() {
         document.getElementById('deleteFacilityModal').classList.add('hidden');
     }
+    
+    // Print receipt function
+    function printGymReceipt() {
+        if (currentBookingIdForPrint) {
+            window.open('print_gym_receipt.php?booking_id=' + currentBookingIdForPrint, '_blank');
+        } else {
+            alert('Booking ID not available');
+        }
+    }
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

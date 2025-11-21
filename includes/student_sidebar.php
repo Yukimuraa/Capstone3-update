@@ -14,13 +14,13 @@ $logout_path .= 'logout.php?user_type=student';
 ?>
 
 <div class="bg-blue-800 text-white w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out" id="sidebar">
-    <div class="flex items-center space-x-2 px-4">
-        <i class="fas fa-school text-yellow-400"></i>
+    <a href="dashboard.php" class="flex items-center space-x-2 px-4 hover:opacity-80 transition-opacity">
+        <img src="../image/CHMSUWebLOGO.png" alt="CHMSU Logo" class="h-10 w-auto">
         <div>
             <span class="text-xl font-bold">CHMSU BAO</span>
             <!-- <p class="text-xs text-gray-400">Student Portal</p> -->
         </div>
-    </div>
+    </a>
     <nav>
         <a href="dashboard.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-home mr-2"></i>Dashboard

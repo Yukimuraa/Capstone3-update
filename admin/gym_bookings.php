@@ -353,6 +353,14 @@ $users_result = $conn->query($users_query);
                     <div id="additional-info" class="text-base text-gray-900 space-y-2"></div>
                 </div>
             </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" onclick="printGymReceipt()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <i class="fas fa-print mr-2"></i>Print Receipt
+                </button>
+                <button type="button" onclick="closeModal('viewModal')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Close
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -493,7 +501,10 @@ $users_result = $conn->query($users_query);
     });
     
     // Modal functions
+    let currentBookingId = '';
+    
     function openViewModal(booking) {
+        currentBookingId = booking.booking_id;
         document.getElementById('view-booking-id').textContent = booking.booking_id;
         
         const statusElement = document.getElementById('view-status');
@@ -583,6 +594,14 @@ $users_result = $conn->query($users_query);
     
     function closeModal(modalId) {
         document.getElementById(modalId).classList.add('hidden');
+    }
+    
+    function printGymReceipt() {
+        if (currentBookingId) {
+            window.open('print_gym_receipt.php?booking_id=' + currentBookingId, '_blank');
+        } else {
+            alert('Booking ID not available');
+        }
     }
     // Small date availability calendar (kept)
     document.addEventListener('DOMContentLoaded', function() {
@@ -1093,4 +1112,6 @@ $users_result = $conn->query($users_query);
     }, 3000);
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

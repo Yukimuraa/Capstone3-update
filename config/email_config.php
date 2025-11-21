@@ -7,9 +7,9 @@ return [
         'host' => 'smtp.gmail.com',
         'port' => 587,
         'encryption' => 'tls', // Changed to TLS
-        'username' => 'damasingjoemarie@gmail.com', // Your Gmail address
-        'password' => 'pott urxr mtev kjty', // App Password (NOT your regular password)
-        'from_email' => 'damasingjoemarie@gmail.com',
+        'username' => 'systembao123@gmail.com', // Your Gmail address
+        'password' => 'qokm mplq shbf tdbi', // App Password (NOT your regular password)
+        'from_email' => 'systembao123@gmail.com',
         'from_name' => 'CHMSU Business Affairs',
         'debug' => 0 // Disable debugging for production
     ],

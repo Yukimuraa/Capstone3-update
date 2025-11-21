@@ -266,4 +266,6 @@ $receipt_number = "RCPT-" . date('Ymd', strtotime($order['created_at'])) . "-" .
     }
 </style>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>

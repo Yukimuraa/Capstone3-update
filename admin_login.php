@@ -49,15 +49,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     case 'secretary':
                         header("Location: admin/dashboard.php");
                         break;
-                    case 'staff':
-                        header("Location: staff/dashboard.php");
-                        break;
-                    case 'student':
-                        header("Location: student/dashboard.php");
-                        break;
-                    case 'external':
-                        header("Location: external/dashboard.php");
-                        break;
                     default:
                         header("Location: index.php");
                 }
@@ -77,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Login - CHMSU Business Affairs Office</title>
+ <title>Admin Login - CHMSU Business Affairs Office</title>
  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
  <link rel="stylesheet" href="assets/css/styles.css">
  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -85,14 +76,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
      body {
          background-color: #00008B; /* Dark blue background */
      }
-     .header-section {
-         background-color: #008000; /* Dark green header */
+     .admin-header-section {
+         background-color: #DC2626; /* Red header for admin */
      }
-     .login-btn {
-         background-color: #1E40AF; /* Blue button */
+     .admin-login-btn {
+         background-color: #DC2626; /* Red button for admin */
      }
-     .login-btn:hover {
-         background-color: #1E3A8A;
+     .admin-login-btn:hover {
+         background-color: #B91C1C;
      }
      /* Fix for icon and text overlap */
      .input-with-icon {
@@ -113,12 +104,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
- <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden">
-     <div class="header-section p-6 text-center text-white">
+ <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="border-top: 4px solid #DC2626;">
+     <div class="admin-header-section p-6 text-center text-white">
          <div class="flex justify-center mb-4">
              <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
          </div>
-         <h2 class="text-s font-bold">Enter your credentials to access the system</h2>
+         <i class="fas fa-user-shield text-4xl mb-3"></i>
+         <h2 class="text-s font-bold">BAO Admin & Secretary Login</h2>
+         <p class="text-sm mt-2">Enter your credentials to access the admin panel</p>
      </div>
 
      <div class="p-6">
@@ -128,16 +121,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              </div>
          <?php endif; ?>
 
-         <form action="login.php" method="POST">
+         <form action="admin_login.php" method="POST">
              <div class="mb-4">
                  <label for="user_type" class="block text-gray-700 font-medium mb-2">User Type</label>
                  <div class="input-with-icon">
                      <span class="icon">
                          <i class="fas fa-user-tag"></i>
                      </span>
-                     <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                         <option value="student">Student / Faculty / Staff</option>
-                         <option value="external">External User</option>
+                     <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" required>
+                         <option value="admin">BAO Admin</option>
+                         <option value="secretary">BAO Secretary</option>
                      </select>
                  </div>
              </div>
@@ -148,20 +141,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <span class="icon">
                          <i class="fas fa-envelope"></i>
                      </span>
-                     <input type="email" id="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your email" required>
+                     <input type="email" id="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="Enter your email" required>
                  </div>
              </div>
 
              <div class="mb-4">
                  <div class="flex items-center justify-between mb-2">
                      <label for="password" class="block text-gray-700 font-medium">Password</label>
-                     <a href="forgot-password.php" class="text-sm text-blue-600 hover:underline">Forgot password?</a>
+                     <a href="forgot-password.php" class="text-sm text-red-600 hover:underline">Forgot password?</a>
                  </div>
                  <div class="input-with-icon" style="position: relative;">
                      <span class="icon">
                          <i class="fas fa-lock"></i>
                      </span>
-                     <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="padding-right: 40px;" required>
+                     <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" style="padding-right: 40px;" required>
                      <button type="button" onclick="togglePassword('password', 'togglePasswordIcon')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
                          <i class="fas fa-eye" id="togglePasswordIcon"></i>
                      </button>
@@ -169,18 +162,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              </div>
 
              <div class="mb-6 flex items-center">
-                 <input type="checkbox" id="remember" name="remember" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                 <input type="checkbox" id="remember" name="remember" class="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded">
                  <label for="remember" class="ml-2 block text-sm text-gray-700">Remember me</label>
              </div>
 
-             <button type="submit" class="w-full login-btn text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                 Login
+             <button type="submit" class="w-full admin-login-btn text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                 <i class="fas fa-sign-in-alt mr-2"></i> Login
              </button>
 
              <div class="text-center mt-6">
-                 <p class="text-gray-600">
-                     Don't have an account? 
-                     <a href="register.php" class="text-blue-600 hover:underline">Register</a>
+                 <p class="text-gray-600 text-sm">
+                     <i class="fas fa-info-circle mr-1"></i>
+                     Admin access only
                  </p>
              </div>
          </form>
@@ -205,3 +198,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  </script>
 </body>
 </html>
+

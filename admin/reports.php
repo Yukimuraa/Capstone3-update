@@ -387,5 +387,7 @@ while ($row = $daily_revenue_result->fetch_assoc()) {
     };
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>
 

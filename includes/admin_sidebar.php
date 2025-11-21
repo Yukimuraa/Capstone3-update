@@ -16,15 +16,15 @@ $user_type_logout = is_secretary() ? 'secretary' : 'admin';
 $logout_path .= 'logout.php?user_type=' . $user_type_logout;
 ?>
 
-<div class="bg-blue-900 text-white w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out" id="sidebar">
-   <div class="flex items-center space-x-2 px-4">
-       <i class="fas fa-school text-yellow-400"></i>
+<div class="bg-blue-900 text-white w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out overflow-hidden flex flex-col" id="sidebar">
+   <a href="dashboard.php" class="flex items-center space-x-2 px-4 flex-shrink-0 hover:opacity-80 transition-opacity">
+       <img src="../image/CHMSUWebLOGO.png" alt="CHMSU Logo" class="h-10 w-auto">
        <div>
            <span class="text-xl font-bold">CHMSU BAO</span>
            <!-- <p class="text-xs text-gray-400">Admin Portal</p> -->
        </div>
-   </div>
-   <nav>
+   </a>
+   <nav class="flex-1 overflow-y-auto">
        <a href="dashboard.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
            <i class="fas fa-home mr-2"></i>Dashboard
        </a>

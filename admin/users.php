@@ -26,6 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Validate inputs
             if (empty($name) || empty($email) || empty($password) || empty($user_type)) {
                 $error = "All required fields must be filled out";
+            } elseif (!preg_match("/^[a-zA-Z\s]+$/", $name)) {
+                $error = "Full name must contain only letters and spaces (no numbers or symbols)";
             } else {
                 // Check if email already exists
                 $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
@@ -213,7 +215,7 @@ $result = $conn->query($query);
             <input type="hidden" name="action" value="add">
             <div class="mb-4">
                 <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                <input type="text" id="name" name="name" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
+                <input type="text" id="name" name="name" required pattern="[a-zA-Z\s]+" title="Full name must contain only letters and spaces (no numbers or symbols)" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50" oninput="this.value = this.value.replace(/[^a-zA-Z\s]/g, '')">
             </div>
             <div class="mb-4">
                 <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -226,10 +228,8 @@ $result = $conn->query($query);
             <div class="mb-4">
                 <label for="user_type" class="block text-sm font-medium text-gray-700 mb-1">User Type</label>
                 <select id="user_type" name="user_type" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50" onchange="toggleOrganizationField()">
-                    <option value="student">Student / Faculty / Staff</option>
                     <option value="admin">BAO Admin</option>
                     <option value="secretary">BAO Secretary</option>
-                    <option value="external">External User</option>
                 </select>
             </div>
             <div id="organization_field" class="mb-4 hidden">
@@ -271,12 +271,11 @@ $result = $conn->query($query);
         const userType = document.getElementById('user_type').value;
         const organizationField = document.getElementById('organization_field');
         
-        if (userType === 'external') {
-            organizationField.classList.remove('hidden');
-        } else {
-            organizationField.classList.add('hidden');
-        }
+        // Organization field is no longer needed since external option is removed
+        organizationField.classList.add('hidden');
     }
 </script>
 
-<?php include '../includes/footer.php'; ?>
+    <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
+</body>
+</html>
