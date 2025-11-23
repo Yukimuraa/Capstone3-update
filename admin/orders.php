@@ -153,7 +153,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get search parameter
 $search = isset($_GET['search']) ? sanitize_input($_GET['search']) : '';
 
-// Get all orders with user details and item information, grouped by batch_id
+// Pagination - rows per page (display rows, not order rows)
+$rows_per_page = 10;
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+
+// Get all orders with user details and item information
 $query = "SELECT o.*, u.name as user_name, u.email as user_email, i.name as item_name, i.price as item_price 
           FROM orders o 
           JOIN user_accounts u ON o.user_id = u.id 
@@ -167,13 +171,47 @@ if (!empty($search)) {
 
 $query .= " ORDER BY o.created_at DESC, o.batch_id, o.id";
 
+// Get all orders first to count display rows (batches + single orders)
 if (!empty($search)) {
     $stmt = $conn->prepare($query);
     $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
     $stmt->execute();
+    $all_orders_result = $stmt->get_result();
+} else {
+    $all_orders_result = $conn->query($query);
+}
+
+// Group orders to count display rows
+$grouped_orders = [];
+$single_orders = [];
+
+while ($order = $all_orders_result->fetch_assoc()) {
+    if (!empty($order['batch_id'])) {
+        if (!isset($grouped_orders[$order['batch_id']])) {
+            $grouped_orders[$order['batch_id']] = true;
+        }
+    } else {
+        $single_orders[] = $order;
+    }
+}
+
+// Count total display rows (batches + single orders)
+$total_display_rows = count($grouped_orders) + count($single_orders);
+$total_pages = ceil($total_display_rows / $rows_per_page);
+$offset = ($current_page - 1) * $rows_per_page;
+
+// Fetch enough orders to get the required display rows
+// Fetch more orders than needed to account for grouping (batches may have multiple orders)
+$fetch_limit = ($offset + $rows_per_page) * 10; // Fetch 10x to ensure we get enough groups
+$limited_query = $query . " LIMIT " . intval($fetch_limit);
+
+if (!empty($search)) {
+    $stmt = $conn->prepare($limited_query);
+    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->execute();
     $orders = $stmt->get_result();
 } else {
-    $orders = $conn->query($query);
+    $orders = $conn->query($limited_query);
 }
 ?>
 
@@ -273,12 +311,14 @@ if (!empty($search)) {
                                     $current_batch = null;
                                     $batch_items = [];
                                     $batch_total = 0;
+                                    $displayed_rows = 0;
                                     
-                                    while ($order = $orders->fetch_assoc()): 
+                                    while ($order = $orders->fetch_assoc()):
                                         // Group by batch_id
                                         if ($order['batch_id'] && $order['batch_id'] != $current_batch) {
-                                            // Display previous batch if exists
+                                            // Display previous batch if exists and we're in the display range
                                             if ($current_batch && count($batch_items) > 0) {
+                                                if ($displayed_rows >= $offset && $displayed_rows < ($offset + $rows_per_page)) {
                                                 $first_item = $batch_items[0];
                                                 ?>
                                                 <tr class="bg-blue-50">
@@ -341,85 +381,95 @@ if (!empty($search)) {
                                                     </td>
                                                 </tr>
                                                 <?php
+                                                }
+                                                $displayed_rows++;
                                             }
                                             
                                             // Start new batch
                                             $current_batch = $order['batch_id'];
                                             $batch_items = [$order];
                                             $batch_total = $order['total_price'];
+                                            
+                                            // Count this batch (even if not displayed yet)
+                                            if ($displayed_rows < $offset) {
+                                                $displayed_rows++;
+                                            }
                                         } elseif ($order['batch_id'] == $current_batch) {
                                             // Add to current batch
                                             $batch_items[] = $order;
                                             $batch_total += $order['total_price'];
                                         } else {
-                                            // Single order (no batch)
-                                            ?>
-                                            <tr>
-                                                <td class="px-6 py-4 text-sm text-gray-900">
-                                                    <?php echo $order['order_id']; ?>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-gray-900">
-                                                    <?php echo $order['user_name']; ?>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-gray-500">
-                                                    <?php echo $order['item_name']; ?>
-                                                    <?php if (!empty($order['size'])): ?>
-                                                        <span class="text-gray-400">(<?php echo $order['size']; ?>)</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-gray-500"><?php echo $order['quantity']; ?></td>
-                                                <td class="px-6 py-4 text-sm text-gray-500">
-                                                    ₱<?php echo number_format($order['total_price'], 2); ?>
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <?php
-                                                    $status_classes = [
-                                                        'pending' => 'bg-yellow-100 text-yellow-800',
-                                                        'completed' => 'bg-blue-100 text-blue-800',
-                                                        'cancelled' => 'bg-gray-100 text-gray-800'
-                                                    ];
-                                                    $status_class = $status_classes[$order['status']] ?? 'bg-gray-100 text-gray-800';
-                                                    ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                        <?php echo ucfirst($order['status']); ?>
-                                                    </span>
-                                                </td>
-                                                <td class="px-6 py-4 text-sm">
-                                                    <?php if ($order['status'] === 'pending'): ?>
-                                                        <div class="flex gap-2">
-                                                            <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
-                                                                    class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
-                                                                <i class="fas fa-eye mr-1"></i> View
-                                                            </button>
-                                                            <form action="orders.php" method="POST" style="display: inline;">
-                                                                <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
-                                                                <input type="hidden" name="mark_complete" value="1">
-                                                                <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                    <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                            // Single order (no batch) - only display if in range
+                                            if ($displayed_rows >= $offset && $displayed_rows < ($offset + $rows_per_page)) {
+                                                ?>
+                                                <tr>
+                                                    <td class="px-6 py-4 text-sm text-gray-900">
+                                                        <?php echo $order['order_id']; ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-sm text-gray-900">
+                                                        <?php echo $order['user_name']; ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-sm text-gray-500">
+                                                        <?php echo $order['item_name']; ?>
+                                                        <?php if (!empty($order['size'])): ?>
+                                                            <span class="text-gray-400">(<?php echo $order['size']; ?>)</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-sm text-gray-500"><?php echo $order['quantity']; ?></td>
+                                                    <td class="px-6 py-4 text-sm text-gray-500">
+                                                        ₱<?php echo number_format($order['total_price'], 2); ?>
+                                                    </td>
+                                                    <td class="px-6 py-4">
+                                                        <?php
+                                                        $status_classes = [
+                                                            'pending' => 'bg-yellow-100 text-yellow-800',
+                                                            'completed' => 'bg-blue-100 text-blue-800',
+                                                            'cancelled' => 'bg-gray-100 text-gray-800'
+                                                        ];
+                                                        $status_class = $status_classes[$order['status']] ?? 'bg-gray-100 text-gray-800';
+                                                        ?>
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
+                                                            <?php echo ucfirst($order['status']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-sm">
+                                                        <?php if ($order['status'] === 'pending'): ?>
+                                                            <div class="flex gap-2">
+                                                                <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                                    <i class="fas fa-eye mr-1"></i> View
                                                                 </button>
-                                                            </form>
-                                                        </div>
-                                                    <?php elseif ($order['status'] === 'completed'): ?>
-                                                        <div class="flex gap-2">
-                                                            <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
-                                                                    class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                                                <i class="fas fa-eye mr-1"></i> View
-                                                            </button>
-                                                            <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
-                                                               class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                               target="_blank">
-                                                                <i class="fas fa-print mr-1"></i> Print Receipt
-                                                            </a>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                </td>
-                                            </tr>
-                                            <?php
+                                                                <form action="orders.php" method="POST" style="display: inline;">
+                                                                    <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
+                                                                    <input type="hidden" name="mark_complete" value="1">
+                                                                    <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                        <i class="fas fa-check mr-1"></i> Mark Complete & Print
+                                                                    </button>
+                                                                </form>
+                                                            </div>
+                                                        <?php elseif ($order['status'] === 'completed'): ?>
+                                                            <div class="flex gap-2">
+                                                                <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                                                    <i class="fas fa-eye mr-1"></i> View
+                                                                </button>
+                                                                <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
+                                                                   class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                                   target="_blank">
+                                                                    <i class="fas fa-print mr-1"></i> Print Receipt
+                                                                </a>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                                <?php
+                                            }
+                                            $displayed_rows++;
                                         }
                                     endwhile;
                                     
-                                    // Display last batch if exists
-                                    if ($current_batch && count($batch_items) > 0) {
+                                    // Display last batch if exists and in range
+                                    if ($current_batch && count($batch_items) > 0 && $displayed_rows >= $offset && $displayed_rows < ($offset + $rows_per_page)) {
                                         $first_item = $batch_items[0];
                                         ?>
                                         <tr class="bg-blue-50">
@@ -495,6 +545,76 @@ if (!empty($search)) {
                         </table>
                     </div>
                 </div>
+                
+                <!-- Pagination -->
+                <?php if ($total_pages > 1): ?>
+                    <div class="mt-6 flex items-center justify-between bg-white px-4 py-3 rounded-lg shadow">
+                        <div class="text-sm text-gray-700">
+                            Showing <span class="font-medium"><?php echo $total_display_rows > 0 ? $offset + 1 : 0; ?></span> to 
+                            <span class="font-medium"><?php echo min($offset + $rows_per_page, $total_display_rows); ?></span> of 
+                            <span class="font-medium"><?php echo $total_display_rows; ?></span> result<?php echo $total_display_rows != 1 ? 's' : ''; ?>
+                        </div>
+                        <div class="flex gap-2">
+                            <?php if ($current_page > 1): ?>
+                                <a href="?page=<?php echo $current_page - 1; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                   class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                    <i class="fas fa-chevron-left mr-1"></i>Previous
+                                </a>
+                            <?php else: ?>
+                                <span class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-400 bg-gray-100 cursor-not-allowed">
+                                    <i class="fas fa-chevron-left mr-1"></i>Previous
+                                </span>
+                            <?php endif; ?>
+                            
+                            <?php
+                            // Show page numbers
+                            $start_page = max(1, $current_page - 2);
+                            $end_page = min($total_pages, $current_page + 2);
+                            
+                            if ($start_page > 1): ?>
+                                <a href="?page=1<?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                   class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">1</a>
+                                <?php if ($start_page > 2): ?>
+                                    <span class="px-4 py-2 text-gray-500">...</span>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            
+                            <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                <?php if ($i == $current_page): ?>
+                                    <span class="px-4 py-2 border border-red-600 rounded-md text-sm font-medium text-white bg-red-600">
+                                        <?php echo $i; ?>
+                                    </span>
+                                <?php else: ?>
+                                    <a href="?page=<?php echo $i; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                       class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                        <?php echo $i; ?>
+                                    </a>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+                            
+                            <?php if ($end_page < $total_pages): ?>
+                                <?php if ($end_page < $total_pages - 1): ?>
+                                    <span class="px-4 py-2 text-gray-500">...</span>
+                                <?php endif; ?>
+                                <a href="?page=<?php echo $total_pages; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                   class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                    <?php echo $total_pages; ?>
+                                </a>
+                            <?php endif; ?>
+                            
+                            <?php if ($current_page < $total_pages): ?>
+                                <a href="?page=<?php echo $current_page + 1; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                   class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                    Next<i class="fas fa-chevron-right ml-1"></i>
+                                </a>
+                            <?php else: ?>
+                                <span class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-400 bg-gray-100 cursor-not-allowed">
+                                    Next<i class="fas fa-chevron-right ml-1"></i>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </main>
     </div>
@@ -565,12 +685,27 @@ if (!empty($search)) {
         document.getElementById('statusModal').classList.add('hidden');
     }
     
-    // Store order data
+    // Store order data - get all orders for modal display
     let ordersData = <?php 
-        // Reset result pointer
-        $orders->data_seek(0);
+        // Get all orders (not just paginated) for modal functionality
+        $modal_query = "SELECT o.*, u.name as user_name, u.email as user_email, i.name as item_name, i.price as item_price 
+                       FROM orders o 
+                       JOIN user_accounts u ON o.user_id = u.id 
+                       JOIN inventory i ON o.inventory_id = i.id";
+        if (!empty($search)) {
+            $modal_search_term = "%$search%";
+            $modal_query .= " WHERE (o.order_id LIKE ? OR o.batch_id LIKE ? OR u.name LIKE ? OR i.name LIKE ?)";
+            $modal_query .= " ORDER BY o.created_at DESC, o.batch_id, o.id";
+            $stmt = $conn->prepare($modal_query);
+            $stmt->bind_param("ssss", $modal_search_term, $modal_search_term, $modal_search_term, $modal_search_term);
+            $stmt->execute();
+            $all_orders_result = $stmt->get_result();
+        } else {
+            $modal_query .= " ORDER BY o.created_at DESC, o.batch_id, o.id";
+            $all_orders_result = $conn->query($modal_query);
+        }
         $all_orders = [];
-        while ($row = $orders->fetch_assoc()) {
+        while ($row = $all_orders_result->fetch_assoc()) {
             $all_orders[] = $row;
         }
         echo json_encode($all_orders); 

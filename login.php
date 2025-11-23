@@ -83,10 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
  <style>
      body {
-         background-color: #00008B; /* Dark blue background */
+         background-image: url('image/ChamsuBackround.jpg');
+         background-size: cover;
+         background-position: center;
+         background-repeat: no-repeat;
+         background-attachment: fixed;
      }
      .header-section {
-         background-color: #008000; /* Dark green header */
+         background: rgba(0, 0, 0, 0.3);
+         backdrop-filter: blur(5px);
      }
      .login-btn {
          background-color: #1E40AF; /* Blue button */
@@ -113,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
- <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden">
+ <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="background: rgba(255, 255, 255, 0.95);">
      <div class="header-section p-6 text-center text-white">
          <div class="flex justify-center mb-4">
              <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">

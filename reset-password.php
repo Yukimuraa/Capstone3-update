@@ -7,6 +7,7 @@ $error = '';
 $success = '';
 $valid_token = false;
 $email = '';
+$is_admin_user = false; // Track if user is admin/secretary
 
 // Check if token is provided
 if (isset($_GET['token'])) {
@@ -34,6 +35,19 @@ if (isset($_GET['token'])) {
             // Old token without expiration - accept it but warn
             $valid_token = true;
             $email = $reset_data['email'];
+        }
+        
+        // Check if user is admin or secretary
+        if ($valid_token && !empty($email)) {
+            $stmt = $conn->prepare("SELECT user_type FROM user_accounts WHERE email = ?");
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $user_result = $stmt->get_result();
+            
+            if ($user_result->num_rows > 0) {
+                $user_data = $user_result->fetch_assoc();
+                $is_admin_user = ($user_data['user_type'] === 'admin' || $user_data['user_type'] === 'secretary');
+            }
         }
     } else {
         $error = "Invalid token. Please request a new password reset link.";
@@ -86,10 +100,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
         body {
-            background-color: #00008B; /* Dark blue background */
+            background-image: url('image/ChamsuBackround.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
         }
         .header-section {
-            background-color: #006400; /* Dark green header */
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
         }
         .submit-btn {
             background-color: #1E40AF; /* Blue button */
@@ -115,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden">
+    <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="background: rgba(255, 255, 255, 0.95);">
         <div class="header-section p-6 text-center text-white">
             <div class="flex justify-center mb-4">
                 <i class="fas fa-school text-yellow-400 text-4xl"></i>
@@ -138,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                 <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
                     <?php echo $success; ?>
                     <p class="mt-2">
-                        <a href="login.php" class="font-bold text-green-700 hover:underline">Click here to login</a>
+                        <a href="<?php echo $is_admin_user ? 'admin_login.php' : 'login.php'; ?>" class="font-bold text-green-700 hover:underline">Click here to login</a>
                     </p>
                 </div>
             <?php elseif ($valid_token): ?>
@@ -178,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
 
             <div class="text-center mt-6">
                 <p class="text-gray-600">
-                    <a href="login.php" class="text-blue-600 hover:underline">Back to Login</a>
+                    <a href="<?php echo $is_admin_user ? 'admin_login.php' : 'login.php'; ?>" class="text-blue-600 hover:underline">Back to Login</a>
                 </p>
             </div>
         </div>

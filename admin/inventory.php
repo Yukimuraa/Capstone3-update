@@ -438,13 +438,14 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
 
 <!-- Add Item Modal -->
 <div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto py-4">
-   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
-       <div class="flex justify-between items-center mb-4">
+   <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[90vh] flex flex-col">
+       <div class="flex justify-between items-center p-6 border-b flex-shrink-0">
            <h3 class="text-lg font-medium text-gray-900">Add New Item</h3>
            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeAddModal()">
                <i class="fas fa-times"></i>
            </button>
        </div>
+       <div class="overflow-y-auto flex-1 p-6">
        <form method="POST" action="inventory.php" enctype="multipart/form-data">
            <input type="hidden" name="action" value="add">
            <div class="mb-4">
@@ -512,18 +513,20 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                </button>
            </div>
        </form>
+       </div>
    </div>
 </div>
 
 <!-- Edit Item Modal -->
 <div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto py-4">
-   <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
-       <div class="flex justify-between items-center mb-4">
+   <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[90vh] flex flex-col">
+       <div class="flex justify-between items-center p-6 border-b flex-shrink-0">
            <h3 class="text-lg font-medium text-gray-900">Edit Item</h3>
            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeEditModal()">
                <i class="fas fa-times"></i>
            </button>
        </div>
+       <div class="overflow-y-auto flex-1 p-6">
        <form method="POST" action="inventory.php" enctype="multipart/form-data">
            <input type="hidden" name="action" value="update">
            <input type="hidden" id="edit_id" name="id">
@@ -603,6 +606,7 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
                </button>
            </div>
        </form>
+       </div>
    </div>
 </div>
 

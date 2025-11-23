@@ -4,6 +4,12 @@ require_once 'config/database.php';
 require_once 'includes/functions.php';
 
 $error = '';
+$success = '';
+
+// Check for success message from account creation
+if (isset($_GET['success']) && $_GET['success'] == '1') {
+    $success = "Admin account created successfully! Please login with your credentials.";
+}
 
 // Check if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -74,10 +80,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
  <style>
      body {
-         background-color: #00008B; /* Dark blue background */
+         background-image: url('image/ChamsuBackround.jpg');
+         background-size: cover;
+         background-position: center;
+         background-repeat: no-repeat;
+         background-attachment: fixed;
      }
      .admin-header-section {
-         background-color: #DC2626; /* Red header for admin */
+         background: rgba(0, 0, 0, 0.3);
+         backdrop-filter: blur(5px);
      }
      .admin-login-btn {
          background-color: #DC2626; /* Red button for admin */
@@ -104,20 +115,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
- <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="border-top: 4px solid #DC2626;">
+ <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="border-top: 4px solid #DC2626; background: rgba(255, 255, 255, 0.95);">
      <div class="admin-header-section p-6 text-center text-white">
-         <div class="flex justify-center mb-4">
-             <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
-         </div>
-         <i class="fas fa-user-shield text-4xl mb-3"></i>
-         <h2 class="text-s font-bold">BAO Admin & Secretary Login</h2>
-         <p class="text-sm mt-2">Enter your credentials to access the admin panel</p>
+        <div class="flex justify-center mb-4">
+            <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
+        </div>
+        <h2 class="text-s font-bold">BAO Admin & Secretary Login</h2>
+        <p class="text-sm mt-2">Admin access and Secretary only</p>
      </div>
 
      <div class="p-6">
          <?php if (!empty($error)): ?>
              <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
                  <?php echo $error; ?>
+             </div>
+         <?php endif; ?>
+
+         <?php if (!empty($success)): ?>
+             <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                 <?php echo $success; ?>
              </div>
          <?php endif; ?>
 
@@ -148,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              <div class="mb-4">
                  <div class="flex items-center justify-between mb-2">
                      <label for="password" class="block text-gray-700 font-medium">Password</label>
-                     <a href="forgot-password.php" class="text-sm text-red-600 hover:underline">Forgot password?</a>
+                     <a href="admin_forgot-password.php" class="text-sm text-red-600 hover:underline">Forgot password?</a>
                  </div>
                  <div class="input-with-icon" style="position: relative;">
                      <span class="icon">
@@ -166,16 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  <label for="remember" class="ml-2 block text-sm text-gray-700">Remember me</label>
              </div>
 
-             <button type="submit" class="w-full admin-login-btn text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                 <i class="fas fa-sign-in-alt mr-2"></i> Login
-             </button>
+            <button type="submit" class="w-full admin-login-btn text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                <i class="fas fa-sign-in-alt mr-2"></i> Login
+            </button>
 
-             <div class="text-center mt-6">
-                 <p class="text-gray-600 text-sm">
-                     <i class="fas fa-info-circle mr-1"></i>
-                     Admin access only
-                 </p>
-             </div>
+            <div class="text-center mt-4">
+                <p class="text-gray-600 text-sm mb-2">
+                    Don't have an account?
+                </p>
+                <a href="create_admin.php" class="text-red-600 hover:text-red-700 hover:underline font-medium">
+                    <i class="fas fa-user-plus mr-1"></i> Create Account
+                </a>
+            </div>
          </form>
      </div>
  </div>

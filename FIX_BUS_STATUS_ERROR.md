@@ -194,3 +194,6 @@ http://localhost/Capstone-3/fix_all_missing_columns.php
 
 
 
+
+
+

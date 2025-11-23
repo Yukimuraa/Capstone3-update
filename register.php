@@ -133,8 +133,8 @@ if (isset($_POST['verify_otp'])) {
     </script>
 </head>
 
-<body class="bg-blue-900 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-lg shadow-lg p-6">
+<body class="min-h-screen flex items-center justify-center p-4" style="background-image: url('image/ChamsuBackround.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+    <div class="bg-white w-full max-w-md rounded-lg shadow-lg p-6" style="background: rgba(255, 255, 255, 0.95);">
         <div class="text-center">
             <img src="image/CHMSUWebLOGO.png" class="mx-auto mb-2" width="70" height="70">
             <p class="text-sm">Register to access the Business Affairs Office system</p>

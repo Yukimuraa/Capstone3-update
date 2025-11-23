@@ -17,7 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Get POST data
 $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
 $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
-$size = isset($_POST['size']) ? sanitize_input($_POST['size']) : null;
+// Normalize empty size to NULL to prevent duplicate entry errors
+// Empty string and NULL are treated differently by the unique constraint
+$size = isset($_POST['size']) && trim($_POST['size']) !== '' ? sanitize_input($_POST['size']) : null;
 
 // Validate item ID
 if ($item_id <= 0) {
@@ -73,11 +75,13 @@ if ($quantity <= 0 || $quantity > $available_quantity) {
 
 try {
     // Check if item already exists in cart (with same size if applicable)
+    // Handle both NULL and empty string for size to catch existing data inconsistencies
     if ($size) {
         $check_stmt = $conn->prepare("SELECT id, quantity FROM cart WHERE user_id = ? AND inventory_id = ? AND size = ?");
         $check_stmt->bind_param("iis", $_SESSION['user_id'], $item_id, $size);
     } else {
-        $check_stmt = $conn->prepare("SELECT id, quantity FROM cart WHERE user_id = ? AND inventory_id = ? AND size IS NULL");
+        // Check for both NULL and empty string to handle existing data
+        $check_stmt = $conn->prepare("SELECT id, quantity FROM cart WHERE user_id = ? AND inventory_id = ? AND (size IS NULL OR size = '')");
         $check_stmt->bind_param("ii", $_SESSION['user_id'], $item_id);
     }
     
@@ -127,9 +131,14 @@ try {
         
         $message = 'Cart updated successfully';
     } else {
-        // Insert new cart item
-        $insert_stmt = $conn->prepare("INSERT INTO cart (user_id, inventory_id, quantity, size) VALUES (?, ?, ?, ?)");
-        $insert_stmt->bind_param("iiis", $_SESSION['user_id'], $item_id, $quantity, $size);
+        // Insert new cart item - use explicit NULL for empty size to prevent duplicate entry errors
+        if ($size) {
+            $insert_stmt = $conn->prepare("INSERT INTO cart (user_id, inventory_id, quantity, size) VALUES (?, ?, ?, ?)");
+            $insert_stmt->bind_param("iiis", $_SESSION['user_id'], $item_id, $quantity, $size);
+        } else {
+            $insert_stmt = $conn->prepare("INSERT INTO cart (user_id, inventory_id, quantity, size) VALUES (?, ?, ?, NULL)");
+            $insert_stmt->bind_param("iii", $_SESSION['user_id'], $item_id, $quantity);
+        }
         $insert_stmt->execute();
         
         $message = 'Item added to cart successfully';

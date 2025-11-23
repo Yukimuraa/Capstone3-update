@@ -67,9 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $mail->addAddress($email);
 
                     $mail->isHTML(true);
-                    $mail->Subject = 'Password Reset Request';
+                    $mail->Subject = 'Password Reset Request - Admin/Secretary';
                     $mail->Body =
-                        '<p>You requested to reset your password for CHMSU Business Affairs Office.</p>' .
+                        '<p>You requested to reset your password for CHMSU Business Affairs Office (Admin/Secretary account).</p>' .
                         '<p>Click the link below to reset your password. This link will expire in 1 hour.</p>' .
                         '<p><a href="' . htmlspecialchars($reset_link, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($reset_link, ENT_QUOTES, 'UTF-8') . '</a></p>' .
                         '<p>If you did not request this, you can safely ignore this email.</p>';
@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forgot Password - CHMSU Business Affairs Office</title>
+    <title>Forgot Password - Admin/Secretary - CHMSU Business Affairs Office</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -117,10 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             backdrop-filter: blur(5px);
         }
         .submit-btn {
-            background-color: #1E40AF; /* Blue button */
+            background-color: #DC2626; /* Red button */
         }
         .submit-btn:hover {
-            background-color: #1E3A8A;
+            background-color: #B91C1C;
         }
         /* Fix for icon and text overlap */
         .input-with-icon {
@@ -141,11 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="background: rgba(255, 255, 255, 0.95);">
+    <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="border-top: 4px solid #DC2626; background: rgba(255, 255, 255, 0.95);">
         <div class="header-section p-6 text-center text-white">
-            <div class="flex justify-center mb-4">
-                <i class="fas fa-school text-yellow-400 text-4xl"></i>
-            </div>
             <div class="flex justify-center mb-4">
                 <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
             </div>
@@ -173,20 +170,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="text-center mt-6">
                     <p class="text-gray-600 mb-4">
                         Remember your password? 
-                        <a href="login.php" class="text-blue-600 hover:underline">Back to Login</a>
+                        <a href="admin_login.php" class="text-red-600 hover:underline">Back to Login</a>
                     </p>
                 </div>
             <?php else: ?>
-            <form action="forgot-password.php" method="POST">
+            <form action="admin_forgot-password.php" method="POST">
                 <div class="mb-4">
                     <label for="user_type" class="block text-gray-700 font-medium mb-2">User Type</label>
                     <div class="input-with-icon">
                         <span class="icon">
                             <i class="fas fa-user-tag"></i>
                         </span>
-                        <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="student">Student/Faculty/Staff</option>
-                            <option value="external">External User</option>
+                        <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" required>
+                            <option value="admin">BAO Admin</option>
+                            <option value="secretary">BAO Secretary</option>
                         </select>
                     </div>
                 </div>
@@ -197,18 +194,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <span class="icon">
                             <i class="fas fa-envelope"></i>
                         </span>
-                        <input type="email" id="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your email" required>
+                        <input type="email" id="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="Enter your email" required>
                     </div>
                 </div>
 
-                <button type="submit" class="w-full submit-btn text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <button type="submit" class="w-full submit-btn text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                     Send Reset Link
                 </button>
 
                 <div class="text-center mt-6">
                     <p class="text-gray-600">
                         Remember your password? 
-                        <a href="login.php" class="text-blue-600 hover:underline">Back to Login</a>
+                        <a href="admin_login.php" class="text-red-600 hover:underline">Back to Login</a>
                     </p>
                 </div>
             </form>
@@ -217,3 +214,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </body>
 </html>
+
