@@ -154,6 +154,11 @@ if (isset($_POST['verify_otp'])) {
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
             background-image: url('image/ChamsuBackround.jpg');
             background-size: cover;
@@ -161,24 +166,68 @@ if (isset($_POST['verify_otp'])) {
             background-repeat: no-repeat;
             background-attachment: fixed;
             min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
         }
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        .split-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
         }
-        .header-section {
-            background: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(5px);
-            border-radius: 20px 20px 0 0;
+        .left-panel {
+            flex: 1;
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.85) 0%, rgba(185, 28, 28, 0.9) 100%);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .left-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('image/ChamsuBackround.jpg');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.3;
+            z-index: 0;
+        }
+        .left-panel-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            max-width: 500px;
+        }
+        .right-panel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.98);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        .form-wrapper {
+            padding: 40px;
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
         }
         .submit-btn {
             background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
             transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
         }
         .submit-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(220, 38, 38, 0.3);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.6);
         }
         .input-with-icon {
             position: relative;
@@ -245,34 +294,79 @@ if (isset($_POST['verify_otp'])) {
             text-align: center;
             font-weight: bold;
         }
-        .security-badge {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        input, select {
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        input:focus, select:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: #DC2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+        }
+        label {
+            color: #374151;
+            font-weight: 600;
+        }
+        .sliding-text {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            height: 60px;
+        }
+        .sliding-text h1 {
+            display: inline-block;
+            animation: slideRepeat 10s linear infinite;
+            white-space: nowrap;
+            padding-left: 100%;
+        }
+        @keyframes slideRepeat {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+        @media (max-width: 768px) {
+            .split-container {
+                flex-direction: column;
+            }
+            .left-panel {
+                min-height: 200px;
+            }
+            .right-panel {
+                max-height: none;
+            }
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
-    <div class="card w-full max-w-md overflow-hidden">
-        <div class="header-section p-6 text-center text-white">
-            <div class="flex justify-center mb-3">
-                <div class="bg-white rounded-full p-2">
-                    <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="40px" height="40px">
+<body>
+    <div class="split-container">
+        <!-- Left Panel - Visual Content -->
+        <div class="left-panel">
+            <div class="left-panel-content">
+                <div class="mb-6">
+                    <div class="bg-white rounded-full p-4 shadow-2xl inline-block">
+                        <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="100px" height="100px">
+                    </div>
                 </div>
+                <div class="sliding-text mb-4">
+                    <h1 class="text-4xl font-bold">Welcome To CHMSU TALISAY</h1>
+                </div>
+                <h2 class="text-2xl font-semibold mb-4">Business Affairs Office</h2>
+                <p class="text-lg opacity-90">Create your admin account with secure OTP verification to manage the BAO system.</p>
             </div>
-            <h2 class="text-2xl font-bold">Create Admin Account</h2>
         </div>
 
-        <div class="p-8">
-            <?php if (isset($error)): ?>
-                <div class="text-red-700 text-sm mb-4">
-                    <?php echo $error; ?>
+        <!-- Right Panel - Form -->
+        <div class="right-panel">
+            <div class="form-wrapper">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2">Create Admin Account</h2>
+                    <p class="text-gray-600">Secure admin account creation with OTP verification</p>
                 </div>
-            <?php endif; ?>
-
-            <?php if (isset($success)): ?>
-                <div class="text-green-700 text-sm mb-4">
-                    <?php echo $success; ?>
-                </div>
-            <?php endif; ?>
+                
 
             <?php if ($showOtpField): ?>
                 <!-- OTP Verification Form -->
@@ -388,6 +482,16 @@ if (isset($_POST['verify_otp'])) {
                     </div>
                 </form>
             <?php endif; ?>
+            
+            <div class="text-center mt-6 pt-6 border-t border-gray-200">
+                <p class="text-gray-600 text-sm">
+                    Already have an account? 
+                    <a href="admin_login.php" class="text-red-600 hover:text-red-700 font-semibold hover:underline">
+                        <i class="fas fa-sign-in-alt mr-1"></i>Login here
+                    </a>
+                </p>
+            </div>
+            </div>
         </div>
     </div>
     

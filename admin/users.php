@@ -75,9 +75,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get all users
-$query = "SELECT * FROM user_accounts ORDER BY user_type, name";
-$result = $conn->query($query);
+// Pagination setup
+$rows_per_page = 10;
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($current_page - 1) * $rows_per_page;
+
+// Get total count of users
+$count_query = "SELECT COUNT(*) as total FROM user_accounts";
+$count_result = $conn->query($count_query);
+$total_rows = $count_result->fetch_assoc()['total'];
+$total_pages = ceil($total_rows / $rows_per_page);
+
+// Get users with pagination
+$query = "SELECT * FROM user_accounts ORDER BY user_type, name LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("ii", $rows_per_page, $offset);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -196,6 +210,61 @@ $result = $conn->query($query);
                             </tbody>
                         </table>
                     </div>
+                    
+                    <!-- Pagination -->
+                    <?php if ($total_pages > 1): ?>
+                        <div class="px-4 py-4 border-t border-gray-200 flex items-center justify-between">
+                            <div class="text-sm text-gray-700">
+                                Showing 
+                                <span class="font-medium"><?php echo $offset + 1; ?></span> 
+                                to 
+                                <span class="font-medium"><?php echo min($offset + $rows_per_page, $total_rows); ?></span> 
+                                of 
+                                <span class="font-medium"><?php echo $total_rows; ?></span> 
+                                results
+                            </div>
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                <!-- Previous Button -->
+                                <a href="?page=<?php echo max(1, $current_page - 1); ?>" 
+                                   class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 <?php echo $current_page == 1 ? 'opacity-50 cursor-not-allowed' : ''; ?>">
+                                    <span class="sr-only">Previous</span>
+                                    <i class="fas fa-chevron-left"></i>
+                                </a>
+                                <!-- Page Numbers -->
+                                <?php 
+                                $start_page = max(1, $current_page - 2);
+                                $end_page = min($total_pages, $current_page + 2);
+                                
+                                if ($start_page > 1): ?>
+                                    <a href="?page=1" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                                    <?php if ($start_page > 2): ?>
+                                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                
+                                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                    <a href="?page=<?php echo $i; ?>" 
+                                       class="<?php echo $i == $current_page ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'; ?> relative inline-flex items-center px-4 py-2 border text-sm font-medium">
+                                        <?php echo $i; ?>
+                                    </a>
+                                <?php endfor; ?>
+                                
+                                <?php if ($end_page < $total_pages): ?>
+                                    <?php if ($end_page < $total_pages - 1): ?>
+                                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                    <?php endif; ?>
+                                    <a href="?page=<?php echo $total_pages; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                                <?php endif; ?>
+                                
+                                <!-- Next Button -->
+                                <a href="?page=<?php echo min($total_pages, $current_page + 1); ?>" 
+                                   class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 <?php echo $current_page == $total_pages ? 'opacity-50 cursor-not-allowed' : ''; ?>">
+                                    <span class="sr-only">Next</span>
+                                    <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </nav>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>

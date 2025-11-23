@@ -111,66 +111,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background-position: center;
             background-repeat: no-repeat;
             background-attachment: fixed;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0, 100, 0, 0.3) 0%, rgba(0, 80, 0, 0.4) 100%);
+            z-index: 0;
+        }
+        .forgot-container {
+            position: relative;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border-radius: 20px;
+            border-top: 4px solid #DC2626;
+            overflow: hidden;
         }
         .header-section {
-            background: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(5px);
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.9) 0%, rgba(185, 28, 28, 0.95) 100%);
+            backdrop-filter: blur(10px);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        .form-section {
+            background: rgba(255, 255, 255, 0.95);
         }
         .submit-btn {
-            background-color: #DC2626; /* Red button */
+            background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
         }
         .submit-btn:hover {
-            background-color: #B91C1C;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.6);
         }
-        /* Fix for icon and text overlap */
         .input-with-icon {
             position: relative;
         }
         .input-with-icon .icon {
             position: absolute;
-            left: 10px;
+            left: 15px;
             top: 50%;
             transform: translateY(-50%);
             color: #6B7280;
             pointer-events: none;
+            z-index: 10;
         }
         .input-with-icon input,
         .input-with-icon select {
-            padding-left: 35px !important; /* Increased padding to prevent overlap */
+            padding-left: 45px !important;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .input-with-icon input:focus,
+        .input-with-icon select:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: #DC2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+        }
+        label {
+            color: #374151;
+            font-weight: 600;
+        }
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #DC2626;
+            backdrop-filter: blur(10px);
+        }
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #059669;
+            backdrop-filter: blur(10px);
         }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="border-top: 4px solid #DC2626; background: rgba(255, 255, 255, 0.95);">
-        <div class="header-section p-6 text-center text-white">
+    <div class="forgot-container w-full max-w-md">
+        <div class="header-section p-8 text-center text-white">
             <div class="flex justify-center mb-4">
-                <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
+                <div class="bg-white rounded-full p-3 shadow-lg">
+                    <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="60px" height="60px">
+                </div>
             </div>
-            <h2 class="text-xl font-bold">Forgot Password</h2>
-            <p class="text-sm">Enter your email to receive a password reset link</p>
+            <h2 class="text-2xl font-bold mb-2">Forgot Password</h2>
+            <p class="text-sm opacity-90">Enter your email to receive a password reset link</p>
         </div>
 
-        <div class="p-6">
+        <div class="form-section p-8">
             <?php if (!empty($error)): ?>
-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                    <?php echo $error; ?>
+                <div class="error-message px-4 py-3 rounded-lg mb-6 text-sm">
+                    <i class="fas fa-exclamation-circle mr-2"></i><?php echo $error; ?>
                 </div>
             <?php endif; ?>
 
             <?php if (!empty($success)): ?>
-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                    <?php echo $success; ?>
+                <div class="success-message px-4 py-3 rounded-lg mb-6 text-sm">
+                    <i class="fas fa-check-circle mr-2"></i><?php echo $success; ?>
                     <?php if (isset($reset_link)): ?>
-                        <div class="mt-2 p-2 bg-gray-100 rounded text-sm overflow-x-auto">
-                            <p>Reset Link (for demonstration only):</p>
-                            <a href="<?php echo $reset_link; ?>" class="text-blue-600 break-all"><?php echo $reset_link; ?></a>
+                        <div class="mt-3 p-3 bg-gray-50 rounded text-xs overflow-x-auto">
+                            <p class="font-semibold mb-1">Reset Link (for demonstration only):</p>
+                            <a href="<?php echo $reset_link; ?>" class="text-red-600 break-all hover:underline"><?php echo $reset_link; ?></a>
                         </div>
                     <?php endif; ?>
                 </div>
-                <div class="text-center mt-6">
-                    <p class="text-gray-600 mb-4">
+                <div class="text-center mt-6 pt-6 border-t border-gray-200">
+                    <p class="text-gray-600 text-sm">
                         Remember your password? 
-                        <a href="admin_login.php" class="text-red-600 hover:underline">Back to Login</a>
+                        <a href="admin_login.php" class="text-red-600 hover:text-red-700 font-semibold hover:underline">Back to Login</a>
                     </p>
                 </div>
             <?php else: ?>
@@ -198,14 +254,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <button type="submit" class="w-full submit-btn text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                    Send Reset Link
+                <button type="submit" class="w-full submit-btn text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                    <i class="fas fa-paper-plane mr-2"></i>Send Reset Link
                 </button>
 
-                <div class="text-center mt-6">
-                    <p class="text-gray-600">
+                <div class="text-center mt-6 pt-6 border-t border-gray-200">
+                    <p class="text-gray-600 text-sm">
                         Remember your password? 
-                        <a href="admin_login.php" class="text-red-600 hover:underline">Back to Login</a>
+                        <a href="admin_login.php" class="text-red-600 hover:text-red-700 font-semibold hover:underline">Back to Login</a>
                     </p>
                 </div>
             </form>

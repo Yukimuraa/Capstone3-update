@@ -88,48 +88,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          background-position: center;
          background-repeat: no-repeat;
          background-attachment: fixed;
+         position: relative;
+     }
+     body::before {
+         content: '';
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         height: 100%;
+         background: linear-gradient(135deg, rgba(0, 100, 0, 0.3) 0%, rgba(0, 80, 0, 0.4) 100%);
+         z-index: 0;
+     }
+     .login-container {
+         position: relative;
+         z-index: 1;
+         background: rgba(255, 255, 255, 0.1);
+         backdrop-filter: blur(20px);
+         border: 1px solid rgba(255, 255, 255, 0.2);
+         box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+         border-radius: 20px;
+         overflow: hidden;
      }
      .header-section {
-         background: rgba(0, 0, 0, 0.3);
-         backdrop-filter: blur(5px);
+         background: linear-gradient(135deg, rgba(0, 100, 0, 0.8) 0%, rgba(0, 80, 0, 0.9) 100%);
+         backdrop-filter: blur(10px);
+         border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+     }
+     .form-section {
+         background: rgba(255, 255, 255, 0.95);
      }
      .login-btn {
-         background-color: #1E40AF; /* Blue button */
+         background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
+         transition: all 0.3s ease;
+         box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
      }
      .login-btn:hover {
-         background-color: #1E3A8A;
+         transform: translateY(-2px);
+         box-shadow: 0 6px 20px rgba(30, 64, 175, 0.6);
      }
-     /* Fix for icon and text overlap */
      .input-with-icon {
          position: relative;
      }
      .input-with-icon .icon {
          position: absolute;
-         left: 10px;
+         left: 15px;
          top: 50%;
          transform: translateY(-50%);
          color: #6B7280;
          pointer-events: none;
+         z-index: 10;
      }
      .input-with-icon input,
      .input-with-icon select {
-         padding-left: 35px !important; /* Increased padding to prevent overlap */
+         padding-left: 45px !important;
+         background: rgba(255, 255, 255, 0.9);
+         border: 2px solid rgba(0, 0, 0, 0.1);
+         transition: all 0.3s ease;
+     }
+     .input-with-icon input:focus,
+     .input-with-icon select:focus {
+         background: rgba(255, 255, 255, 1);
+         border-color: #1E40AF;
+         box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+     }
+     label {
+         color: #374151;
+         font-weight: 600;
+     }
+     .error-message {
+         background: rgba(239, 68, 68, 0.1);
+         border: 1px solid rgba(239, 68, 68, 0.3);
+         color: #DC2626;
+         backdrop-filter: blur(10px);
      }
  </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
- <div class="bg-white rounded-lg shadow-md w-full max-w-md overflow-hidden" style="background: rgba(255, 255, 255, 0.95);">
-     <div class="header-section p-6 text-center text-white">
+ <div class="login-container w-full max-w-md">
+     <div class="header-section p-8 text-center text-white">
          <div class="flex justify-center mb-4">
-             <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="70px" height="70px" class="mx-auto">
+             <div class="bg-white rounded-full p-3 shadow-lg">
+                 <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="60px" height="60px">
+             </div>
          </div>
-         <h2 class="text-s font-bold">Enter your credentials to access the system</h2>
+         <h2 class="text-2xl font-bold mb-2">Welcome Back</h2>
+         <p class="text-sm opacity-90">Enter your credentials to access the system</p>
      </div>
 
-     <div class="p-6">
+     <div class="form-section p-8">
          <?php if (!empty($error)): ?>
-             <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                 <?php echo $error; ?>
+             <div class="error-message px-4 py-3 rounded-lg mb-6 text-sm">
+                 <i class="fas fa-exclamation-circle mr-2"></i><?php echo $error; ?>
              </div>
          <?php endif; ?>
 
@@ -178,14 +228,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  <label for="remember" class="ml-2 block text-sm text-gray-700">Remember me</label>
              </div>
 
-             <button type="submit" class="w-full login-btn text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                 Login
+             <button type="submit" class="w-full login-btn text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                 <i class="fas fa-sign-in-alt mr-2"></i>Login
              </button>
 
-             <div class="text-center mt-6">
-                 <p class="text-gray-600">
+             <div class="text-center mt-6 pt-6 border-t border-gray-200">
+                 <p class="text-gray-600 text-sm">
                      Don't have an account? 
-                     <a href="register.php" class="text-blue-600 hover:underline">Register</a>
+                     <a href="register.php" class="text-blue-600 hover:text-blue-700 font-semibold hover:underline">Register Now</a>
                  </p>
              </div>
          </form>

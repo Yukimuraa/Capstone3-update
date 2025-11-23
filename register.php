@@ -124,6 +124,179 @@ if (isset($_POST['verify_otp'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-image: url('image/ChamsuBackround.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            position: relative;
+            overflow-x: hidden;
+        }
+        .split-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+        .left-panel {
+            flex: 1;
+            background: linear-gradient(135deg, rgba(0, 100, 0, 0.85) 0%, rgba(0, 80, 0, 0.9) 100%);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .left-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('image/ChamsuBackround.jpg');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.3;
+            z-index: 0;
+        }
+        .left-panel-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            max-width: 500px;
+        }
+        .right-panel {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.98);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        .form-wrapper {
+            padding: 40px;
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .register-btn {
+            background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
+        }
+        .register-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.6);
+        }
+        input, select {
+            padding-left: 15px !important;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        input:focus, select:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: #1E40AF;
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+        }
+        label {
+            color: #374151;
+            font-weight: 600;
+        }
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #DC2626;
+        }
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #059669;
+        }
+        .password-strength {
+            height: 4px;
+            border-radius: 2px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            clear: both;
+            background: #e5e7eb;
+        }
+        .password-strength.weak {
+            background: #ef4444;
+            width: 33%;
+        }
+        .password-strength.medium {
+            background: #f59e0b;
+            width: 66%;
+        }
+        .password-strength.strong {
+            background: #10b981;
+            width: 100%;
+        }
+        .requirement {
+            font-size: 0.75rem;
+            margin-top: 6px;
+            margin-bottom: 4px;
+            transition: color 0.3s ease;
+            display: flex;
+            align-items: center;
+            line-height: 1.4;
+        }
+        .requirement.met {
+            color: #10b981;
+        }
+        .requirement.unmet {
+            color: #6b7280;
+        }
+        .sliding-text {
+            overflow: hidden;
+            white-space: nowrap;
+            display: inline-block;
+        }
+        .sliding-text {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            height: 60px;
+        }
+        .sliding-text h1 {
+            display: inline-block;
+            animation: slideRepeat 10s linear infinite;
+            white-space: nowrap;
+            padding-left: 100%;
+        }
+        @keyframes slideRepeat {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+        @media (max-width: 768px) {
+            .split-container {
+                flex-direction: column;
+            }
+            .left-panel {
+                min-height: 200px;
+            }
+            .right-panel {
+                max-height: none;
+            }
+        }
+    </style>
     <script>
         function toggleOrganizationField() {
             const userType = document.getElementById("user_type").value;
@@ -133,79 +306,130 @@ if (isset($_POST['verify_otp'])) {
     </script>
 </head>
 
-<body class="min-h-screen flex items-center justify-center p-4" style="background-image: url('image/ChamsuBackround.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
-    <div class="bg-white w-full max-w-md rounded-lg shadow-lg p-6" style="background: rgba(255, 255, 255, 0.95);">
-        <div class="text-center">
-            <img src="image/CHMSUWebLOGO.png" class="mx-auto mb-2" width="70" height="70">
-            <p class="text-sm">Register to access the Business Affairs Office system</p>
+<body>
+    <div class="split-container">
+        <!-- Left Panel - Visual Content -->
+        <div class="left-panel">
+            <div class="left-panel-content">
+                <div class="mb-6">
+                    <div class="bg-white rounded-full p-4 shadow-2xl inline-block">
+                        <img src="image/CHMSUWebLOGO.png" alt="CHMSU Logo" width="100px" height="100px">
+                    </div>
+                </div>
+                <div class="sliding-text mb-4">
+                    <h1 class="text-4xl font-bold">Welcome To CHMSU TALISAY</h1>
+                </div>
+                <h2 class="text-2xl font-semibold mb-4">Business Affairs Office</h2>
+                <p class="text-lg opacity-90">Create your account to access our services and manage your requests efficiently.</p>
+            </div>
         </div>
 
-        <?php if (!empty($error)): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-2 mt-4 rounded"><?php echo $error; ?></div>
-        <?php endif; ?>
+        <!-- Right Panel - Form -->
+        <div class="right-panel">
+            <div class="form-wrapper">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2">Create Account</h2>
+                    <p class="text-gray-600">Register to access the Business Affairs Office system</p>
+                </div>
+            <?php if (!empty($error)): ?>
+                <div class="error-message px-4 py-3 rounded-lg mb-6 text-sm">
+                    <i class="fas fa-exclamation-circle mr-2"></i><?php echo $error; ?>
+                </div>
+            <?php endif; ?>
 
-        <?php if (!empty($success)): ?>
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-2 mt-4 rounded">
-                <?php echo $success; ?>
+            <?php if (!empty($success)): ?>
+                <div class="success-message px-4 py-3 rounded-lg mb-6 text-sm">
+                    <i class="fas fa-check-circle mr-2"></i><?php echo $success; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($showOtpField): ?>
+                <form method="POST" class="mt-6">
+                    <div class="mb-6">
+                        <label for="otp" class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-key mr-2"></i>Enter OTP Code
+                        </label>
+                        <input type="text" id="otp" name="otp" class="w-full px-4 py-3 rounded-lg" placeholder="6-digit OTP" maxlength="6" pattern="[0-9]{6}" required style="text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: bold;">
+                    </div>
+                    <button type="submit" name="verify_otp" class="w-full register-btn text-white py-3 px-4 rounded-lg font-semibold">
+                        <i class="fas fa-check-circle mr-2"></i>Verify OTP
+                    </button>
+                </form>
+            <?php else: ?>
+                <form method="POST" class="mt-6">
+                    <div class="mb-4">
+                        <label for="user_type" class="block text-gray-700 font-semibold mb-2">User Type</label>
+                        <select id="user_type" name="user_type" onchange="toggleOrganizationField()" class="w-full px-4 py-3 rounded-lg">
+                            <option value="student">Student/Faculty/Staff</option>
+                            <option value="external">External User</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="name" class="block text-gray-700 font-semibold mb-2">Full Name</label>
+                        <input type="text" name="name" class="w-full px-4 py-3 rounded-lg" required>
+                    </div>
+                    <div id="organization_field" class="mb-4 hidden">
+                        <label for="organization" class="block text-gray-700 font-semibold mb-2">Organization</label>
+                        <input type="text" name="organization" class="w-full px-4 py-3 rounded-lg">
+                    </div>
+                    <div class="mb-4">
+                        <label for="email" class="block text-gray-700 font-semibold mb-2">Email</label>
+                        <input type="email" name="email" class="w-full px-4 py-3 rounded-lg" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="password" class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-lock mr-2"></i>Password
+                        </label>
+                        <div style="position: relative;">
+                            <input type="password" id="password" name="password" class="w-full px-4 py-3 rounded-lg" style="padding-right: 50px;" required onkeyup="checkPasswordStrength(); checkPasswordMatch();">
+                            <button type="button" onclick="togglePassword('password', 'togglePasswordIcon1')" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                                <i class="fas fa-eye" id="togglePasswordIcon1"></i>
+                            </button>
+                        </div>
+                        <div class="password-strength" id="passwordStrength"></div>
+                        <div class="mt-3 space-y-1" id="passwordRequirements">
+                            <div class="requirement unmet" id="req-length">
+                                <i class="fas fa-circle text-xs mr-2"></i>At least 8 characters
+                            </div>
+                            <div class="requirement unmet" id="req-uppercase">
+                                <i class="fas fa-circle text-xs mr-2"></i>One uppercase letter
+                            </div>
+                            <div class="requirement unmet" id="req-lowercase">
+                                <i class="fas fa-circle text-xs mr-2"></i>One lowercase letter
+                            </div>
+                            <div class="requirement unmet" id="req-number">
+                                <i class="fas fa-circle text-xs mr-2"></i>One number
+                            </div>
+                            <div class="requirement unmet" id="req-special">
+                                <i class="fas fa-circle text-xs mr-2"></i>One special character
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <label for="confirm_password" class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-lock mr-2"></i>Confirm Password
+                        </label>
+                        <div style="position: relative;">
+                            <input type="password" id="confirm_password" name="confirm_password" class="w-full px-4 py-3 rounded-lg" style="padding-right: 50px;" required onkeyup="checkPasswordMatch();">
+                            <button type="button" onclick="togglePassword('confirm_password', 'togglePasswordIcon2')" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
+                                <i class="fas fa-eye" id="togglePasswordIcon2"></i>
+                            </button>
+                        </div>
+                        <div id="passwordMatch" class="mt-2 text-sm min-h-[20px]"></div>
+                    </div>
+                    <button type="submit" name="register" class="w-full register-btn text-white py-3 px-4 rounded-lg font-semibold">
+                        <i class="fas fa-user-plus mr-2"></i>Register
+                    </button>
+                </form>
+            <?php endif; ?>
+            
+                <div class="text-center mt-6 pt-6 border-t border-gray-200">
+                    <p class="text-gray-600 text-sm">
+                        Already have an account? 
+                        <a href="login.php" class="text-blue-600 hover:text-blue-700 font-semibold hover:underline">Login here</a>
+                    </p>
+                </div>
             </div>
-        <?php endif; ?>
-
-        <?php if ($showOtpField): ?>
-            <form method="POST" class="mt-6">
-                <div class="mb-4">
-                    <label for="otp" class="block text-gray-700 font-semibold mb-2">Enter OTP</label>
-                    <input type="text" id="otp" name="otp" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="6-digit OTP" required>
-                </div>
-                <button type="submit" name="verify_otp" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Verify OTP</button>
-            </form>
-        <?php else: ?>
-            <form method="POST" class="mt-6">
-                <div class="mb-4">
-                    <label for="user_type" class="block text-gray-700 font-semibold mb-2">User Type</label>
-                    <select id="user_type" name="user_type" onchange="toggleOrganizationField()" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                        <option value="student">Student/Faculty/Staff</option>
-                        <option value="external">External User</option>
-                    </select>
-                </div>
-                <div class="mb-4">
-                    <label for="name" class="block text-gray-700 font-semibold mb-2">Full Name</label>
-                    <input type="text" name="name" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
-                </div>
-                <div id="organization_field" class="mb-4 hidden">
-                    <label for="organization" class="block text-gray-700 font-semibold mb-2">Organization</label>
-                    <input type="text" name="organization" class="w-full px-3 py-2 border border-gray-300 rounded-md">
-                </div>
-                <div class="mb-4">
-                    <label for="email" class="block text-gray-700 font-semibold mb-2">Email</label>
-                    <input type="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
-                </div>
-                <div class="mb-4">
-                    <label for="password" class="block text-gray-700 font-semibold mb-2">Password</label>
-                    <div style="position: relative;">
-                        <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md" style="padding-right: 40px;" required>
-                        <button type="button" onclick="togglePassword('password', 'togglePasswordIcon1')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
-                            <i class="fas fa-eye" id="togglePasswordIcon1"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label for="confirm_password" class="block text-gray-700 font-semibold mb-2">Confirm Password</label>
-                    <div style="position: relative;">
-                        <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md" style="padding-right: 40px;" required>
-                        <button type="button" onclick="togglePassword('confirm_password', 'togglePasswordIcon2')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
-                            <i class="fas fa-eye" id="togglePasswordIcon2"></i>
-                        </button>
-                    </div>
-                </div>
-                <button type="submit" name="register" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Register</button>
-            </form>
-        <?php endif; ?>
-        
-        <div class="text-center mt-6">
-            <p class="text-gray-600">
-                Already have an account? 
-                <a href="login.php" class="text-blue-600 hover:underline font-semibold">Login here</a>
-            </p>
         </div>
     </div>
     
@@ -223,6 +447,78 @@ if (isset($_POST['verify_otp'])) {
                 toggleIcon.classList.remove('fa-eye-slash');
                 toggleIcon.classList.add('fa-eye');
             }
+        }
+
+        function checkPasswordStrength() {
+            const password = document.getElementById('password').value;
+            let strength = 0;
+            const requirements = {
+                length: password.length >= 8,
+                uppercase: /[A-Z]/.test(password),
+                lowercase: /[a-z]/.test(password),
+                number: /[0-9]/.test(password),
+                special: /[^A-Za-z0-9]/.test(password)
+            };
+
+            // Update requirement indicators
+            document.getElementById('req-length').classList.toggle('met', requirements.length);
+            document.getElementById('req-length').classList.toggle('unmet', !requirements.length);
+            document.getElementById('req-uppercase').classList.toggle('met', requirements.uppercase);
+            document.getElementById('req-uppercase').classList.toggle('unmet', !requirements.uppercase);
+            document.getElementById('req-lowercase').classList.toggle('met', requirements.lowercase);
+            document.getElementById('req-lowercase').classList.toggle('unmet', !requirements.lowercase);
+            document.getElementById('req-number').classList.toggle('met', requirements.number);
+            document.getElementById('req-number').classList.toggle('unmet', !requirements.number);
+            document.getElementById('req-special').classList.toggle('met', requirements.special);
+            document.getElementById('req-special').classList.toggle('unmet', !requirements.special);
+
+            // Calculate strength
+            Object.values(requirements).forEach(req => {
+                if (req) strength++;
+            });
+
+            // Update strength bar
+            const strengthBar = document.getElementById('passwordStrength');
+            strengthBar.className = 'password-strength';
+            if (strength <= 2) {
+                strengthBar.classList.add('weak');
+            } else if (strength <= 4) {
+                strengthBar.classList.add('medium');
+            } else {
+                strengthBar.classList.add('strong');
+            }
+        }
+
+        function checkPasswordMatch() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const matchDiv = document.getElementById('passwordMatch');
+
+            if (confirmPassword.length === 0) {
+                matchDiv.innerHTML = '';
+                return;
+            }
+
+            if (password === confirmPassword) {
+                matchDiv.innerHTML = '<i class="fas fa-check-circle text-green-600 mr-2"></i><span class="text-green-600">Passwords match</span>';
+            } else {
+                matchDiv.innerHTML = '<i class="fas fa-times-circle text-red-600 mr-2"></i><span class="text-red-600">Passwords do not match</span>';
+            }
+        }
+
+        // Event listeners
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirm_password');
+        
+        if (passwordInput) {
+            passwordInput.addEventListener('input', function() {
+                checkPasswordStrength();
+                checkPasswordMatch();
+            });
+        }
+
+        if (confirmPasswordInput) {
+            confirmPasswordInput.addEventListener('input', checkPasswordMatch);
         }
     </script>
 </body>

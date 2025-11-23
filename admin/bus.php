@@ -541,17 +541,39 @@ include '../includes/header.php';
             $schedule_stats = $count_result->fetch_assoc();
             
             // Get schedules for this month with billing info
+            // Pagination setup
+            $rows_per_page = 10;
+            $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $offset = ($current_page - 1) * $rows_per_page;
+            
+            // Count total for this month
+            $count_sql = "SELECT COUNT(*) as total 
+                         FROM bus_schedules 
+                         WHERE MONTH(date_covered) = ? AND YEAR(date_covered) = ?";
+            $count_stmt = $conn->prepare($count_sql);
+            $count_stmt->bind_param("ii", $current_month, $current_year);
+            $count_stmt->execute();
+            $count_result = $count_stmt->get_result();
+            $total_rows = $count_result->fetch_assoc()['total'];
+            $total_pages = ceil($total_rows / $rows_per_page);
+            
             $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
                          FROM bus_schedules bs 
                          LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
                          WHERE MONTH(bs.date_covered) = ? AND YEAR(bs.date_covered) = ? 
-                         ORDER BY bs.created_at DESC";
+                         ORDER BY bs.created_at DESC 
+                         LIMIT ? OFFSET ?";
             $list_stmt = $conn->prepare($list_sql);
-            $list_stmt->bind_param("ii", $current_month, $current_year);
+            $list_stmt->bind_param("iiii", $current_month, $current_year, $rows_per_page, $offset);
             $list_stmt->execute();
             $list_result = $list_stmt->get_result();
         } else {
             // Show ALL requests (default)
+            // Pagination setup
+            $rows_per_page = 10;
+            $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $offset = ($current_page - 1) * $rows_per_page;
+            
             $count_sql = "SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -560,13 +582,19 @@ include '../includes/header.php';
                 FROM bus_schedules";
             $count_result = $conn->query($count_sql);
             $schedule_stats = $count_result->fetch_assoc();
+            $total_rows = $schedule_stats['total'];
+            $total_pages = ceil($total_rows / $rows_per_page);
             
             // Get all schedules with billing info
             $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
                          FROM bus_schedules bs 
                          LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
-                         ORDER BY bs.created_at DESC";
-            $list_result = $conn->query($list_sql);
+                         ORDER BY bs.created_at DESC 
+                         LIMIT ? OFFSET ?";
+            $list_stmt = $conn->prepare($list_sql);
+            $list_stmt->bind_param("ii", $rows_per_page, $offset);
+            $list_stmt->execute();
+            $list_result = $list_stmt->get_result();
         }
         ?>
         <!-- Statistics Cards -->
@@ -736,6 +764,61 @@ include '../includes/header.php';
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Pagination -->
+            <?php if (isset($total_pages) && $total_pages > 1): ?>
+                <div class="mt-6 px-4 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <div class="text-sm text-gray-700">
+                        Showing 
+                        <span class="font-medium"><?php echo $offset + 1; ?></span> 
+                        to 
+                        <span class="font-medium"><?php echo min($offset + $rows_per_page, $total_rows); ?></span> 
+                        of 
+                        <span class="font-medium"><?php echo $total_rows; ?></span> 
+                        results
+                    </div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <!-- Previous Button -->
+                        <a href="?tab=schedules<?php echo $view_filter !== 'all' ? '&view=' . $view_filter : ''; ?>&page=<?php echo max(1, $current_page - 1); ?>" 
+                           class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 <?php echo $current_page == 1 ? 'opacity-50 cursor-not-allowed' : ''; ?>">
+                            <span class="sr-only">Previous</span>
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                        <!-- Page Numbers -->
+                        <?php 
+                        $start_page = max(1, $current_page - 2);
+                        $end_page = min($total_pages, $current_page + 2);
+                        
+                        if ($start_page > 1): ?>
+                            <a href="?tab=schedules<?php echo $view_filter !== 'all' ? '&view=' . $view_filter : ''; ?>&page=1" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                            <?php if ($start_page > 2): ?>
+                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                            <a href="?tab=schedules<?php echo $view_filter !== 'all' ? '&view=' . $view_filter : ''; ?>&page=<?php echo $i; ?>" 
+                               class="<?php echo $i == $current_page ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'; ?> relative inline-flex items-center px-4 py-2 border text-sm font-medium">
+                                <?php echo $i; ?>
+                            </a>
+                        <?php endfor; ?>
+                        
+                        <?php if ($end_page < $total_pages): ?>
+                            <?php if ($end_page < $total_pages - 1): ?>
+                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                            <?php endif; ?>
+                            <a href="?tab=schedules<?php echo $view_filter !== 'all' ? '&view=' . $view_filter : ''; ?>&page=<?php echo $total_pages; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                        <?php endif; ?>
+                        
+                        <!-- Next Button -->
+                        <a href="?tab=schedules<?php echo $view_filter !== 'all' ? '&view=' . $view_filter : ''; ?>&page=<?php echo min($total_pages, $current_page + 1); ?>" 
+                           class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 <?php echo $current_page == $total_pages ? 'opacity-50 cursor-not-allowed' : ''; ?>">
+                            <span class="sr-only">Next</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </nav>
+                </div>
+            <?php endif; ?>
         </div>
         <?php endif; // End schedules tab ?>
         
