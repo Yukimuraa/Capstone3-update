@@ -187,12 +187,29 @@ $upcoming_bookings = $stmt->get_result();
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purpose</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendees</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     <?php if ($recent_bookings->num_rows > 0): ?>
                                         <?php while ($booking = $recent_bookings->fetch_assoc()): ?>
+                                            <?php
+                                            // Get facility name if purpose is "Other" and facility_id exists
+                                            $facility_name = '';
+                                            if ($booking['purpose'] === 'Other') {
+                                                $additional_info = json_decode($booking['additional_info'] ?? '{}', true);
+                                                if (isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+                                                    $facility_id = intval($additional_info['facility_id']);
+                                                    $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+                                                    $facility_stmt->bind_param("i", $facility_id);
+                                                    $facility_stmt->execute();
+                                                    $facility_result = $facility_stmt->get_result();
+                                                    if ($facility_result->num_rows > 0) {
+                                                        $facility_row = $facility_result->fetch_assoc();
+                                                        $facility_name = $facility_row['name'];
+                                                    }
+                                                }
+                                            }
+                                            ?>
                                             <tr>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $booking['booking_id']; ?></td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
@@ -221,7 +238,14 @@ $upcoming_bookings = $stmt->get_result();
                                                         ?>
                                                     </div>
                                                 </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $booking['purpose']; ?></td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    <div><?php echo $booking['purpose']; ?></div>
+                                                    <?php if ($booking['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                        <div class="text-xs text-gray-400 mt-1">
+                                                            <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $booking['attendees']; ?></td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     <?php if ($booking['status'] == 'pending'): ?>
@@ -234,14 +258,11 @@ $upcoming_bookings = $stmt->get_result();
                                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Rejected</span>
                                                     <?php endif; ?>
                                                 </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    <a href="view_booking.php?id=<?php echo $booking['id']; ?>" class="text-blue-600 hover:text-blue-900">View</a>
-                                                </td>
                                             </tr>
                                         <?php endwhile; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">No recent bookings found</td>
+                                            <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No recent bookings found</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>

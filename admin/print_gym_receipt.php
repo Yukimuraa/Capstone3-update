@@ -43,6 +43,20 @@ if (!empty($booking['additional_info'])) {
 $cost_breakdown = isset($additional_info['cost_breakdown']) ? $additional_info['cost_breakdown'] : [];
 $total_cost = isset($cost_breakdown['total']) ? $cost_breakdown['total'] : 0;
 
+// Get facility name if facility_id exists in additional_info
+$facility_name = "Gymnasium"; // Default
+if (isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+    $facility_id = intval($additional_info['facility_id']);
+    $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+    $facility_stmt->bind_param("i", $facility_id);
+    $facility_stmt->execute();
+    $facility_result = $facility_stmt->get_result();
+    if ($facility_result->num_rows > 0) {
+        $facility_row = $facility_result->fetch_assoc();
+        $facility_name = $facility_row['name'];
+    }
+}
+
 // Generate control number (using booking_id)
 $control_no = $booking_id;
 $booking_date_formatted = date('F j, Y', strtotime($booking['date']));
@@ -477,7 +491,7 @@ $hours = $start->diff($end)->h + ($start->diff($end)->i / 60);
                             <div class="form-value-large">
                                 <?php 
                                 $payment_nature = [];
-                                $payment_nature[] = "Gymnasium Reservation";
+                                $payment_nature[] = "Facility: " . htmlspecialchars($facility_name);
                                 $payment_nature[] = "Date: " . $booking_date_formatted;
                                 $payment_nature[] = "Time: " . $booking_time;
                                 $payment_nature[] = "Duration: " . number_format($hours, 2) . " hours";

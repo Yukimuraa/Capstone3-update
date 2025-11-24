@@ -27,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $contact_number = sanitize_input($_POST['contact_number']);
             $equipment = isset($_POST['equipment']) ? sanitize_input($_POST['equipment']) : '';
             $chair_pairs = isset($_POST['chair_pairs']) ? intval($_POST['chair_pairs']) : 0;
+            $facility_id = isset($_POST['facility_id']) && !empty($_POST['facility_id']) ? intval($_POST['facility_id']) : null;
             
             // Normalize times to HH:MM:SS format for proper comparison
             $start_time = trim($start_time);
@@ -95,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					$chairs_cost = 0;
 					
 					if (strpos($equipment, 'Sound System') !== false) {
-						$sound_system_cost = 150; // One-time fee
+						$sound_system_cost = $hours * 150; // Per hour
 					}
 					if (strpos($equipment, 'Electricity') !== false) {
 						$electricity_cost = $hours * 150; // Per hour
@@ -115,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					
 					// Generate a collision-resistant booking ID and retry on duplicates
 					$year = date('Y');
-					$additional_info = json_encode([
+					$additional_info_array = [
 						'organization' => $organization,
 						'contact_person' => $contact_person,
 						'contact_number' => $contact_number,
@@ -129,7 +130,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 							'total' => $total_cost,
 							'hours' => round($hours, 2)
 						]
-					]);
+					];
+					// Add facility_id if "Other" event type was selected
+					if ($facility_id !== null) {
+						$additional_info_array['facility_id'] = $facility_id;
+					}
+					$additional_info = json_encode($additional_info_array);
 					
 					$attempts = 0;
 					$maxAttempts = 3;
@@ -229,12 +235,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get user's bookings
-$bookings_query = "SELECT * FROM bookings WHERE user_id = ? AND facility_type = 'gym' ORDER BY date DESC, start_time DESC";
+// Get user's bookings with pagination - order by most recent first
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$per_page = 10;
+$offset = ($page - 1) * $per_page;
+
+// Get total count
+$count_query = "SELECT COUNT(*) as total FROM bookings WHERE user_id = ? AND facility_type = 'gym'";
+$count_stmt = $conn->prepare($count_query);
+$count_stmt->bind_param("i", $user_id);
+$count_stmt->execute();
+$count_result = $count_stmt->get_result();
+$total_rows = $count_result->fetch_assoc()['total'];
+$total_pages = $total_rows > 0 ? ceil($total_rows / $per_page) : 1;
+
+// Get paginated bookings
+$bookings_query = "SELECT * FROM bookings WHERE user_id = ? AND facility_type = 'gym' ORDER BY created_at DESC, date DESC LIMIT ?, ?";
 $bookings_stmt = $conn->prepare($bookings_query);
-$bookings_stmt->bind_param("i", $user_id);
+$bookings_stmt->bind_param("iii", $user_id, $offset, $per_page);
 $bookings_stmt->execute();
 $bookings_result = $bookings_stmt->get_result();
+
+// Get all gym facilities for facility selection - fetch fresh data each time
+$facilities_query = "SELECT id, name FROM gym_facilities WHERE status = 'active' ORDER BY name ASC";
+$facilities_stmt = $conn->prepare($facilities_query);
+$facilities_stmt->execute();
+$facilities_result = $facilities_stmt->get_result();
 
 // Note: We no longer fully disable dates on the calendar to allow partial-day bookings
 ?>
@@ -332,7 +358,7 @@ $bookings_result = $bookings_stmt->get_result();
                                 <h4 class="font-semibold text-gray-800 mb-3">Pricing Information</h4>
                                 <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
                                     <li><strong>Gymnasium:</strong> ₱700 per hour</li>
-                                    <li><strong>Sound System:</strong> ₱150 (one-time fee)</li>
+                                    <li><strong>Sound System:</strong> ₱150 per hour</li>
                                     <li><strong>Electricity:</strong> ₱150 per hour</li>
                                     <li><strong>LED WALL Electricity:</strong> ₱200 per hour</li>
                                     <li><strong>Chairs:</strong> ₱20 per chair</li>
@@ -382,6 +408,20 @@ $bookings_result = $bookings_stmt->get_result();
                                                 $status_class = 'bg-gray-100 text-gray-800';
                                                 break;
                                         }
+                                        
+                                        // Get facility name if purpose is "Other" and facility_id exists
+                                        $facility_name = '';
+                                        if ($booking['purpose'] === 'Other' && isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+                                            $facility_id = intval($additional_info['facility_id']);
+                                            $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+                                            $facility_stmt->bind_param("i", $facility_id);
+                                            $facility_stmt->execute();
+                                            $facility_result = $facility_stmt->get_result();
+                                            if ($facility_result->num_rows > 0) {
+                                                $facility_row = $facility_result->fetch_assoc();
+                                                $facility_name = $facility_row['name'];
+                                            }
+                                        }
                                         ?>
                                         <tr>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $booking['booking_id']; ?></td>
@@ -392,26 +432,31 @@ $bookings_result = $bookings_stmt->get_result();
                                                      date('h:i A', strtotime($booking['end_time'])); 
                                                 ?>
                                             </td>
-                                            <td class="px-6 py-4 text-sm text-gray-500"><?php echo $booking['purpose']; ?></td>
+                                            <td class="px-6 py-4 text-sm text-gray-500">
+                                                <div><?php echo $booking['purpose']; ?></div>
+                                                <?php if ($booking['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                    <div class="text-xs text-gray-400 mt-1">
+                                                        <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
                                                     <?php echo $status_text; ?>
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button type="button" class="text-amber-600 hover:text-amber-900 mr-3" onclick="viewBookingDetails(<?php echo htmlspecialchars(json_encode($booking)); ?>, <?php echo htmlspecialchars(json_encode($additional_info)); ?>)">
-                                                    View
-                                                </button>
-                                                
-                                                <?php if ($booking['status'] === 'pending'): ?>
-                                                    <form method="POST" action="gym.php" class="inline">
-                                                        <input type="hidden" name="action" value="cancel">
-                                                        <input type="hidden" name="booking_id" value="<?php echo $booking['booking_id']; ?>">
-                                                        <button type="submit" class="text-red-600 hover:text-red-900" onclick="return confirm('Are you sure you want to cancel this booking?')">
-                                                            Cancel
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <div class="flex items-center gap-2">
+                                                    <button type="button" class="inline-flex items-center px-3 py-1.5 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors" onclick="viewBookingDetails(<?php echo htmlspecialchars(json_encode($booking)); ?>, <?php echo htmlspecialchars(json_encode($additional_info)); ?>)">
+                                                        <i class="fas fa-eye mr-1.5"></i> View
+                                                    </button>
+                                                    
+                                                    <?php if ($booking['status'] === 'pending'): ?>
+                                                        <button type="button" onclick="openCancelModal('<?php echo $booking['booking_id']; ?>', '<?php echo htmlspecialchars($booking['booking_id']); ?>', '<?php echo date('F j, Y', strtotime($booking['date'])); ?>')" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                                                            <i class="fas fa-times mr-1.5"></i> Cancel
                                                         </button>
-                                                    </form>
-                                                <?php endif; ?>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endwhile; ?>
@@ -423,6 +468,98 @@ $bookings_result = $bookings_stmt->get_result();
                             </tbody>
                         </table>
                     </div>
+                    <!-- Pagination -->
+                    <?php if ($total_pages > 1): ?>
+                    <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                        <div class="flex-1 flex justify-between sm:hidden">
+                            <?php if ($page > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Previous
+                            </a>
+                            <?php else: ?>
+                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                Previous
+                            </span>
+                            <?php endif; ?>
+                            
+                            <?php if ($page < $total_pages): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Next
+                            </a>
+                            <?php else: ?>
+                            <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                Next
+                            </span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                            <div>
+                                <p class="text-sm text-gray-700">
+                                    Showing
+                                    <span class="font-medium"><?php echo $offset + 1; ?></span>
+                                    to
+                                    <span class="font-medium"><?php echo min($offset + $per_page, $total_rows); ?></span>
+                                    of
+                                    <span class="font-medium"><?php echo $total_rows; ?></span>
+                                    results
+                                </p>
+                            </div>
+                            <div>
+                                <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                    <?php if ($page > 1): ?>
+                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                        <span class="sr-only">Previous</span>
+                                        <i class="fas fa-chevron-left"></i>
+                                    </a>
+                                    <?php else: ?>
+                                    <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                        <span class="sr-only">Previous</span>
+                                        <i class="fas fa-chevron-left"></i>
+                                    </span>
+                                    <?php endif; ?>
+                                    
+                                    <?php
+                                    $start_page = max(1, $page - 2);
+                                    $end_page = min($total_pages, $page + 2);
+                                    
+                                    if ($start_page > 1): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                                        <?php if ($start_page > 2): ?>
+                                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                    
+                                    <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                        <?php if ($i == $page): ?>
+                                            <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600 z-10"><?php echo $i; ?></span>
+                                        <?php else: ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $i; ?></a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                    
+                                    <?php if ($end_page < $total_pages): ?>
+                                        <?php if ($end_page < $total_pages - 1): ?>
+                                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                        <?php endif; ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($page < $total_pages): ?>
+                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                        <span class="sr-only">Next</span>
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                    <?php else: ?>
+                                    <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                        <span class="sr-only">Next</span>
+                                        <i class="fas fa-chevron-right"></i>
+                                    </span>
+                                    <?php endif; ?>
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
@@ -493,6 +630,25 @@ $bookings_result = $bookings_stmt->get_result();
                     <option value="School Program">School Program</option>
                     <option value="Other">Other</option>
                 </select>
+            </div>
+            <div class="mb-4" id="facilityDropdown" style="display: none;">
+                <label for="facility_id" class="block text-sm font-medium text-gray-700 mb-1">Select Facility</label>
+                <select id="facility_id" name="facility_id" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                    <option value="">Select a facility</option>
+                    <?php 
+                    if ($facilities_result && $facilities_result->num_rows > 0) {
+                        while ($facility = $facilities_result->fetch_assoc()): 
+                    ?>
+                        <option value="<?php echo $facility['id']; ?>"><?php echo htmlspecialchars($facility['name']); ?></option>
+                    <?php 
+                        endwhile;
+                    } else {
+                        // Debug: Show message if no facilities found
+                        echo '<!-- No active facilities found -->';
+                    }
+                    ?>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Select the facility you want to book</p>
             </div>
             <div class="mb-4" id="equipmentDropdown" style="display: none;">
                 <label for="equipment" class="block text-sm font-medium text-gray-700 mb-1">Equipment/Services Needed</label>
@@ -637,7 +793,7 @@ $bookings_result = $bookings_stmt->get_result();
                     </div>
                     <?php if ($costs['sound_system'] > 0): ?>
                     <div class="flex justify-between">
-                        <span class="text-gray-700">Sound System:</span>
+                        <span class="text-gray-700">Sound System (₱150/hour × <?php echo $receipt['hours']; ?> hrs):</span>
                         <span class="font-medium text-gray-900">₱<?php echo number_format($costs['sound_system'], 2); ?></span>
                     </div>
                     <?php endif; ?>
@@ -750,6 +906,42 @@ $bookings_result = $bookings_stmt->get_result();
     </div>
 </div>
 
+<!-- Cancel Booking Modal -->
+<div id="cancelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">
+                <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Cancel Booking
+            </h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeCancelModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="mb-6">
+            <p class="text-gray-700 mb-2">Are you sure you want to cancel this booking?</p>
+            <div class="bg-gray-50 p-3 rounded-md">
+                <p class="text-sm text-gray-600"><strong>Booking ID:</strong> <span id="cancel-booking-id"></span></p>
+                <p class="text-sm text-gray-600"><strong>Date:</strong> <span id="cancel-booking-date"></span></p>
+            </div>
+            <p class="text-sm text-red-600 mt-3">
+                <i class="fas fa-info-circle mr-1"></i>This action cannot be undone.
+            </p>
+        </div>
+        <form method="POST" action="gym.php" id="cancelForm">
+            <input type="hidden" name="action" value="cancel">
+            <input type="hidden" name="booking_id" id="cancel-booking-id-input">
+            <div class="flex justify-end gap-2">
+                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeCancelModal()">
+                    No, Keep It
+                </button>
+                <button type="submit" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                    <i class="fas fa-times mr-1"></i>Yes, Cancel Booking
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
@@ -763,6 +955,25 @@ $bookings_result = $bookings_stmt->get_result();
     function toggleEquipmentDropdown() {
         const purposeSelect = document.getElementById('purpose');
         const equipmentDropdown = document.getElementById('equipmentDropdown');
+        const facilityDropdown = document.getElementById('facilityDropdown');
+        
+        // Show facility dropdown only when "Other" is selected
+        if (purposeSelect.value === 'Other') {
+            facilityDropdown.style.display = 'block';
+            // Make facility selection required when "Other" is selected
+            const facilitySelect = document.getElementById('facility_id');
+            if (facilitySelect) {
+                facilitySelect.required = true;
+            }
+        } else {
+            facilityDropdown.style.display = 'none';
+            // Remove required attribute when not "Other"
+            const facilitySelect = document.getElementById('facility_id');
+            if (facilitySelect) {
+                facilitySelect.required = false;
+                facilitySelect.value = ''; // Reset selection
+            }
+        }
         
         if (purposeSelect.value !== '') {
             equipmentDropdown.style.display = 'block';
@@ -849,6 +1060,12 @@ $bookings_result = $bookings_stmt->get_result();
         document.getElementById('purpose').value = '';
         document.getElementById('equipment').value = '';
         document.getElementById('equipmentDropdown').style.display = 'none';
+        document.getElementById('facilityDropdown').style.display = 'none';
+        const facilitySelect = document.getElementById('facility_id');
+        if (facilitySelect) {
+            facilitySelect.value = '';
+            facilitySelect.required = false;
+        }
         document.getElementById('chairPairsField').style.display = 'none';
         document.getElementById('chair_pairs').value = 0;
     }
@@ -916,6 +1133,26 @@ $bookings_result = $bookings_stmt->get_result();
     function closeDetailsModal() {
         document.getElementById('detailsModal').classList.add('hidden');
     }
+    
+    // Cancel modal functions
+    function openCancelModal(bookingId, bookingIdDisplay, bookingDate) {
+        document.getElementById('cancel-booking-id').textContent = bookingIdDisplay;
+        document.getElementById('cancel-booking-date').textContent = bookingDate;
+        document.getElementById('cancel-booking-id-input').value = bookingId;
+        document.getElementById('cancelModal').classList.remove('hidden');
+    }
+    
+    function closeCancelModal() {
+        document.getElementById('cancelModal').classList.add('hidden');
+    }
+    
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const cancelModal = document.getElementById('cancelModal');
+        if (event.target === cancelModal) {
+            closeCancelModal();
+        }
+    });
     
     // Receipt modal functions
     function closeReceiptModal() {

@@ -87,12 +87,12 @@ $total_result = $stmt->get_result();
 $total_rows = $total_result->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $per_page);
 
-// Get requests with user information
+// Get requests with user information - order by most recent first
 $requests_query = "SELECT b.*, u.name as user_name, u.email as user_email 
                   FROM bookings b
                   LEFT JOIN user_accounts u ON b.user_id = u.id
                   WHERE $conditions_sql
-                  ORDER BY b.date DESC, b.created_at DESC
+                  ORDER BY b.created_at DESC, b.date DESC
                   LIMIT ?, ?";
 $stmt = $conn->prepare($requests_query);
 $stmt->bind_param($param_types . "ii", ...[...$query_params, $offset, $per_page]);
@@ -290,6 +290,23 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                         // Get user information
                                         $display_name = isset($request['user_name']) && !empty($request['user_name']) ? $request['user_name'] : 'exter';
                                         $display_email = isset($request['user_email']) && !empty($request['user_email']) ? $request['user_email'] : 'external123@gmail.com';
+                                        
+                                        // Get facility name if purpose is "Other" and facility_id exists
+                                        $facility_name = '';
+                                        if ($request['purpose'] === 'Other') {
+                                            $additional_info = json_decode($request['additional_info'] ?? '{}', true);
+                                            if (isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+                                                $facility_id = intval($additional_info['facility_id']);
+                                                $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+                                                $facility_stmt->bind_param("i", $facility_id);
+                                                $facility_stmt->execute();
+                                                $facility_result = $facility_stmt->get_result();
+                                                if ($facility_result->num_rows > 0) {
+                                                    $facility_row = $facility_result->fetch_assoc();
+                                                    $facility_name = $facility_row['name'];
+                                                }
+                                            }
+                                        }
                                         ?>
                                         <tr>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $formatted_id; ?></td>
@@ -319,7 +336,12 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 text-sm text-gray-500">
-                                                <?php echo htmlspecialchars($request['purpose']); ?>
+                                                <div><?php echo htmlspecialchars($request['purpose']); ?></div>
+                                                <?php if ($request['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                    <div class="text-xs text-gray-400 mt-1">
+                                                        <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                    </div>
+                                                <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                 <?php echo $attendees; ?>
@@ -330,9 +352,16 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <button type="button" class="text-blue-600 hover:text-blue-900" onclick="viewDetails(<?php echo $request['id']; ?>)">
-                                                    <i class="fas fa-eye"></i> View
-                                                </button>
+                                                <div class="flex items-center gap-2">
+                                                    <button type="button" class="inline-flex items-center px-3 py-1.5 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors" onclick="viewDetails(<?php echo $request['id']; ?>)">
+                                                        <i class="fas fa-eye mr-1.5"></i> View
+                                                    </button>
+                                                    <?php if ($request_status == 'pending'): ?>
+                                                        <button type="button" onclick="openCancelModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($formatted_id); ?>', '<?php echo date('M d, Y', strtotime($request['date'])); ?>')" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                                                            <i class="fas fa-times mr-1.5"></i> Cancel
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endwhile; ?>
@@ -347,28 +376,94 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                     
                     <!-- Pagination -->
                     <?php if ($total_pages > 1): ?>
-                        <div class="flex justify-center mt-6">
-                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                            <div class="flex-1 flex justify-between sm:hidden">
                                 <?php if ($page > 1): ?>
-                                    <a href="?page=<?php echo $page - 1; ?>&status=<?php echo $status_filter; ?>&date=<?php echo $date_filter; ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                        <span class="sr-only">Previous</span>
-                                        <i class="fas fa-chevron-left"></i>
-                                    </a>
+                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Previous
+                                </a>
+                                <?php else: ?>
+                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                    Previous
+                                </span>
                                 <?php endif; ?>
-                                
-                                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                                    <a href="?page=<?php echo $i; ?>&status=<?php echo $status_filter; ?>&date=<?php echo $date_filter; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium <?php echo $i == $page ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'; ?>">
-                                        <?php echo $i; ?>
-                                    </a>
-                                <?php endfor; ?>
                                 
                                 <?php if ($page < $total_pages): ?>
-                                    <a href="?page=<?php echo $page + 1; ?>&status=<?php echo $status_filter; ?>&date=<?php echo $date_filter; ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                        <span class="sr-only">Next</span>
-                                        <i class="fas fa-chevron-right"></i>
-                                    </a>
+                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Next
+                                </a>
+                                <?php else: ?>
+                                <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                    Next
+                                </span>
                                 <?php endif; ?>
-                            </nav>
+                            </div>
+                            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-700">
+                                        Showing
+                                        <span class="font-medium"><?php echo $offset + 1; ?></span>
+                                        to
+                                        <span class="font-medium"><?php echo min($offset + $per_page, $total_rows); ?></span>
+                                        of
+                                        <span class="font-medium"><?php echo $total_rows; ?></span>
+                                        results
+                                    </p>
+                                </div>
+                                <div>
+                                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                        <?php if ($page > 1): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <span class="sr-only">Previous</span>
+                                            <i class="fas fa-chevron-left"></i>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                            <span class="sr-only">Previous</span>
+                                            <i class="fas fa-chevron-left"></i>
+                                        </span>
+                                        <?php endif; ?>
+                                        
+                                        <?php
+                                        $start_page = max(1, $page - 2);
+                                        $end_page = min($total_pages, $page + 2);
+                                        
+                                        if ($start_page > 1): ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                                            <?php if ($start_page > 2): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                        
+                                        <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                            <?php if ($i == $page): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600 z-10"><?php echo $i; ?></span>
+                                            <?php else: ?>
+                                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $i; ?></a>
+                                            <?php endif; ?>
+                                        <?php endfor; ?>
+                                        
+                                        <?php if ($end_page < $total_pages): ?>
+                                            <?php if ($end_page < $total_pages - 1): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                            <?php endif; ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                                        <?php endif; ?>
+                                        
+                                        <?php if ($page < $total_pages): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <span class="sr-only">Next</span>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                            <span class="sr-only">Next</span>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </span>
+                                        <?php endif; ?>
+                                    </nav>
+                                </div>
+                            </div>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -390,6 +485,42 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                 <p class="mt-2 text-gray-600">Loading details...</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Cancel Request Modal -->
+                <div id="cancelModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+                    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-medium text-gray-900">
+                                <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Cancel Request
+                            </h3>
+                            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeCancelModal()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="mb-6">
+                            <p class="text-gray-700 mb-2">Are you sure you want to cancel this request?</p>
+                            <div class="bg-gray-50 p-3 rounded-md">
+                                <p class="text-sm text-gray-600"><strong>Request ID:</strong> <span id="cancel-request-id"></span></p>
+                                <p class="text-sm text-gray-600"><strong>Date:</strong> <span id="cancel-request-date"></span></p>
+                            </div>
+                            <p class="text-sm text-red-600 mt-3">
+                                <i class="fas fa-info-circle mr-1"></i>This action cannot be undone.
+                            </p>
+                        </div>
+                        <form method="POST" action="requests.php" id="cancelForm">
+                            <input type="hidden" name="cancel_request" value="1">
+                            <input type="hidden" name="request_id" id="cancel-request-id-input">
+                            <div class="flex justify-end gap-2">
+                                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeCancelModal()">
+                                    No, Keep It
+                                </button>
+                                <button type="submit" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                                    <i class="fas fa-times mr-1"></i>Yes, Cancel Request
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </main>
@@ -433,7 +564,23 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
             if (event.target === modal) {
                 modal.classList.add('hidden');
             }
+            const cancelModal = document.getElementById('cancelModal');
+            if (event.target === cancelModal) {
+                closeCancelModal();
+            }
         });
+        
+        // Cancel modal functions
+        function openCancelModal(requestId, requestIdDisplay, requestDate) {
+            document.getElementById('cancel-request-id').textContent = requestIdDisplay;
+            document.getElementById('cancel-request-date').textContent = requestDate;
+            document.getElementById('cancel-request-id-input').value = requestId;
+            document.getElementById('cancelModal').classList.remove('hidden');
+        }
+        
+        function closeCancelModal() {
+            document.getElementById('cancelModal').classList.add('hidden');
+        }
     </script>
 </body>
 </html>

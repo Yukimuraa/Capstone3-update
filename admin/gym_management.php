@@ -135,6 +135,9 @@ $query_conditions = [];
 $query_params = [];
 $param_types = "";
 
+// Always filter by gym facility type
+$query_conditions[] = "b.facility_type = 'gym'";
+
 if ($status_filter != 'all') {
     if ($status_filter == 'approved') {
         $query_conditions[] = "(b.status = 'approved' OR b.status = 'confirmed')";
@@ -149,6 +152,29 @@ if ($date_filter == 'upcoming') {
     $query_conditions[] = "b.date >= CURDATE()";
 } elseif ($date_filter == 'past') {
     $query_conditions[] = "b.date < CURDATE()";
+} elseif ($date_filter != 'all' && !empty($date_filter)) {
+    // If a specific date is selected
+    $query_conditions[] = "b.date = ?";
+    $query_params[] = $date_filter;
+    $param_types .= "s";
+}
+
+// Facility filter (if facility_id is in additional_info)
+if ($facility_filter > 0) {
+    $query_conditions[] = "JSON_EXTRACT(b.additional_info, '$.facility_id') = ?";
+    $query_params[] = $facility_filter;
+    $param_types .= "i";
+}
+
+// Search filter
+if (!empty($search)) {
+    $query_conditions[] = "(b.booking_id LIKE ? OR b.purpose LIKE ? OR u.name LIKE ? OR u.email LIKE ?)";
+    $search_param = "%$search%";
+    $query_params[] = $search_param;
+    $query_params[] = $search_param;
+    $query_params[] = $search_param;
+    $query_params[] = $search_param;
+    $param_types .= "ssss";
 }
 
 $conditions_sql = !empty($query_conditions) ? "WHERE " . implode(" AND ", $query_conditions) : "";
@@ -168,12 +194,12 @@ $total_result = $stmt->get_result();
 $total_rows = $total_result->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $per_page);
 
-// Get requests with user information
+// Get requests with user information - order by most recent first (created_at DESC, then date DESC)
 $requests_query = "SELECT b.*, u.name as user_name, u.email as user_email 
                   FROM bookings b
                   LEFT JOIN user_accounts u ON b.user_id = u.id
                   $conditions_sql
-                  ORDER BY b.date DESC, b.created_at DESC
+                  ORDER BY b.created_at DESC, b.date DESC
                   LIMIT ?, ?";
 $stmt = $conn->prepare($requests_query);
 if (!empty($query_params)) {
@@ -251,9 +277,6 @@ $facilities_management_result = $conn->query($facilities_management_query);
                             </button>
                             <button class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="facilities">
                                 Facilities
-                            </button>
-                            <button class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="reports">
-                                Reports
                             </button>
                         </nav>
                     </div>
@@ -411,6 +434,20 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                             // Parse additional info if exists
                                             $additional_info = json_decode($request['additional_info'] ?? '{}', true) ?: [];
                                             $admin_remarks = $additional_info['admin_remarks'] ?? '';
+                                            
+                                            // Get facility name if purpose is "Other" and facility_id exists
+                                            $facility_name = '';
+                                            if ($request['purpose'] === 'Other' && isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+                                                $facility_id = intval($additional_info['facility_id']);
+                                                $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+                                                $facility_stmt->bind_param("i", $facility_id);
+                                                $facility_stmt->execute();
+                                                $facility_result = $facility_stmt->get_result();
+                                                if ($facility_result->num_rows > 0) {
+                                                    $facility_row = $facility_result->fetch_assoc();
+                                                    $facility_name = $facility_row['name'];
+                                                }
+                                            }
                                             ?>
                                             <tr>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $request['booking_id']; ?></td>
@@ -430,6 +467,11 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                                 </td>
                                                 <td class="px-6 py-4 text-sm text-gray-500">
                                                     <div><?php echo $request['purpose']; ?></div>
+                                                    <?php if ($request['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                        <div class="text-xs text-gray-400 mt-1">
+                                                            <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                        </div>
+                                                    <?php endif; ?>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $request['attendees']; ?></td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
@@ -474,6 +516,98 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                 </tbody>
                             </table>
                         </div>
+                        <!-- Pagination -->
+                        <?php if ($total_pages > 1): ?>
+                        <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                            <div class="flex-1 flex justify-between sm:hidden">
+                                <?php if ($page > 1): ?>
+                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Previous
+                                </a>
+                                <?php else: ?>
+                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                    Previous
+                                </span>
+                                <?php endif; ?>
+                                
+                                <?php if ($page < $total_pages): ?>
+                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    Next
+                                </a>
+                                <?php else: ?>
+                                <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                    Next
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-700">
+                                        Showing
+                                        <span class="font-medium"><?php echo $offset + 1; ?></span>
+                                        to
+                                        <span class="font-medium"><?php echo min($offset + $per_page, $total_rows); ?></span>
+                                        of
+                                        <span class="font-medium"><?php echo $total_rows; ?></span>
+                                        results
+                                    </p>
+                                </div>
+                                <div>
+                                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                        <?php if ($page > 1): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <span class="sr-only">Previous</span>
+                                            <i class="fas fa-chevron-left"></i>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                            <span class="sr-only">Previous</span>
+                                            <i class="fas fa-chevron-left"></i>
+                                        </span>
+                                        <?php endif; ?>
+                                        
+                                        <?php
+                                        $start_page = max(1, $page - 2);
+                                        $end_page = min($total_pages, $page + 2);
+                                        
+                                        if ($start_page > 1): ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                                            <?php if ($start_page > 2): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                        
+                                        <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                            <?php if ($i == $page): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600 z-10"><?php echo $i; ?></span>
+                                            <?php else: ?>
+                                                <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $i; ?></a>
+                                            <?php endif; ?>
+                                        <?php endfor; ?>
+                                        
+                                        <?php if ($end_page < $total_pages): ?>
+                                            <?php if ($end_page < $total_pages - 1): ?>
+                                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                            <?php endif; ?>
+                                            <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                                        <?php endif; ?>
+                                        
+                                        <?php if ($page < $total_pages): ?>
+                                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                            <span class="sr-only">Next</span>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                        <?php else: ?>
+                                        <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                            <span class="sr-only">Next</span>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </span>
+                                        <?php endif; ?>
+                                    </nav>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 
@@ -549,89 +683,6 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                     <?php endif; ?>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Reports Tab Content -->
-                <div id="reports-tab" class="tab-content hidden">
-                    <!-- Reports Options -->
-                    <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="bg-white rounded-lg shadow p-6">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Usage Report</h3>
-                            <p class="text-sm text-gray-500 mb-4">Generate a report of gym facility usage over a specific period.</p>
-                            <form action="gym_reports.php" method="GET" target="_blank">
-                                <input type="hidden" name="report_type" value="usage">
-                                <div class="mb-4">
-                                    <label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                                    <input type="date" id="start_date" name="start_date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                </div>
-                                <div class="mb-4">
-                                    <label for="end_date" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                                    <input type="date" id="end_date" name="end_date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                </div>
-                                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                                    Generate Report
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <div class="bg-white rounded-lg shadow p-6">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Facility Utilization</h3>
-                            <p class="text-sm text-gray-500 mb-4">Generate a report showing utilization rates for each facility.</p>
-                            <form action="gym_reports.php" method="GET" target="_blank">
-                                <input type="hidden" name="report_type" value="utilization">
-                                <div class="mb-4">
-                                    <label for="month" class="block text-sm font-medium text-gray-700 mb-1">Month</label>
-                                    <input type="month" id="month" name="month" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                </div>
-                                <div class="mb-4">
-                                    <label for="facility_id" class="block text-sm font-medium text-gray-700 mb-1">Facility (Optional)</label>
-                                    <select id="facility_id" name="facility_id" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                        <option value="">All Facilities</option>
-                                        <?php 
-                                        // Reset the facilities result pointer
-                                        $facilities_result->data_seek(0);
-                                        while ($facility = $facilities_result->fetch_assoc()): 
-                                        ?>
-                                            <option value="<?php echo $facility['id']; ?>"><?php echo $facility['name']; ?></option>
-                                        <?php endwhile; ?>
-                                    </select>
-                                </div>
-                                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                                    Generate Report
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <div class="bg-white rounded-lg shadow p-6">
-                            <h3 class="text-lg font-medium text-gray-900 mb-4">Booking Status Report</h3>
-                            <p class="text-sm text-gray-500 mb-4">Generate a report of bookings by status.</p>
-                            <form action="gym_reports.php" method="GET" target="_blank">
-                                <input type="hidden" name="report_type" value="status">
-                                <div class="mb-4">
-                                    <label for="status_filter" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                                    <select id="status_filter" name="status" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                        <option value="">All Statuses</option>
-                                        <option value="pending">Pending</option>
-                                        <option value="approved">Approved</option>
-                                        <option value="rejected">Rejected</option>
-                                        <option value="cancelled">Cancelled</option>
-                                    </select>
-                                </div>
-                                <div class="mb-4">
-                                    <label for="report_period" class="block text-sm font-medium text-gray-700 mb-1">Period</label>
-                                    <select id="report_period" name="period" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                        <option value="week">Last Week</option>
-                                        <option value="month" selected>Last Month</option>
-                                        <option value="quarter">Last Quarter</option>
-                                        <option value="year">Last Year</option>
-                                    </select>
-                                </div>
-                                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                                    Generate Report
-                                </button>
-                            </form>
                         </div>
                     </div>
                 </div>

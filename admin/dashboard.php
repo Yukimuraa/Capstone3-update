@@ -195,7 +195,6 @@ $upcoming_bookings_result = $conn->query($upcoming_bookings_query);
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requester</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -220,14 +219,11 @@ $upcoming_bookings_result = $conn->query($upcoming_bookings_query);
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Rejected</span>
                                                 <?php endif; ?>
                                             </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <a href="view_booking.php?id=<?php echo $booking['id']; ?>" class="text-emerald-600 hover:text-emerald-900">View</a>
-                                            </td>
                                         </tr>
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No upcoming reservation found</td>
+                                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No upcoming reservation found</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
