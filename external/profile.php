@@ -20,6 +20,9 @@ $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $user_data = $stmt->get_result()->fetch_assoc();
 
+// Get profile picture for header
+$profile_pic = $user_data['profile_pic'] ?? '';
+
 // Process profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $name = trim($_POST['name']);
@@ -190,9 +193,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             <!-- Top Navigation -->
             <?php include '../includes/header.php'; ?>
             
+            <!-- Top header with profile image -->
+            <header class="bg-white shadow-sm z-10">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                    <h1 class="text-2xl font-semibold text-gray-900">My Profile</h1>
+                    <div class="flex items-center gap-3">
+                        <a href="profile.php" class="flex items-center">
+                            <?php if (!empty($profile_pic) && file_exists('../' . $profile_pic)): ?>
+                                <img src="../<?php echo htmlspecialchars($profile_pic); ?>" alt="Profile" class="w-10 h-10 rounded-full object-cover border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                            <?php else: ?>
+                                <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                                    <i class="fas fa-user text-gray-600"></i>
+                                </div>
+                            <?php endif; ?>
+                        </a>
+                        <span class="text-gray-700 hidden sm:inline"><?php echo htmlspecialchars($user_name); ?></span>
+                        <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500" id="menu-button">
+                            <span class="sr-only">Open menu</span>
+                            <i class="fas fa-bars"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
             <!-- Main Content -->
             <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
-                <h1 class="text-2xl font-semibold text-gray-800 mb-6">My Profile</h1>
                 
                 <?php if (isset($_SESSION['success'])): ?>
                     <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">

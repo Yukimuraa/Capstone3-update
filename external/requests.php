@@ -14,6 +14,14 @@ $user_email = isset($_SESSION['user_sessions']['external']['email']) ? $_SESSION
 $page_title = "Gym Reservations - CHMSU BAO";
 $base_url = "..";
 
+// Get user profile picture
+$user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
+$user_stmt->bind_param("i", $user_id);
+$user_stmt->execute();
+$user_result = $user_stmt->get_result();
+$user_data = $user_result->fetch_assoc();
+$profile_pic = $user_data['profile_pic'] ?? '';
+
 // Process cancellation if requested
 if (isset($_POST['cancel_request']) && isset($_POST['request_id'])) {
     $request_id = $_POST['request_id'];
@@ -131,10 +139,34 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
             <!-- Top Navigation -->
             <?php include '../includes/header.php'; ?>
             
+            <!-- Top header with profile image -->
+            <header class="bg-white shadow-sm z-10">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-semibold text-gray-900">Gym Reservations</h1>
+                        <p class="text-sm text-gray-500">Manage gym reservation requests</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <a href="profile.php" class="flex items-center">
+                            <?php if (!empty($profile_pic) && file_exists('../' . $profile_pic)): ?>
+                                <img src="../<?php echo htmlspecialchars($profile_pic); ?>" alt="Profile" class="w-10 h-10 rounded-full object-cover border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                            <?php else: ?>
+                                <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                                    <i class="fas fa-user text-gray-600"></i>
+                                </div>
+                            <?php endif; ?>
+                        </a>
+                        <span class="text-gray-700 hidden sm:inline"><?php echo htmlspecialchars($user_name); ?></span>
+                        <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500" id="menu-button">
+                            <span class="sr-only">Open menu</span>
+                            <i class="fas fa-bars"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+            
             <!-- Main Content -->
             <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
-                <h1 class="text-2xl font-semibold text-gray-800 mb-2">Gym Reservations</h1>
-                <p class="text-gray-600 mb-6">Manage gym reservation requests</p>
                 
                 <?php if (isset($_SESSION['success'])): ?>
                     <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
@@ -359,7 +391,7 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                                     <?php if ($request_status == 'pending'): ?>
                                                         <button type="button" onclick="openCancelModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($formatted_id); ?>', '<?php echo date('M d, Y', strtotime($request['date'])); ?>')" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                                                             <i class="fas fa-times mr-1.5"></i> Cancel
-                                                        </button>
+                                                </button>
                                                     <?php endif; ?>
                                                 </div>
                                             </td>
@@ -381,7 +413,7 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                 <?php if ($page > 1): ?>
                                 <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                                     Previous
-                                </a>
+                                    </a>
                                 <?php else: ?>
                                 <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
                                     Previous
@@ -452,16 +484,16 @@ if ($facilities_result && $facilities_result->num_rows > 0) {
                                         
                                         <?php if ($page < $total_pages): ?>
                                         <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                                            <span class="sr-only">Next</span>
-                                            <i class="fas fa-chevron-right"></i>
-                                        </a>
+                                        <span class="sr-only">Next</span>
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
                                         <?php else: ?>
                                         <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
                                             <span class="sr-only">Next</span>
                                             <i class="fas fa-chevron-right"></i>
                                         </span>
-                                        <?php endif; ?>
-                                    </nav>
+                                <?php endif; ?>
+                            </nav>
                                 </div>
                             </div>
                         </div>

@@ -12,6 +12,14 @@ $base_url = "..";
 // Get user ID
 $user_id = $_SESSION['user_id'];
 
+// Get user profile picture
+$user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
+$user_stmt->bind_param("i", $user_id);
+$user_stmt->execute();
+$user_result = $user_stmt->get_result();
+$user_data = $user_result->fetch_assoc();
+$profile_pic = $user_data['profile_pic'] ?? '';
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -275,8 +283,17 @@ $facilities_result = $facilities_stmt->get_result();
         <header class="bg-white shadow-sm z-10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <h1 class="text-2xl font-semibold text-gray-900">Gymnasium Reservation</h1>
-                <div class="flex items-center">
-                    <span class="text-gray-700 mr-2"><?php echo $_SESSION['user_name']; ?></span>
+                <div class="flex items-center gap-3">
+                    <a href="profile.php" class="flex items-center">
+                        <?php if (!empty($profile_pic) && file_exists('../' . $profile_pic)): ?>
+                            <img src="../<?php echo htmlspecialchars($profile_pic); ?>" alt="Profile" class="w-10 h-10 rounded-full object-cover border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                        <?php else: ?>
+                            <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                                <i class="fas fa-user text-gray-600"></i>
+                            </div>
+                        <?php endif; ?>
+                    </a>
+                    <span class="text-gray-700 hidden sm:inline mr-2"><?php echo $_SESSION['user_name']; ?></span>
                     <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-500" id="menu-button">
                         <span class="sr-only">Open menu</span>
                         <i class="fas fa-bars"></i>
@@ -449,13 +466,13 @@ $facilities_result = $facilities_stmt->get_result();
                                                 <div class="flex items-center gap-2">
                                                     <button type="button" class="inline-flex items-center px-3 py-1.5 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors" onclick="viewBookingDetails(<?php echo htmlspecialchars(json_encode($booking)); ?>, <?php echo htmlspecialchars(json_encode($additional_info)); ?>)">
                                                         <i class="fas fa-eye mr-1.5"></i> View
-                                                    </button>
-                                                    
-                                                    <?php if ($booking['status'] === 'pending'): ?>
+                                                </button>
+                                                
+                                                <?php if ($booking['status'] === 'pending'): ?>
                                                         <button type="button" onclick="openCancelModal('<?php echo $booking['booking_id']; ?>', '<?php echo htmlspecialchars($booking['booking_id']); ?>', '<?php echo date('F j, Y', strtotime($booking['date'])); ?>')" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                                                             <i class="fas fa-times mr-1.5"></i> Cancel
                                                         </button>
-                                                    <?php endif; ?>
+                                                <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>

@@ -10,6 +10,14 @@ require_student();
 $page_title = "Purchase Reports - CHMSU BAO";
 $base_url = "..";
 
+// Get user profile picture
+$user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
+$user_stmt->bind_param("i", $_SESSION['user_id']);
+$user_stmt->execute();
+$user_result = $user_stmt->get_result();
+$user_data = $user_result->fetch_assoc();
+$profile_pic = $user_data['profile_pic'] ?? '';
+
 // Get monthly statistics
 $monthly_stats_query = "SELECT 
     DATE_FORMAT(created_at, '%Y-%m') as month,
@@ -71,7 +79,16 @@ $total_stats = $conn->query($total_stats_query)->fetch_assoc();
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <h1 class="text-2xl font-semibold text-gray-900">Purchase Reports</h1>
                 <div class="flex items-center">
-                    <span class="text-gray-700 mr-2"><?php echo $_SESSION['user_name']; ?></span>
+                    <a href="profile.php" class="flex items-center">
+                        <?php if (!empty($profile_pic) && file_exists('../' . $profile_pic)): ?>
+                            <img src="../<?php echo htmlspecialchars($profile_pic); ?>" alt="Profile" class="w-10 h-10 rounded-full object-cover border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                        <?php else: ?>
+                            <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center border-2 border-gray-300 hover:border-blue-500 transition-colors cursor-pointer">
+                                <i class="fas fa-user text-gray-600"></i>
+                            </div>
+                        <?php endif; ?>
+                    </a>
+                    <span class="text-gray-700 hidden sm:inline mr-2"><?php echo $_SESSION['user_name']; ?></span>
                     <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500" id="menu-button">
                         <span class="sr-only">Open menu</span>
                         <i class="fas fa-bars"></i>

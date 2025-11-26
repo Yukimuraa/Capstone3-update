@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Password - CHMSU Business Affairs Office</title>
+    <title><?php echo $is_admin_user ? 'Reset Password - Admin/Secretary' : 'Reset Password'; ?> - CHMSU Business Affairs Office</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -125,10 +125,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             border: 1px solid rgba(255, 255, 255, 0.2);
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
             border-radius: 20px;
+            <?php if ($is_admin_user): ?>
+            border-top: 4px solid #DC2626;
+            <?php endif; ?>
             overflow: hidden;
         }
         .header-section {
+            <?php if ($is_admin_user): ?>
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.9) 0%, rgba(185, 28, 28, 0.95) 100%);
+            <?php else: ?>
             background: linear-gradient(135deg, rgba(0, 100, 0, 0.8) 0%, rgba(0, 80, 0, 0.9) 100%);
+            <?php endif; ?>
             backdrop-filter: blur(10px);
             border-bottom: 2px solid rgba(255, 255, 255, 0.1);
         }
@@ -136,13 +143,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             background: rgba(255, 255, 255, 0.95);
         }
         .submit-btn {
+            <?php if ($is_admin_user): ?>
+            background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+            <?php else: ?>
             background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
-            transition: all 0.3s ease;
             box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
+            <?php endif; ?>
+            transition: all 0.3s ease;
         }
         .submit-btn:hover {
             transform: translateY(-2px);
+            <?php if ($is_admin_user): ?>
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.6);
+            <?php else: ?>
             box-shadow: 0 6px 20px rgba(30, 64, 175, 0.6);
+            <?php endif; ?>
         }
         .input-with-icon {
             position: relative;
@@ -164,8 +180,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
         }
         .input-with-icon input:focus {
             background: rgba(255, 255, 255, 1);
+            <?php if ($is_admin_user): ?>
+            border-color: #DC2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+            <?php else: ?>
             border-color: #1E40AF;
             box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+            <?php endif; ?>
         }
         label {
             color: #374151;
@@ -194,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                 </div>
             </div>
             <h2 class="text-2xl font-bold mb-2">Reset Password</h2>
-            <p class="text-sm opacity-90">Create a new password for your account</p>
+            <p class="text-sm opacity-90"><?php echo $is_admin_user ? 'Create a new password for your Admin/Secretary account' : 'Create a new password for your account'; ?></p>
         </div>
 
         <div class="form-section p-8">
@@ -221,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                             <span class="icon">
                                 <i class="fas fa-lock"></i>
                             </span>
-                            <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="padding-right: 40px;" required>
+                            <input type="password" id="password" name="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 <?php echo $is_admin_user ? 'focus:ring-red-500' : 'focus:ring-blue-500'; ?>" style="padding-right: 40px;" required>
                             <button type="button" onclick="togglePassword('password', 'togglePasswordIcon1')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
                                 <i class="fas fa-eye" id="togglePasswordIcon1"></i>
                             </button>
@@ -235,14 +256,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                             <span class="icon">
                                 <i class="fas fa-lock"></i>
                             </span>
-                            <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="padding-right: 40px;" required>
+                            <input type="password" id="confirm_password" name="confirm_password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 <?php echo $is_admin_user ? 'focus:ring-red-500' : 'focus:ring-blue-500'; ?>" style="padding-right: 40px;" required>
                             <button type="button" onclick="togglePassword('confirm_password', 'togglePasswordIcon2')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280;">
                                 <i class="fas fa-eye" id="togglePasswordIcon2"></i>
                             </button>
                         </div>
                     </div>
 
-                    <button type="submit" class="w-full submit-btn text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <button type="submit" class="w-full submit-btn text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 <?php echo $is_admin_user ? 'focus:ring-red-500' : 'focus:ring-blue-500'; ?> focus:ring-offset-2">
                         <i class="fas fa-key mr-2"></i>Reset Password
                     </button>
                 </form>
@@ -250,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
 
             <div class="text-center mt-6 pt-6 border-t border-gray-200">
                 <p class="text-gray-600 text-sm">
-                    <a href="<?php echo $is_admin_user ? 'admin_login.php' : 'login.php'; ?>" class="text-blue-600 hover:text-blue-700 font-semibold hover:underline">
+                    <a href="<?php echo $is_admin_user ? 'admin_login.php' : 'login.php'; ?>" class="<?php echo $is_admin_user ? 'text-red-600 hover:text-red-700' : 'text-blue-600 hover:text-blue-700'; ?> font-semibold hover:underline">
                         <i class="fas fa-arrow-left mr-1"></i>Back to Login
                     </a>
                 </p>

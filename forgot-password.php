@@ -14,14 +14,13 @@ $success = '';
 // Check if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
-    $user_type = $_POST['user_type'] ?? '';
 
-    if (empty($email) || empty($user_type)) {
-        $error = "Email and user type are required";
+    if (empty($email)) {
+        $error = "Email is required";
     } else {
         // Check if user exists
-        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
-        $stmt->bind_param("ss", $email, $user_type);
+        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
+        $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -230,19 +229,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php else: ?>
             <form action="forgot-password.php" method="POST">
-                <div class="mb-4">
-                    <label for="user_type" class="block text-gray-700 font-medium mb-2">User Type</label>
-                    <div class="input-with-icon">
-                        <span class="icon">
-                            <i class="fas fa-user-tag"></i>
-                        </span>
-                        <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="student">Student/Faculty/Staff</option>
-                            <option value="external">External User</option>
-                        </select>
-                    </div>
-                </div>
-
                 <div class="mb-6">
                     <label for="email" class="block text-gray-700 font-medium mb-2">Email Address</label>
                     <div class="input-with-icon">
