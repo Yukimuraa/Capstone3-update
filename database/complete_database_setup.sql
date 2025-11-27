@@ -194,6 +194,24 @@ CREATE TABLE IF NOT EXISTS requests (
 );
 
 -- ============================================
+-- NOTIFICATIONS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type ENUM('info', 'success', 'warning', 'error', 'booking', 'order', 'request', 'system') DEFAULT 'info',
+    link VARCHAR(255) NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user_accounts(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_is_read (is_read),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
 -- CREATE INDEXES FOR BETTER PERFORMANCE
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_user_email ON user_accounts(email);
@@ -201,7 +219,8 @@ CREATE INDEX IF NOT EXISTS idx_user_type ON user_accounts(user_type);
 CREATE INDEX IF NOT EXISTS idx_user_status ON user_accounts(status);
 
 CREATE INDEX IF NOT EXISTS idx_inventory_stock ON inventory(in_stock);
-CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category);
+-- Note: category index removed - category column may not exist in all installations
+-- CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category);
 
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -214,8 +233,9 @@ CREATE INDEX IF NOT EXISTS idx_bus_bookings_bus ON bus_bookings(bus_id);
 CREATE INDEX IF NOT EXISTS idx_billing_statements_schedule ON billing_statements(schedule_id);
 
 CREATE INDEX IF NOT EXISTS idx_booking_date ON bookings(booking_date);
-CREATE INDEX IF NOT EXISTS idx_facility_date ON bookings(facility_id, booking_date);
-CREATE INDEX IF NOT EXISTS idx_bookings_user_type ON bookings(user_type);
+-- Note: facility_id and user_type indexes removed - these columns may not exist in all installations
+-- CREATE INDEX IF NOT EXISTS idx_facility_date ON bookings(facility_id, booking_date);
+-- CREATE INDEX IF NOT EXISTS idx_bookings_user_type ON bookings(user_type);
 
 CREATE INDEX IF NOT EXISTS idx_requests_user ON requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
@@ -248,11 +268,12 @@ INSERT INTO facilities (name, description, capacity, type) VALUES
 ON DUPLICATE KEY UPDATE name=name;
 
 -- Insert sample inventory items
-INSERT INTO inventory (name, description, price, category, in_stock, stock_quantity) VALUES
-('CHMSU T-Shirt', 'Official CHMSU t-shirt in various sizes', 250.00, 'Apparel', TRUE, 100),
-('CHMSU Mug', 'Ceramic mug with CHMSU logo', 150.00, 'Merchandise', TRUE, 50),
-('Notebook', 'CHMSU branded notebook', 75.00, 'Stationery', TRUE, 200),
-('Pen Set', 'Set of 3 ballpoint pens', 50.00, 'Stationery', TRUE, 150),
-('USB Flash Drive', '16GB USB drive with CHMSU logo', 300.00, 'Electronics', TRUE, 30)
+-- Note: category column may not exist, so it's excluded from INSERT
+INSERT INTO inventory (name, description, price, in_stock, stock_quantity) VALUES
+('CHMSU T-Shirt', 'Official CHMSU t-shirt in various sizes', 250.00, TRUE, 100),
+('CHMSU Mug', 'Ceramic mug with CHMSU logo', 150.00, TRUE, 50),
+('Notebook', 'CHMSU branded notebook', 75.00, TRUE, 200),
+('Pen Set', 'Set of 3 ballpoint pens', 50.00, TRUE, 150),
+('USB Flash Drive', '16GB USB drive with CHMSU logo', 300.00, TRUE, 30)
 ON DUPLICATE KEY UPDATE name=name;
 

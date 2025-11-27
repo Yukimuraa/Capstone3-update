@@ -61,6 +61,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Commit transaction
             $conn->commit();
+            
+            // Send notifications to all users in the batch
+            require_once '../includes/notification_functions.php';
+            $notify_orders = $conn->prepare("SELECT DISTINCT user_id, order_id FROM orders WHERE batch_id = ?");
+            $notify_orders->bind_param("s", $batch_id);
+            $notify_orders->execute();
+            $notify_result = $notify_orders->get_result();
+            while ($notify_order = $notify_result->fetch_assoc()) {
+                create_notification($notify_order['user_id'], "Order Approved", "Your order (Order ID: {$notify_order['order_id']}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
+            }
         
             // Redirect to batch receipt for printing
             header("Location: print_batch_receipt.php?batch_id=" . urlencode($batch_id));
@@ -119,6 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Commit transaction
             $conn->commit();
+            
+            // Send notification to user
+            require_once '../includes/notification_functions.php';
+            $order_user_id = $order['user_id'];
+            $order_id_str = $order['order_id'];
+            create_notification($order_user_id, "Order Approved", "Your order (Order ID: {$order_id_str}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
             
             // Get order_id for receipt
             $order_data = $conn->prepare("SELECT order_id FROM orders WHERE id = ?");

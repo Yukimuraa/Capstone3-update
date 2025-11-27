@@ -106,7 +106,15 @@ arsort($svc); $top_service = key($svc);
 				<div class="bg-white rounded-lg shadow">
 					<div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
 						<h3 class="text-lg font-medium text-gray-900">Breakdown</h3>
-						<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						<div class="flex gap-2">
+							<a href="download_report.php?type=summary&format=pdf&<?php echo http_build_query($_GET); ?>" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
+								<i class="fas fa-file-pdf mr-1"></i> PDF
+							</a>
+							<a href="download_report.php?type=summary&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
+								<i class="fas fa-file-excel mr-1"></i> Excel
+							</a>
+							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						</div>
 					</div>
 					<div class="overflow-x-auto">
 						<table class="min-w-full divide-y divide-gray-200">

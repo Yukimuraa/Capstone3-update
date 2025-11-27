@@ -118,6 +118,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($insert_stmt->execute()) {
             // Booking successful
+            // Send notification to user
+            require_once '../includes/notification_functions.php';
+            $booking_id = $conn->insert_id;
+            $date_formatted = date('F j, Y', strtotime($date));
+            create_notification($user_id, "Gym Reservation Submitted", "Your gym reservation for {$date_formatted} has been submitted and is pending approval.", "booking", "external/dashboard.php");
+            
+            // Send notification to all admins
+            $user_name = $_SESSION['user_sessions']['external']['user_name'] ?? 'User';
+            create_notification_for_admins("New Gym Reservation Request", "{$user_name} has submitted a new gym reservation for {$date_formatted}. Please review and approve.", "booking", "admin/gym_bookings.php");
+            
             $_SESSION['success'] = "Your gym reservation request has been submitted successfully. It is pending approval.";
             header("Location: dashboard.php");
             exit();

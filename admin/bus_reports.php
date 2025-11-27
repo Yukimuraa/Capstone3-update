@@ -14,6 +14,31 @@ $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : '';
 $status = isset($_GET['status']) ? sanitize_input($_GET['status']) : '';
 $department = isset($_GET['department']) ? sanitize_input($_GET['department']) : '';
 
+// Pagination
+$rows_per_page = 20;
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($current_page - 1) * $rows_per_page;
+
+// Build count query
+$count_query = "SELECT COUNT(*) as total
+          FROM bus_schedules s
+          LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
+          WHERE 1=1";
+
+$count_params = [];
+$count_types = "";
+
+if (!empty($start_date)) { $count_query .= " AND s.date_covered >= ?"; $count_params[] = $start_date; $count_types .= "s"; }
+if (!empty($end_date))   { $count_query .= " AND s.date_covered <= ?"; $count_params[] = $end_date;   $count_types .= "s"; }
+if (!empty($status))     { $count_query .= " AND s.status = ?";         $count_params[] = $status;     $count_types .= "s"; }
+if (!empty($department)) { $count_query .= " AND s.client LIKE ?";      $count_params[] = "%$department%"; $count_types .= "s"; }
+
+$count_stmt = $conn->prepare($count_query);
+if (!empty($count_params)) { $count_stmt->bind_param($count_types, ...$count_params); }
+$count_stmt->execute();
+$total_rows = $count_stmt->get_result()->fetch_assoc()['total'];
+$total_pages = ceil($total_rows / $rows_per_page);
+
 // Build schedule query
 $query = "SELECT s.id, s.client, s.destination, s.purpose, s.date_covered, s.vehicle, s.bus_no, s.no_of_days, s.no_of_vehicles, s.status,
                  bs.total_amount, bs.payment_status, bs.payment_date
@@ -29,7 +54,10 @@ if (!empty($end_date))   { $query .= " AND s.date_covered <= ?"; $params[] = $en
 if (!empty($status))     { $query .= " AND s.status = ?";         $params[] = $status;     $types .= "s"; }
 if (!empty($department)) { $query .= " AND s.client LIKE ?";      $params[] = "%$department%"; $types .= "s"; }
 
-$query .= " ORDER BY s.date_covered DESC";
+$query .= " ORDER BY s.date_covered DESC LIMIT ? OFFSET ?";
+$params[] = $rows_per_page;
+$params[] = $offset;
+$types .= "ii";
 
 $stmt = $conn->prepare($query);
 if (!empty($params)) { $stmt->bind_param($types, ...$params); }
@@ -121,7 +149,15 @@ while ($row = $result->fetch_assoc()) {
 				<div class="bg-white rounded-lg shadow">
 					<div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
 						<h3 class="text-lg font-medium text-gray-900">Bus Reservations</h3>
-						<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						<div class="flex gap-2">
+							<a href="download_report.php?type=bus&format=pdf&<?php echo http_build_query($_GET); ?>" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
+								<i class="fas fa-file-pdf mr-1"></i> PDF
+							</a>
+							<a href="download_report.php?type=bus&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
+								<i class="fas fa-file-excel mr-1"></i> Excel
+							</a>
+							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						</div>
 					</div>
 					<div class="overflow-x-auto">
 						<table class="min-w-full divide-y divide-gray-200">
@@ -163,6 +199,63 @@ while ($row = $result->fetch_assoc()) {
 							</tbody>
 						</table>
 					</div>
+					<?php if ($total_pages > 1): ?>
+					<div class="px-4 py-3 border-t border-gray-200 sm:px-6">
+						<nav class="flex items-center justify-between">
+							<div class="flex-1 flex justify-between sm:hidden">
+								<?php if ($current_page > 1): ?>
+									<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Previous</a>
+								<?php endif; ?>
+								<?php if ($current_page < $total_pages): ?>
+									<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page + 1])); ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Next</a>
+								<?php endif; ?>
+							</div>
+							<div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+								<div>
+									<p class="text-sm text-gray-700">
+										Showing <span class="font-medium"><?php echo $offset + 1; ?></span> to <span class="font-medium"><?php echo min($offset + $rows_per_page, $total_rows); ?></span> of <span class="font-medium"><?php echo number_format($total_rows); ?></span> results
+									</p>
+								</div>
+								<div>
+									<nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+										<?php if ($current_page > 1): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page - 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+												<span class="sr-only">Previous</span>
+												<i class="fas fa-chevron-left"></i>
+											</a>
+										<?php endif; ?>
+										<?php
+										$start_page = max(1, $current_page - 2);
+										$end_page = min($total_pages, $current_page + 2);
+										if ($start_page > 1): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+											<?php if ($start_page > 2): ?>
+												<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+											<?php endif; ?>
+										<?php endif; ?>
+										<?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="<?php echo $i == $current_page ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'; ?> relative inline-flex items-center px-4 py-2 border text-sm font-medium">
+												<?php echo $i; ?>
+											</a>
+										<?php endfor; ?>
+										<?php if ($end_page < $total_pages): ?>
+											<?php if ($end_page < $total_pages - 1): ?>
+												<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+											<?php endif; ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+										<?php endif; ?>
+										<?php if ($current_page < $total_pages): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+												<span class="sr-only">Next</span>
+												<i class="fas fa-chevron-right"></i>
+											</a>
+										<?php endif; ?>
+									</nav>
+								</div>
+							</div>
+						</nav>
+					</div>
+					<?php endif; ?>
 				</div>
 			</div>
 		</main>

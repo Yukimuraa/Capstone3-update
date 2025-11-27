@@ -53,7 +53,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($update_stmt->execute()) {
                 $_SESSION['success'] = "Reservation has been " . ucfirst($action) . "d successfully.";
                 
-                // TODO: Send notification to user about reservation status change
+                // Send notification to user about reservation status change
+                require_once '../includes/notification_functions.php';
+                $booking_user_id = $booking['user_id'];
+                $booking_id_str = $booking['booking_id'];
+                $date_formatted = date('F j, Y', strtotime($booking['date']));
+                
+                if ($new_status === 'confirmed') {
+                    create_notification($booking_user_id, "Gym Reservation Approved", "Your gym reservation (ID: {$booking_id_str}) for {$date_formatted} has been approved!", "success", "external/gym.php");
+                } elseif ($new_status === 'rejected') {
+                    $reason = !empty($admin_remarks) ? " Reason: {$admin_remarks}" : "";
+                    create_notification($booking_user_id, "Gym Reservation Rejected", "Your gym reservation (ID: {$booking_id_str}) for {$date_formatted} has been rejected.{$reason}", "error", "external/gym.php");
+                }
                 
             } else {
                 $_SESSION['error'] = "Error updating reservation: " . $conn->error;

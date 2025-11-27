@@ -27,6 +27,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if ($stmt->execute()) {
                 $_SESSION['success'] = "Reservation has been approved successfully.";
+                
+                // Send notification to user
+                require_once '../includes/notification_functions.php';
+                $get_booking = $conn->prepare("SELECT user_id, date FROM bookings WHERE booking_id = ?");
+                $get_booking->bind_param("s", $booking_id);
+                $get_booking->execute();
+                $booking_result = $get_booking->get_result();
+                if ($booking_data = $booking_result->fetch_assoc()) {
+                    $date_formatted = date('F j, Y', strtotime($booking_data['date']));
+                    create_notification($booking_data['user_id'], "Gym Reservation Approved", "Your gym reservation (ID: {$booking_id}) for {$date_formatted} has been approved!", "success", "external/gym.php");
+                }
             } else {
                 $_SESSION['error'] = "Error approving reservation: " . $conn->error;
             }
@@ -45,6 +56,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($stmt->execute()) {
                     $_SESSION['success'] = "Reservation has been rejected.";
+                    
+                    // Send notification to user
+                    require_once '../includes/notification_functions.php';
+                    $get_booking = $conn->prepare("SELECT user_id, date FROM bookings WHERE booking_id = ?");
+                    $get_booking->bind_param("s", $booking_id);
+                    $get_booking->execute();
+                    $booking_result = $get_booking->get_result();
+                    if ($booking_data = $booking_result->fetch_assoc()) {
+                        $date_formatted = date('F j, Y', strtotime($booking_data['date']));
+                        $reason = !empty($remarks) ? " Reason: {$remarks}" : "";
+                        create_notification($booking_data['user_id'], "Gym Reservation Rejected", "Your gym reservation (ID: {$booking_id}) for {$date_formatted} has been rejected.{$reason}", "error", "external/gym.php");
+                    }
                 } else {
                     $_SESSION['error'] = "Error rejecting reservation: " . $conn->error;
                 }

@@ -69,6 +69,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param("iissssi", $facility_id, $user_id, $booking_date, $start_time, $end_time, $purpose, $participants);
             
             if ($stmt->execute()) {
+                // Send notification to user
+                require_once '../includes/notification_functions.php';
+                $booking_id = $conn->insert_id;
+                $date_formatted = date('F j, Y', strtotime($booking_date));
+                create_notification($user_id, "Gym Reservation Submitted", "Your gym reservation for {$date_formatted} has been submitted and is pending approval.", "booking", "external/gym_reservation.php");
+                
+                // Send notification to all admins
+                create_notification_for_admins("New Gym Reservation Request", "{$user_name} has submitted a new gym reservation for {$date_formatted}. Please review and approve.", "booking", "admin/gym_bookings.php");
+                
                 $success_message = "Reservation request submitted successfully!";
             } else {
                 $error_message = "Error submitting reservation request.";

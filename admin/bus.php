@@ -292,6 +292,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 $conn->commit();
+                
+                // Send notification to user
+                require_once '../includes/notification_functions.php';
+                $schedule_user_id = $schedule['user_id'];
+                $date_formatted = date('F j, Y', strtotime($schedule['date_covered']));
+                create_notification($schedule_user_id, "Bus Schedule Approved", "Your bus schedule request for {$date_formatted} (Destination: {$schedule['destination']}) has been approved!", "success", "student/bus.php");
+                
                 $success = 'Schedule approved and buses allocated successfully!';
             } catch (Exception $e) {
                 $conn->rollback();
@@ -328,6 +335,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 $conn->commit();
+                
+                // Send notification to user
+                require_once '../includes/notification_functions.php';
+                $reject_schedule = $conn->prepare("SELECT user_id, date_covered, destination FROM bus_schedules WHERE id = ?");
+                $reject_schedule->bind_param("i", $schedule_id);
+                $reject_schedule->execute();
+                $reject_result = $reject_schedule->get_result();
+                if ($reject_data = $reject_result->fetch_assoc()) {
+                    $date_formatted = date('F j, Y', strtotime($reject_data['date_covered']));
+                    create_notification($reject_data['user_id'], "Bus Schedule Rejected", "Your bus schedule request for {$date_formatted} (Destination: {$reject_data['destination']}) has been rejected.", "error", "student/bus.php");
+                }
+                
                 $success = 'Schedule rejected successfully!';
             } catch (Exception $e) {
                 $conn->rollback();
@@ -557,11 +576,13 @@ include '../includes/header.php';
             $total_rows = $count_result->fetch_assoc()['total'];
             $total_pages = ceil($total_rows / $rows_per_page);
             
-            $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
+            $list_sql = "SELECT bs.*, bst.total_amount, u.name as user_name, u.email as user_email, u.user_type, b.plate_number
                          FROM bus_schedules bs 
                          LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                         LEFT JOIN user_accounts u ON bs.user_id = u.id
+                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
                          WHERE MONTH(bs.date_covered) = ? AND YEAR(bs.date_covered) = ? 
-                         ORDER BY bs.created_at DESC 
+                         ORDER BY bs.id DESC, bs.created_at DESC 
                          LIMIT ? OFFSET ?";
             $list_stmt = $conn->prepare($list_sql);
             $list_stmt->bind_param("iiii", $current_month, $current_year, $rows_per_page, $offset);
@@ -585,11 +606,13 @@ include '../includes/header.php';
             $total_rows = $schedule_stats['total'];
             $total_pages = ceil($total_rows / $rows_per_page);
             
-            // Get all schedules with billing info
-            $list_sql = "SELECT bs.*, bst.total_amount, bst.payment_status 
+            // Get all schedules with billing info and user info
+            $list_sql = "SELECT bs.*, bst.total_amount, u.name as user_name, u.email as user_email, u.user_type, b.plate_number
                          FROM bus_schedules bs 
                          LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
-                         ORDER BY bs.created_at DESC 
+                         LEFT JOIN user_accounts u ON bs.user_id = u.id
+                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
+                         ORDER BY bs.id DESC, bs.created_at DESC 
                          LIMIT ? OFFSET ?";
             $list_stmt = $conn->prepare($list_sql);
             $list_stmt->bind_param("ii", $rows_per_page, $offset);
@@ -728,23 +751,31 @@ include '../includes/header.php';
                                     </td>
                                     <td class="border px-4 py-2 text-center">
                                         <div class="flex space-x-2 justify-center">
+                                            <button type="button" class="text-blue-600 hover:text-blue-900 view-schedule-btn" 
+                                                    data-schedule='<?php echo htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8'); ?>'
+                                                    title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
                                             <?php if ($row['status'] === 'pending'): ?>
                                                 <form method="POST" class="inline">
                                                     <input type="hidden" name="action" value="approve_schedule">
                                                     <input type="hidden" name="schedule_id" value="<?php echo $row['id']; ?>">
                                                     <button type="submit" class="text-green-600 hover:text-green-900" 
-                                                            onclick="return confirm('Are you sure you want to approve this schedule?')">
+                                                            onclick="return confirm('Are you sure you want to approve this schedule?')"
+                                                            title="Approve">
                                                         <i class="fas fa-check"></i>
                                                     </button>
                                                 </form>
                                                 <button type="button" class="text-red-600 hover:text-red-900"
-                                                        onclick="openRejectModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['client'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['destination'], ENT_QUOTES); ?>')">
+                                                        onclick="openRejectModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['client'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['destination'], ENT_QUOTES); ?>')"
+                                                        title="Reject">
                                                     <i class="fas fa-times"></i>
                                                 </button>
                                             <?php endif; ?>
                                             <?php if ($row['total_amount']): ?>
                                                 <a href="print_bus_receipt.php?id=<?php echo $row['id']; ?>" 
-                                                   target="_blank" class="text-blue-600 hover:text-blue-900">
+                                                   target="_blank" class="text-blue-600 hover:text-blue-900"
+                                                   title="Print Receipt">
                                                     <i class="fas fa-print"></i>
                                                 </a>
                                             <?php endif; ?>
@@ -1145,6 +1176,93 @@ include '../includes/header.php';
     </main>
 </div>
 
+<!-- View Schedule Details Modal -->
+<div id="viewModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
+        <div class="flex justify-between items-center mb-4 border-b pb-4">
+            <h3 class="text-xl font-semibold text-gray-900">Bus Schedule Details</h3>
+            <button type="button" onclick="closeViewModal()" class="text-gray-400 hover:text-gray-500">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Schedule ID</p>
+                    <p id="view-schedule-id" class="text-base text-gray-900 font-semibold"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Status</p>
+                    <p id="view-status" class="text-base"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Client</p>
+                    <p id="view-client" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Destination</p>
+                    <p id="view-destination" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Purpose</p>
+                    <p id="view-purpose" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Date Covered</p>
+                    <p id="view-date" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Vehicle Type</p>
+                    <p id="view-vehicle" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Bus Number</p>
+                    <p id="view-bus-no" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Plate Number</p>
+                    <p id="view-plate-number" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Number of Days</p>
+                    <p id="view-days" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Number of Vehicles</p>
+                    <p id="view-vehicles" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Requested By</p>
+                    <p id="view-user" class="text-base text-gray-900"></p>
+                    <p id="view-user-email" class="text-sm text-gray-500"></p>
+                    <p id="view-user-type" class="text-xs text-gray-400"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Total Amount</p>
+                    <p id="view-amount" class="text-base font-semibold text-green-600"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Created At</p>
+                    <p id="view-created" class="text-base text-gray-900"></p>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-500">Last Updated</p>
+                    <p id="view-updated" class="text-base text-gray-900"></p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3 border-t pt-4">
+            <button type="button" onclick="closeViewModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                Close
+            </button>
+            <a id="view-print-link" href="#" 
+               target="_blank" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 hidden">
+                <i class="fas fa-print mr-2"></i>Print Receipt
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Reject Schedule Confirmation Modal -->
 <div id="rejectModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -1344,7 +1462,71 @@ include '../includes/header.php';
 </div>
 
 <script>
-// Schedule Rejection Functions
+// View Schedule Functions
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners to all view buttons
+    document.querySelectorAll('.view-schedule-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const scheduleData = JSON.parse(this.getAttribute('data-schedule'));
+            openViewModal(scheduleData);
+        });
+    });
+});
+
+function openViewModal(schedule) {
+    // Populate modal with schedule data
+    document.getElementById('view-schedule-id').textContent = schedule.id;
+    document.getElementById('view-client').textContent = schedule.client || '-';
+    document.getElementById('view-destination').textContent = schedule.destination || '-';
+    document.getElementById('view-purpose').textContent = schedule.purpose || '-';
+    document.getElementById('view-date').textContent = schedule.date_covered ? new Date(schedule.date_covered).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+    document.getElementById('view-vehicle').textContent = schedule.vehicle || '-';
+    document.getElementById('view-bus-no').textContent = schedule.bus_no || '-';
+    document.getElementById('view-plate-number').textContent = schedule.plate_number || 'N/A';
+    document.getElementById('view-days').textContent = schedule.no_of_days || '-';
+    document.getElementById('view-vehicles').textContent = schedule.no_of_vehicles || '-';
+    document.getElementById('view-user').textContent = schedule.user_name || 'N/A';
+    document.getElementById('view-user-email').textContent = schedule.user_email || '';
+    document.getElementById('view-user-type').textContent = schedule.user_type ? '(' + schedule.user_type.charAt(0).toUpperCase() + schedule.user_type.slice(1) + ')' : '';
+    document.getElementById('view-amount').textContent = schedule.total_amount ? '₱' + parseFloat(schedule.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+    document.getElementById('view-created').textContent = schedule.created_at ? new Date(schedule.created_at).toLocaleString('en-US') : '-';
+    document.getElementById('view-updated').textContent = schedule.updated_at ? new Date(schedule.updated_at).toLocaleString('en-US') : '-';
+    
+    // Set status with styling
+    const statusElement = document.getElementById('view-status');
+    const status = schedule.status || 'unknown';
+    statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    statusElement.className = 'text-base px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full';
+    switch(status) {
+        case 'pending':
+            statusElement.classList.add('bg-yellow-100', 'text-yellow-800');
+            break;
+        case 'approved':
+            statusElement.classList.add('bg-green-100', 'text-green-800');
+            break;
+        case 'rejected':
+            statusElement.classList.add('bg-red-100', 'text-red-800');
+            break;
+        default:
+            statusElement.classList.add('bg-gray-100', 'text-gray-800');
+    }
+    
+    // Update print link if amount exists
+    const printLink = document.getElementById('view-print-link');
+    if (printLink && schedule.id && schedule.total_amount) {
+        printLink.href = 'print_bus_receipt.php?id=' + schedule.id;
+        printLink.classList.remove('hidden');
+    } else if (printLink) {
+        printLink.classList.add('hidden');
+    }
+    
+    document.getElementById('viewModal').classList.remove('hidden');
+}
+
+function closeViewModal() {
+    document.getElementById('viewModal').classList.add('hidden');
+}
+
 function openRejectModal(scheduleId, client, destination) {
     document.getElementById('reject-schedule-id').value = scheduleId;
     document.getElementById('reject-client').textContent = client;
@@ -1396,6 +1578,9 @@ function closeDeleteBusModal() {
 
 // Close modals when clicking outside
 document.addEventListener('click', function(event) {
+    if (event.target.id === 'viewModal') {
+        closeViewModal();
+    }
     if (event.target.id === 'rejectModal') {
         closeRejectModal();
     }
@@ -1413,6 +1598,7 @@ document.addEventListener('click', function(event) {
 // Close modals with Escape key
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
+        closeViewModal();
         closeRejectModal();
         closeStatusModal();
         closeEditBusModal();

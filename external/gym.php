@@ -169,6 +169,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 						try {
 							if ($stmt->execute()) {
 								$success = true;
+								
+								// Send notification to user
+								require_once '../includes/notification_functions.php';
+								$date_formatted = date('F j, Y', strtotime($date));
+								create_notification($user_id, "Gym Reservation Submitted", "Your gym reservation (ID: {$booking_id}) for {$date_formatted} has been submitted and is pending approval.", "booking", "external/gym.php");
+								
+								// Send notification to all admins
+								$user_name = $_SESSION['user_sessions']['external']['user_name'] ?? 'User';
+								create_notification_for_admins("New Gym Reservation Request", "{$user_name} has submitted a new gym reservation (ID: {$booking_id}) for {$date_formatted}. Please review and approve.", "booking", "admin/gym_bookings.php");
+								
 								// Store booking details for receipt display
 								$_SESSION['booking_receipt'] = [
 									'booking_id' => $booking_id,

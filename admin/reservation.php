@@ -55,6 +55,18 @@ if (isset($_POST['action']) && isset($_POST['reservation_id'])) {
         
         if ($stmt->execute()) {
             $_SESSION['success'] = "Reservation has been " . ($new_status == 'confirmed' ? 'approved' : $new_status) . " successfully.";
+            
+            // Send notification to user
+            require_once '../includes/notification_functions.php';
+            $reservation_user_id = $reservation['user_id'];
+            $date_formatted = date('F j, Y', strtotime($reservation['booking_date'] ?? $reservation['date']));
+            
+            if ($new_status === 'confirmed') {
+                create_notification($reservation_user_id, "Reservation Approved", "Your reservation for {$date_formatted} has been approved!", "success", "external/gym_reservation.php");
+            } elseif ($new_status === 'rejected') {
+                $reason = !empty($remarks) ? " Reason: {$remarks}" : "";
+                create_notification($reservation_user_id, "Reservation Rejected", "Your reservation for {$date_formatted} has been rejected.{$reason}", "error", "external/gym_reservation.php");
+            }
         } else {
             $_SESSION['error'] = "Failed to update reservation. Please try again.";
         }

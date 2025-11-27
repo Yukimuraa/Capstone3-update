@@ -339,6 +339,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         if ($billing_stmt->execute()) {
                             $conn->commit();
+                            
+                            // Send notification to user
+                            require_once '../includes/notification_functions.php';
+                            $date_formatted = date('F j, Y', strtotime($date_covered));
+                            create_notification($_SESSION['user_id'], "Bus Schedule Submitted", "Your bus schedule request for {$date_formatted} (Destination: {$destination}) has been submitted and is pending approval.", "request", "student/bus.php");
+                            
+                            // Send notification to all admins
+                            $user_name = $_SESSION['user_sessions']['student']['user_name'] ?? 'Student';
+                            create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_formatted} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
+                            
                             $success = 'Bus schedule request submitted successfully! Billing statement generated. You will be notified once it\'s approved.';
                         } else {
                             throw new Exception('Error creating billing statement: ' . $conn->error);
@@ -355,10 +365,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get all bus schedules with billing information
-$user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status 
+// Get all bus schedules with billing information and bus plate number
+$user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.plate_number
                         FROM bus_schedules bs 
                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                        LEFT JOIN buses b ON bs.bus_no = b.bus_number
                         WHERE bs.user_id = ? 
                         ORDER BY bs.created_at DESC LIMIT 20";
 $user_schedules_stmt = $conn->prepare($user_schedules_query);
@@ -1008,6 +1019,10 @@ function viewSchedule(schedule) {
             <div>
                 <label class="block text-sm font-medium text-gray-500">Vehicle Number</label>
                 <p class="text-sm text-gray-900">${schedule.bus_no}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Plate Number</label>
+                <p class="text-sm text-gray-900">${schedule.plate_number || 'N/A'}</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-500">Number of Days</label>

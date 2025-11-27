@@ -191,11 +191,13 @@ $result = $stmt->get_result();
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <?php if ($user['id'] !== $_SESSION['user_id']): ?>
-                                                    <form method="POST" action="users.php" class="inline">
-                                                        <input type="hidden" name="action" value="delete">
-                                                        <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
-                                                        <button type="submit" class="text-red-600 hover:text-red-900" onclick="return confirm('Are you sure you want to delete this user?')">Delete</button>
-                                                    </form>
+                                                    <button type="button" class="text-red-600 hover:text-red-900 delete-user-btn" 
+                                                            data-user-id="<?php echo $user['id']; ?>"
+                                                            data-user-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES); ?>"
+                                                            data-user-email="<?php echo htmlspecialchars($user['email'], ENT_QUOTES); ?>"
+                                                            data-user-type="<?php echo htmlspecialchars($user['user_type'], ENT_QUOTES); ?>">
+                                                        Delete
+                                                    </button>
                                                 <?php else: ?>
                                                     <span class="text-gray-400">Cannot Delete</span>
                                                 <?php endif; ?>
@@ -271,6 +273,57 @@ $result = $stmt->get_result();
     </div>
 </div>
 
+<!-- Delete User Confirmation Modal -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Delete User</h3>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <p class="text-sm text-gray-600 mb-4">Are you sure you want to delete this user? This action cannot be undone.</p>
+            <div class="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Name:</p>
+                    <p class="text-sm text-gray-900" id="delete-user-name"></p>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Email:</p>
+                    <p class="text-sm text-gray-900" id="delete-user-email"></p>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-gray-500">User Type:</p>
+                    <p class="text-sm text-gray-900" id="delete-user-type"></p>
+                </div>
+            </div>
+            <p class="text-xs text-red-600 font-semibold mt-3">
+                <i class="fas fa-exclamation-circle mr-1"></i>
+                Warning: This will permanently delete the user account and all associated data.
+            </p>
+        </div>
+        
+        <form method="POST" action="users.php" id="deleteForm">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" id="delete-user-id">
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeDeleteModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+                <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                    <i class="fas fa-trash mr-2"></i>
+                    Yes, Delete User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Add User Modal -->
 <div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -343,6 +396,61 @@ $result = $stmt->get_result();
         // Organization field is no longer needed since external option is removed
         organizationField.classList.add('hidden');
     }
+    
+    // Delete modal functions
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add event listeners to all delete buttons
+        document.querySelectorAll('.delete-user-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const userId = this.getAttribute('data-user-id');
+                const userName = this.getAttribute('data-user-name');
+                const userEmail = this.getAttribute('data-user-email');
+                const userType = this.getAttribute('data-user-type');
+                
+                openDeleteModal(userId, userName, userEmail, userType);
+            });
+        });
+    });
+    
+    function openDeleteModal(userId, userName, userEmail, userType) {
+        document.getElementById('delete-user-id').value = userId;
+        document.getElementById('delete-user-name').textContent = userName;
+        document.getElementById('delete-user-email').textContent = userEmail;
+        
+        // Format user type for display
+        const userTypeMap = {
+            'admin': 'BAO Admin',
+            'secretary': 'BAO Secretary',
+            'staff': 'Staff',
+            'student': 'Student/Faculty/Staff',
+            'external': 'External User'
+        };
+        document.getElementById('delete-user-type').textContent = userTypeMap[userType] || userType;
+        
+        document.getElementById('deleteModal').classList.remove('hidden');
+    }
+    
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').classList.add('hidden');
+    }
+    
+    // Close modals when clicking outside
+    document.addEventListener('click', function(event) {
+        if (event.target.id === 'deleteModal') {
+            closeDeleteModal();
+        }
+        if (event.target.id === 'addModal') {
+            closeAddModal();
+        }
+    });
+    
+    // Close modals with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeDeleteModal();
+            closeAddModal();
+        }
+    });
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>

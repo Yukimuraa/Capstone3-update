@@ -80,6 +80,34 @@ foreach ($statements as $statement) {
     }
     
     // Execute the statement
+    // Skip index creation for columns that may not exist
+    if (preg_match('/CREATE INDEX.*category/i', $statement)) {
+        // Check if category column exists in inventory table
+        $check_category = $conn->query("SHOW COLUMNS FROM inventory LIKE 'category'");
+        if ($check_category && $check_category->num_rows == 0) {
+            echo "<p class='warning'><span class='status-icon'>⚠</span>Skipped index creation: category column doesn't exist in inventory table</p>";
+            continue;
+        }
+    }
+    
+    if (preg_match('/CREATE INDEX.*facility_id/i', $statement)) {
+        // Check if facility_id column exists in bookings table
+        $check_facility = $conn->query("SHOW COLUMNS FROM bookings LIKE 'facility_id'");
+        if ($check_facility && $check_facility->num_rows == 0) {
+            echo "<p class='warning'><span class='status-icon'>⚠</span>Skipped index creation: facility_id column doesn't exist in bookings table</p>";
+            continue;
+        }
+    }
+    
+    if (preg_match('/bookings\(user_type\)|bookings.*user_type/i', $statement)) {
+        // Check if user_type column exists in bookings table
+        $check_user_type = $conn->query("SHOW COLUMNS FROM bookings LIKE 'user_type'");
+        if ($check_user_type && $check_user_type->num_rows == 0) {
+            echo "<p class='warning'><span class='status-icon'>⚠</span>Skipped index creation: user_type column doesn't exist in bookings table</p>";
+            continue;
+        }
+    }
+    
     if ($conn->query($statement)) {
         $success_count++;
         
@@ -99,9 +127,14 @@ foreach ($statements as $statement) {
         $error_msg = $conn->error;
         $errors[] = $error_msg;
         
-        // Don't treat duplicate key errors as critical
-        if (strpos($error_msg, 'Duplicate entry') !== false) {
-            echo "<p class='warning'><span class='status-icon'>⚠</span>Warning: " . htmlspecialchars($error_msg) . "</p>";
+        // Don't treat duplicate key errors or missing column errors as critical
+        if (strpos($error_msg, 'Duplicate entry') !== false || 
+            strpos($error_msg, "doesn't exist") !== false ||
+            strpos($error_msg, 'Key column') !== false ||
+            strpos($error_msg, "Unknown column") !== false) {
+            echo "<p class='warning'><span class='status-icon'>⚠</span>Warning (skipped): " . htmlspecialchars($error_msg) . "</p>";
+            // Don't count as error, just continue
+            continue;
         } else {
             echo "<p class='error'><span class='status-icon'>✗</span>Error: " . htmlspecialchars($error_msg) . "</p>";
         }
@@ -217,6 +250,8 @@ $conn->close();
 echo "</div>";
 echo "</body></html>";
 ?>
+
+
 
 
 

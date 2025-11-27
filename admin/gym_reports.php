@@ -285,11 +285,17 @@ if ($report_type === 'usage') {
                                 Gym Report
                             <?php endif; ?>
                         </h2>
-                        <div>
+                        <div class="flex gap-2">
+                            <a href="download_report.php?type=gym&format=pdf&report_type=<?php echo htmlspecialchars($report_type); ?>&<?php echo http_build_query($_GET); ?>" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                                <i class="fas fa-file-pdf mr-1"></i> Download PDF
+                            </a>
+                            <a href="download_report.php?type=gym&format=excel&report_type=<?php echo htmlspecialchars($report_type); ?>&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                                <i class="fas fa-file-excel mr-1"></i> Download Excel
+                            </a>
                             <button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                                 <i class="fas fa-print mr-1"></i> Print Report
                             </button>
-                            <a href="gym_management.php" class="ml-2 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                            <a href="gym_management.php" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                                 <i class="fas fa-arrow-left mr-1"></i> Back
                             </a>
                         </div>

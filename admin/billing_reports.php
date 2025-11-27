@@ -13,6 +13,11 @@ $status = isset($_GET['status']) ? sanitize_input($_GET['status']) : '';
 $start_date = isset($_GET['start_date']) ? sanitize_input($_GET['start_date']) : '';
 $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : '';
 
+// Pagination
+$rows_per_page = 20;
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($current_page - 1) * $rows_per_page;
+
 // Collect rows from sources: Bus billing_statements, Inventory orders (as sales)
 $rows = [];
 
@@ -52,7 +57,14 @@ if ($service === '' || $service === 'items') {
 	while ($r = $res2->fetch_assoc()) { $rows[] = $r; }
 }
 
-// Aggregates
+// Count total rows for pagination
+$total_rows = count($rows);
+$total_pages = ceil($total_rows / $rows_per_page);
+
+// Apply pagination
+$paginated_rows = array_slice($rows, $offset, $rows_per_page);
+
+// Aggregates (calculate from all rows, not just paginated)
 $total_amount = 0.0; $paid = 0.0; $pending_amt = 0.0;
 foreach ($rows as $r) {
 	$amt = (float)$r['amount'];
@@ -128,7 +140,15 @@ foreach ($rows as $r) {
 				<div class="bg-white rounded-lg shadow">
 					<div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
 						<h3 class="text-lg font-medium text-gray-900">Billing Records</h3>
-						<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						<div class="flex gap-2">
+							<a href="download_report.php?type=billing&format=pdf&<?php echo http_build_query($_GET); ?>" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
+								<i class="fas fa-file-pdf mr-1"></i> PDF
+							</a>
+							<a href="download_report.php?type=billing&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
+								<i class="fas fa-file-excel mr-1"></i> Excel
+							</a>
+							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
+						</div>
 					</div>
 					<div class="overflow-x-auto">
 						<table class="min-w-full divide-y divide-gray-200">
@@ -143,7 +163,7 @@ foreach ($rows as $r) {
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
-								<?php if (count($rows) > 0): foreach ($rows as $r): ?>
+								<?php if (count($paginated_rows) > 0): foreach ($paginated_rows as $r): ?>
 								<tr>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><?php echo $r['billing_id']; ?></td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $r['service']; ?></td>
@@ -161,6 +181,55 @@ foreach ($rows as $r) {
 							</tbody>
 						</table>
 					</div>
+					<?php if ($total_pages > 1): ?>
+					<div class="px-4 py-3 border-t border-gray-200 sm:px-6">
+						<nav class="flex items-center justify-between">
+							<div class="flex-1 flex justify-between sm:hidden">
+								<?php if ($current_page > 1): ?>
+									<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page - 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Previous</a>
+								<?php endif; ?>
+								<?php if ($current_page < $total_pages): ?>
+									<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page + 1])); ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">Next</a>
+								<?php endif; ?>
+							</div>
+							<div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+								<div>
+									<p class="text-sm text-gray-700">
+										Showing <span class="font-medium"><?php echo $offset + 1; ?></span> to <span class="font-medium"><?php echo min($offset + $rows_per_page, $total_rows); ?></span> of <span class="font-medium"><?php echo number_format($total_rows); ?></span> results
+									</p>
+								</div>
+								<div>
+									<nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+										<?php if ($current_page > 1): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page - 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+												<i class="fas fa-chevron-left"></i>
+											</a>
+										<?php endif; ?>
+										<?php
+										$start_page = max(1, $current_page - 2);
+										$end_page = min($total_pages, $current_page + 2);
+										if ($start_page > 1): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => 1])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+											<?php if ($start_page > 2): ?><span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span><?php endif; ?>
+										<?php endif; ?>
+										<?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="<?php echo $i == $current_page ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'; ?> relative inline-flex items-center px-4 py-2 border text-sm font-medium"><?php echo $i; ?></a>
+										<?php endfor; ?>
+										<?php if ($end_page < $total_pages): ?>
+											<?php if ($end_page < $total_pages - 1): ?><span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span><?php endif; ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $total_pages])); ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+										<?php endif; ?>
+										<?php if ($current_page < $total_pages): ?>
+											<a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $current_page + 1])); ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+												<i class="fas fa-chevron-right"></i>
+											</a>
+										<?php endif; ?>
+									</nav>
+								</div>
+							</div>
+						</nav>
+					</div>
+					<?php endif; ?>
 				</div>
 			</div>
 		</main>

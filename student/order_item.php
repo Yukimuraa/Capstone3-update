@@ -114,6 +114,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           // Commit transaction
           $conn->commit();
           
+          // Send notification to user
+          require_once '../includes/notification_functions.php';
+          $user_id = $_SESSION['user_id'];
+          $item_name = $item['name'];
+          create_notification($user_id, "Order Submitted", "Your order for {$item_name} (Order ID: {$order_id}) has been submitted successfully. Please proceed to the cashier for payment.", "order", "student/cart.php");
+          
+          // Send notification to all admins
+          $user_name = $_SESSION['user_name'] ?? 'User';
+          create_notification_for_admins("New Order Received", "{$user_name} has placed a new order (Order ID: {$order_id}) for {$item_name}. Please review and process.", "order", "admin/orders.php");
+          
           $success = "Your order has been submitted successfully. Please proceed to the cashier for payment.";
           
           // Refresh item data after successful order

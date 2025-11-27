@@ -268,41 +268,7 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                <h1 class="text-2xl font-semibold text-gray-900">Inventory Management</h1>
                <div class="flex items-center space-x-4">
-                   <!-- Notification Bell -->
-                   <div class="relative">
-                       <button id="notification-bell" class="relative p-2 text-gray-600 hover:text-gray-800 focus:outline-none">
-                           <i class="fas fa-bell text-xl"></i>
-                           <?php if ($low_stock_count > 0): ?>
-                           <span class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
-                               <?php echo $low_stock_count; ?>
-                           </span>
-                           <?php endif; ?>
-                       </button>
-                       <!-- Notification Dropdown -->
-                       <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg z-50">
-                           <div class="p-4 border-b">
-                               <h3 class="text-lg font-semibold text-gray-900">Low Stock Notifications</h3>
-                           </div>
-                           <div class="max-h-96 overflow-y-auto">
-                               <?php if ($low_stock_count > 0): ?>
-                                   <?php while ($item = $low_stock_items->fetch_assoc()): ?>
-                                   <div class="p-4 border-b hover:bg-gray-50">
-                                       <div class="flex items-center justify-between">
-                                           <div>
-                                               <p class="font-medium text-gray-900"><?php echo htmlspecialchars($item['name']); ?></p>
-                                               <p class="text-sm text-red-600">Only <?php echo $item['quantity']; ?> items left</p>
-                                           </div>
-                                       </div>
-                                   </div>
-                                   <?php endwhile; ?>
-                               <?php else: ?>
-                                   <div class="p-4 text-center text-gray-500">
-                                       No low stock items
-                                   </div>
-                               <?php endif; ?>
-                           </div>
-                       </div>
-                   </div>
+                   <?php require_once '../includes/notification_bell.php'; ?>
                    <span class="text-gray-700"><?php echo $_SESSION['user_name']; ?></span>
                    <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500" id="menu-button">
                        <span class="sr-only">Open menu</span>
