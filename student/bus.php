@@ -65,6 +65,38 @@ function isBusAvailable($conn, $bus_number, $date_covered) {
     return $booked == 0;
 }
 
+// Function to check if bus is available for a date range
+function checkBusAvailabilityForRange($conn, $bus_number, $start_date, $end_date) {
+    // Get bus ID
+    $bus_id = getBusIdByNumber($conn, $bus_number);
+    if (!$bus_id) {
+        return ['available' => false, 'conflicting_dates' => []];
+    }
+    
+    // Check for any bookings that overlap with the date range
+    $query = "SELECT DISTINCT bs.date_covered 
+              FROM bus_bookings bb 
+              JOIN bus_schedules bs ON bb.schedule_id = bs.id 
+              WHERE bb.bus_id = ? 
+              AND bb.status = 'active' 
+              AND bs.status IN ('pending', 'approved')
+              AND bs.date_covered BETWEEN ? AND ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("iss", $bus_id, $start_date, $end_date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $conflicting_dates = [];
+    while ($row = $result->fetch_assoc()) {
+        $conflicting_dates[] = $row['date_covered'];
+    }
+    
+    return [
+        'available' => count($conflicting_dates) == 0,
+        'conflicting_dates' => $conflicting_dates
+    ];
+}
+
 // Function to get bus ID by bus number
 function getBusIdByNumber($conn, $bus_number) {
     $query = "SELECT id FROM buses WHERE bus_number = ?";
@@ -248,20 +280,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $destination .= ' - ' . $to_location_continuation;
             }
             $purpose = sanitize_input($_POST['purpose']);
-            $date_covered = $_POST['date_covered'];
+            $start_date = $_POST['start_date'];
+            $end_date = $_POST['end_date'];
             $vehicle = sanitize_input($_POST['vehicle']);
             $bus_no = sanitize_input($_POST['bus_no']);
             $no_of_days = intval($_POST['no_of_days']);
-            $no_of_vehicles = intval($_POST['no_of_vehicles']);
+            $no_of_vehicles = 1; // Fixed to 1 since we removed the field
             
-            // Check if specific bus is available
-            if (!isBusAvailable($conn, $bus_no, $date_covered)) {
-                $error = "Bus {$bus_no} is already booked for {$date_covered}. Please select a different bus or date.";
-            } elseif (empty($school_name) || empty($client) || empty($from_location) || empty($to_location) || empty($purpose) || empty($date_covered) || empty($vehicle) || empty($bus_no) || empty($no_of_days) || empty($no_of_vehicles)) {
-                $error = 'All required fields must be filled.';
-            } elseif ($from_location === $to_location) {
-                $error = 'From and To locations must be different.';
+            // Calculate date_covered (use start_date for compatibility)
+            $date_covered = $start_date;
+            
+            // Validate dates
+            if (empty($start_date) || empty($end_date)) {
+                $error = 'Start date and end date are required.';
+            } elseif (strtotime($end_date) < strtotime($start_date)) {
+                $error = 'End date cannot be before start date.';
+            } elseif ($no_of_days <= 0) {
+                $error = 'Invalid date range. Number of days must be at least 1.';
             } else {
+                // Check if bus is available for the date range
+                $date_check = checkBusAvailabilityForRange($conn, $bus_no, $start_date, $end_date);
+                if (!$date_check['available']) {
+                    $error = "Bus {$bus_no} is already booked for one or more dates in the selected range. Please select a different bus or date range.";
+                } elseif (empty($school_name) || empty($client) || empty($from_location) || empty($to_location) || empty($purpose) || empty($vehicle) || empty($bus_no)) {
+                    $error = 'All required fields must be filled.';
+                } elseif ($from_location === $to_location) {
+                    $error = 'From and To locations must be different.';
+                } else {
                 // Start transaction
                 $conn->begin_transaction();
                 
@@ -282,12 +327,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw new Exception('Invalid bus number');
                         }
                         
-                        // Insert bus booking record
-                        $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
-                        $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $date_covered);
+                        // Insert bus booking records for each day in the date range
+                        $current_date = $start_date;
+                        $end_timestamp = strtotime($end_date);
                         
-                        if (!$bus_booking_stmt->execute()) {
-                            throw new Exception('Error creating bus booking: ' . $conn->error);
+                        while (strtotime($current_date) <= $end_timestamp) {
+                            $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
+                            $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                            
+                            if (!$bus_booking_stmt->execute()) {
+                                throw new Exception('Error creating bus booking: ' . $conn->error);
+                            }
+                            
+                            // Move to next day
+                            $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
                         }
                         
                         // Update bus status to booked when booking is created
@@ -342,12 +395,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             
                             // Send notification to user
                             require_once '../includes/notification_functions.php';
-                            $date_formatted = date('F j, Y', strtotime($date_covered));
-                            create_notification($_SESSION['user_id'], "Bus Schedule Submitted", "Your bus schedule request for {$date_formatted} (Destination: {$destination}) has been submitted and is pending approval.", "request", "student/bus.php");
+                            $start_formatted = date('F j, Y', strtotime($start_date));
+                            $end_formatted = date('F j, Y', strtotime($end_date));
+                            $date_range = $no_of_days > 1 ? "{$start_formatted} to {$end_formatted}" : $start_formatted;
+                            create_notification($_SESSION['user_id'], "Bus Schedule Submitted", "Your bus schedule request for {$date_range} (Destination: {$destination}) has been submitted and is pending approval.", "request", "student/bus.php");
                             
                             // Send notification to all admins
                             $user_name = $_SESSION['user_sessions']['student']['user_name'] ?? 'Student';
-                            create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_formatted} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
+                            create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_range} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
                             
                             $success = 'Bus schedule request submitted successfully! Billing statement generated. You will be notified once it\'s approved.';
                         } else {
@@ -360,10 +415,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $conn->rollback();
                     $error = $e->getMessage();
                 }
-            }
-        }
-    }
-}
+                } // Close the else block at line 309 (all validations passed)
+            } // Close the else block at line 300 (date validation passed)
+        } // Close the elseif block at line 270 (add_schedule action)
+    } // Close the if block at line 239 (isset action)
+} // Close the if block at line 238 (POST request)
 
 // Get all bus schedules with billing information and bus plate number
 $user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.plate_number
@@ -371,7 +427,7 @@ $user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.pl
                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
                         WHERE bs.user_id = ? 
-                        ORDER BY bs.created_at DESC LIMIT 20";
+                        ORDER BY bs.id DESC, bs.created_at DESC LIMIT 20";
 $user_schedules_stmt = $conn->prepare($user_schedules_query);
 $user_schedules_stmt->bind_param("i", $_SESSION['user_id']);
 $user_schedules_stmt->execute();
@@ -764,25 +820,33 @@ while ($bus = $buses_result->fetch_assoc()) {
                 </div>
                 
                 <div>
-                    <label for="date_covered" class="block text-sm font-medium text-gray-700 mb-1">Date of Travel *</label>
-                    <input type="date" id="date_covered" name="date_covered" required 
+                    <label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                    <input type="date" id="start_date" name="start_date" required 
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
-                           value="<?php echo isset($_POST['date_covered']) ? htmlspecialchars($_POST['date_covered']) : ''; ?>"
-                           onchange="checkAvailability()">
+                           value="<?php echo isset($_POST['start_date']) ? htmlspecialchars($_POST['start_date']) : ''; ?>"
+                           min="<?php echo date('Y-m-d'); ?>"
+                           onchange="updateDateRange()">
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-calendar-alt mr-1"></i>
+                        Past dates cannot be selected
+                    </p>
                 </div>
                 
                 <div>
-                    <label for="vehicle" class="block text-sm font-medium text-gray-700 mb-1">Vehicle Type *</label>
-                    <select id="vehicle" name="vehicle" required 
-                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
-                            onchange="toggleBusNumber()">
-                        <option value="Bus" selected>Bus</option>
-                    </select>
+                    <label for="end_date" class="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+                    <input type="date" id="end_date" name="end_date" required 
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
+                           value="<?php echo isset($_POST['end_date']) ? htmlspecialchars($_POST['end_date']) : ''; ?>"
+                           min="<?php echo date('Y-m-d'); ?>"
+                           onchange="updateDateRange()">
                     <p class="text-xs text-gray-500 mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Only Bus is supported for now
+                        <i class="fas fa-calendar-alt mr-1"></i>
+                        Must be on or after start date
                     </p>
                 </div>
+                
+                <!-- Vehicle Type is fixed to "Bus" - hidden field -->
+                <input type="hidden" id="vehicle" name="vehicle" value="Bus">
                 
                 <div>
                     <label for="bus_no" class="block text-sm font-medium text-gray-700 mb-1">Bus Number *</label>
@@ -805,18 +869,13 @@ while ($bus = $buses_result->fetch_assoc()) {
                 
                 <div>
                     <label for="no_of_days" class="block text-sm font-medium text-gray-700 mb-1">Number of Days *</label>
-                    <input type="number" id="no_of_days" name="no_of_days" min="1" max="30" required 
-                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
+                    <input type="number" id="no_of_days" name="no_of_days" min="1" max="30" required readonly
+                           class="w-full rounded-md border-gray-300 shadow-sm bg-gray-50 focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
                            value="<?php echo isset($_POST['no_of_days']) ? htmlspecialchars($_POST['no_of_days']) : '1'; ?>">
-                </div>
-                
-                <div>
-                    <label for="no_of_vehicles" class="block text-sm font-medium text-gray-700 mb-1">Number of Vehicles *</label>
-                    <input type="number" id="no_of_vehicles" name="no_of_vehicles" min="1" max="3" required 
-                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
-                           value="<?php echo isset($_POST['no_of_vehicles']) ? htmlspecialchars($_POST['no_of_vehicles']) : '1'; ?>"
-                           onchange="checkAvailability()">
-                    <p class="text-xs text-gray-500 mt-1">Maximum 3 vehicles available</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-calculator mr-1"></i>
+                        Automatically calculated from date range
+                    </p>
                 </div>
                 
                 <div class="md:col-span-2">
@@ -876,20 +935,16 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <span class="text-gray-900 font-semibold text-right" id="confirm-purpose">-</span>
                 </div>
                 <div class="flex justify-between border-b border-gray-200 pb-2">
-                    <span class="text-gray-600 font-medium">Date of Travel:</span>
-                    <span class="text-gray-900 font-semibold text-right" id="confirm-date">-</span>
-                </div>
-                <div class="flex justify-between border-b border-gray-200 pb-2">
                     <span class="text-gray-600 font-medium">Bus Number:</span>
                     <span class="text-gray-900 font-semibold text-right" id="confirm-bus">-</span>
                 </div>
                 <div class="flex justify-between border-b border-gray-200 pb-2">
-                    <span class="text-gray-600 font-medium">Number of Days:</span>
-                    <span class="text-gray-900 font-semibold text-right" id="confirm-days">-</span>
+                    <span class="text-gray-600 font-medium">Date Range:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-date-range">-</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-600 font-medium">Number of Vehicles:</span>
-                    <span class="text-gray-900 font-semibold text-right" id="confirm-vehicles">-</span>
+                    <span class="text-gray-600 font-medium">Number of Days:</span>
+                    <span class="text-gray-900 font-semibold text-right" id="confirm-days">-</span>
                 </div>
             </div>
             
@@ -984,6 +1039,9 @@ document.getElementById('menu-button').addEventListener('click', function() {
 // Modal functions
 function openAddModal() {
     document.getElementById('addModal').classList.remove('hidden');
+    // Set initial min date for end_date
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('end_date').min = today;
     // Update distance display with default values
     updateDistance();
 }
@@ -1010,11 +1068,29 @@ function viewSchedule(schedule) {
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-500">Date of Travel</label>
-                <p class="text-sm text-gray-900">${new Date(schedule.date_covered).toLocaleDateString()}</p>
+                <p class="text-sm text-gray-900">${(() => {
+                    if (!schedule.date_covered) return 'N/A';
+                    try {
+                        const startDate = new Date(schedule.date_covered);
+                        if (isNaN(startDate.getTime())) return 'N/A';
+                        const days = schedule.no_of_days || 1;
+                        if (days > 1) {
+                            const endDate = new Date(startDate);
+                            endDate.setDate(endDate.getDate() + days - 1);
+                            return startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + 
+                                   ' to ' + 
+                                   endDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                        } else {
+                            return startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                        }
+                    } catch (e) {
+                        return schedule.date_covered || 'N/A';
+                    }
+                })()}</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-500">Vehicle Type</label>
-                <p class="text-sm text-gray-900">${schedule.vehicle}</p>
+                <p class="text-sm text-gray-900">${schedule.vehicle || 'Bus'}</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-500">Vehicle Number</label>
@@ -1026,15 +1102,7 @@ function viewSchedule(schedule) {
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-500">Number of Days</label>
-                <p class="text-sm text-gray-900">${schedule.no_of_days}</p>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-500">Number of Vehicles</label>
-                <p class="text-sm text-gray-900">${schedule.no_of_vehicles}</p>
-            </div>
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-500">Requested On</label>
-                <p class="text-sm text-gray-900">${new Date(schedule.created_at).toLocaleString()}</p>
+                <p class="text-sm text-gray-900">${schedule.no_of_days || 1}</p>
             </div>
         </div>
     `;
@@ -1763,36 +1831,73 @@ async function updateDistance() {
     }
 }
 
+// Update date range and calculate number of days
+function updateDateRange() {
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
+    const noOfDaysInput = document.getElementById('no_of_days');
+    const endDateInput = document.getElementById('end_date');
+    
+    // Set minimum end date to start date
+    if (startDate) {
+        endDateInput.min = startDate;
+    }
+    
+    // Validate end date is not before start date
+    if (startDate && endDate) {
+        if (endDate < startDate) {
+            endDateInput.setCustomValidity('End date must be on or after start date');
+            noOfDaysInput.value = '1';
+            return;
+        } else {
+            endDateInput.setCustomValidity('');
+        }
+        
+        // Calculate number of days
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+        
+        noOfDaysInput.value = diffDays;
+        
+        // Check availability for the date range
+        checkAvailability();
+    } else {
+        noOfDaysInput.value = '1';
+    }
+}
+
 // Check bus availability
 function checkAvailability() {
-    const date = document.getElementById('date_covered').value;
-    const vehicles = document.getElementById('no_of_vehicles').value;
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
     const statusDiv = document.getElementById('availability-status');
     const busNoSelect = document.getElementById('bus_no');
     const hint = document.getElementById('bus-availability-hint');
     
-    if (!date || !vehicles) {
+    if (!startDate || !endDate) {
         statusDiv.classList.add('hidden');
         return;
     }
     
-    // Make AJAX request to check availability
+    // Make AJAX request to check availability for date range
     fetch('check_bus_availability.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `date_covered=${date}&no_of_vehicles=${vehicles}`
+        body: `start_date=${startDate}&end_date=${endDate}`
     })
     .then(response => response.json())
     .then(data => {
         statusDiv.classList.remove('hidden');
         if (data.can_book) {
             statusDiv.className = 'p-3 rounded-md text-sm bg-green-100 text-green-800';
-            statusDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${data.available_buses} buses available for this date.`;
+            statusDiv.innerHTML = `<i class="fas fa-check-circle mr-2"></i>Buses available for the selected date range.`;
         } else {
             statusDiv.className = 'p-3 rounded-md text-sm bg-red-100 text-red-800';
-            statusDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i>Only ${data.available_buses} buses available, but you requested ${vehicles}.`;
+            statusDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i>Limited availability for the selected date range.`;
         }
 
         // Update Bus Number select options availability
@@ -1840,7 +1945,7 @@ function checkAvailability() {
         const availableList = Object.keys(availabilityByNumber).filter(k => availabilityByNumber[k]);
         hint.innerHTML = availableList.length
             ? `<i class=\"fas fa-bus mr-1\"></i>Available: Bus ${availableList.join(', Bus ')}`
-            : `<i class=\"fas fa-bus mr-1\"></i>No buses available on selected date`;
+            : `<i class=\"fas fa-bus mr-1\"></i>No buses available for selected date range`;
     })
     .catch(error => {
         console.error('Error:', error);
@@ -1849,12 +1954,13 @@ function checkAvailability() {
 
 // Check bus availability when bus number changes
 function checkBusAvailability() {
-    const date = document.getElementById('date_covered').value;
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
     const busNo = document.getElementById('bus_no').value;
     const hint = document.getElementById('bus-availability-hint');
     
-    if (!date) {
-        hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select a date first';
+    if (!startDate || !endDate) {
+        hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select date range first';
         return;
     }
     
@@ -1864,7 +1970,7 @@ function checkBusAvailability() {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `date_covered=${date}&no_of_vehicles=1`
+        body: `start_date=${startDate}&end_date=${endDate}`
     })
     .then(response => response.json())
     .then(data => {
@@ -1872,10 +1978,10 @@ function checkBusAvailability() {
             const selectedBus = data.buses.find(bus => bus.bus_number === busNo);
             if (selectedBus) {
                 if (selectedBus.available) {
-                    hint.innerHTML = `<i class="fas fa-check-circle text-green-600 mr-1"></i>Bus ${busNo} is available for ${date}`;
+                    hint.innerHTML = `<i class="fas fa-check-circle text-green-600 mr-1"></i>Bus ${busNo} is available for the selected date range`;
                     hint.className = 'text-xs text-green-600 mt-1';
                 } else {
-                    hint.innerHTML = `<i class="fas fa-times-circle text-red-600 mr-1"></i>Bus ${busNo} is NOT available for ${date}`;
+                    hint.innerHTML = `<i class="fas fa-times-circle text-red-600 mr-1"></i>Bus ${busNo} is NOT available for the selected date range`;
                     hint.className = 'text-xs text-red-600 mt-1';
                 }
             }
@@ -1909,16 +2015,31 @@ function showConfirmModal() {
     const busSelect = document.getElementById('bus_no');
     const busText = busSelect.options[busSelect.selectedIndex].text;
     
+    // Format date range
+    const startDate = formData.get('start_date');
+    const endDate = formData.get('end_date');
+    let dateRangeText = '-';
+    if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (startDate === endDate) {
+            dateRangeText = start.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        } else {
+            dateRangeText = start.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + 
+                          ' to ' + 
+                          end.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        }
+    }
+    
     // Populate confirmation modal with form values
-    document.getElementById('confirm-school').textContent = formData.get('school') || '-';
+    document.getElementById('confirm-school').textContent = formData.get('school_name') || '-';
     document.getElementById('confirm-client').textContent = formData.get('client') || '-';
     document.getElementById('confirm-from').textContent = formData.get('from_location') || '-';
     document.getElementById('confirm-to').textContent = formData.get('to_location') || '-';
     document.getElementById('confirm-purpose').textContent = formData.get('purpose') || '-';
-    document.getElementById('confirm-date').textContent = formData.get('date_covered') ? new Date(formData.get('date_covered')).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+    document.getElementById('confirm-date-range').textContent = dateRangeText;
     document.getElementById('confirm-bus').textContent = busText || '-';
     document.getElementById('confirm-days').textContent = formData.get('no_of_days') || '-';
-    document.getElementById('confirm-vehicles').textContent = formData.get('no_of_vehicles') || '-';
     
     // Show confirmation modal
     document.getElementById('confirmModal').classList.remove('hidden');

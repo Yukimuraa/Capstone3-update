@@ -54,8 +54,8 @@ $control_no = $batch_id;
 $order_date_formatted = date('F j, Y', strtotime($order_date));
 $order_time = date('g:i A', strtotime($order_date));
 
-// Generate official receipt number
-$receipt_no = 'OR-' . date('Ymd') . '-' . substr($batch_id, -6);
+// Official receipt number - empty so cashier can input manually
+$receipt_no = '';
 ?>
 <!DOCTYPE html>
 <html lang="en">

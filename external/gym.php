@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $contact_number = sanitize_input($_POST['contact_number']);
             $equipment = isset($_POST['equipment']) ? sanitize_input($_POST['equipment']) : '';
             $chair_pairs = isset($_POST['chair_pairs']) ? intval($_POST['chair_pairs']) : 0;
-            $facility_id = isset($_POST['facility_id']) && !empty($_POST['facility_id']) ? intval($_POST['facility_id']) : null;
+            $other_event_type = isset($_POST['other_event_type']) && !empty($_POST['other_event_type']) ? sanitize_input($_POST['other_event_type']) : null;
             
             // Normalize times to HH:MM:SS format for proper comparison
             $start_time = trim($start_time);
@@ -139,9 +139,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 							'hours' => round($hours, 2)
 						]
 					];
-					// Add facility_id if "Other" event type was selected
-					if ($facility_id !== null) {
-						$additional_info_array['facility_id'] = $facility_id;
+					// Add other_event_type if "Other" event type was selected
+					if ($other_event_type !== null) {
+						$additional_info_array['other_event_type'] = $other_event_type;
 					}
 					$additional_info = json_encode($additional_info_array);
 					
@@ -274,11 +274,7 @@ $bookings_stmt->bind_param("iii", $user_id, $offset, $per_page);
 $bookings_stmt->execute();
 $bookings_result = $bookings_stmt->get_result();
 
-// Get all gym facilities for facility selection - fetch fresh data each time
-$facilities_query = "SELECT id, name FROM gym_facilities WHERE status = 'active' ORDER BY name ASC";
-$facilities_stmt = $conn->prepare($facilities_query);
-$facilities_stmt->execute();
-$facilities_result = $facilities_stmt->get_result();
+// Facilities query removed - no longer using facility dropdown
 
 // Note: We no longer fully disable dates on the calendar to allow partial-day bookings
 ?>
@@ -436,18 +432,10 @@ $facilities_result = $facilities_stmt->get_result();
                                                 break;
                                         }
                                         
-                                        // Get facility name if purpose is "Other" and facility_id exists
-                                        $facility_name = '';
-                                        if ($booking['purpose'] === 'Other' && isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
-                                            $facility_id = intval($additional_info['facility_id']);
-                                            $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
-                                            $facility_stmt->bind_param("i", $facility_id);
-                                            $facility_stmt->execute();
-                                            $facility_result = $facility_stmt->get_result();
-                                            if ($facility_result->num_rows > 0) {
-                                                $facility_row = $facility_result->fetch_assoc();
-                                                $facility_name = $facility_row['name'];
-                                            }
+                                        // Get other event type if purpose is "Other"
+                                        $other_event_type = '';
+                                        if ($booking['purpose'] === 'Other' && isset($additional_info['other_event_type']) && !empty($additional_info['other_event_type'])) {
+                                            $other_event_type = $additional_info['other_event_type'];
                                         }
                                         ?>
                                         <tr>
@@ -461,9 +449,9 @@ $facilities_result = $facilities_stmt->get_result();
                                             </td>
                                             <td class="px-6 py-4 text-sm text-gray-500">
                                                 <div><?php echo $booking['purpose']; ?></div>
-                                                <?php if ($booking['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                <?php if ($booking['purpose'] === 'Other' && !empty($other_event_type)): ?>
                                                     <div class="text-xs text-gray-400 mt-1">
-                                                        <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                        <i class="fas fa-info-circle mr-1"></i><?php echo htmlspecialchars($other_event_type); ?>
                                                     </div>
                                                 <?php endif; ?>
                                             </td>
@@ -650,6 +638,9 @@ $facilities_result = $facilities_stmt->get_result();
                 <label for="purpose" class="block text-sm font-medium text-gray-700 mb-1">Purpose/Event Type</label>
                 <select id="purpose" name="purpose" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50" onchange="toggleEquipmentDropdown()">
                     <option value="">Select event type</option>
+                    <option value="Badminton">Badminton</option>
+                    <option value="Basketball">Basketball</option>
+                    <option value="Volleyball">Volleyball</option>
                     <option value="Graduation Ceremony">Graduation Ceremony</option>
                     <option value="Sports Tournament">Sports Tournament</option>
                     <option value="Conference">Conference</option>
@@ -658,24 +649,10 @@ $facilities_result = $facilities_stmt->get_result();
                     <option value="Other">Other</option>
                 </select>
             </div>
-            <div class="mb-4" id="facilityDropdown" style="display: none;">
-                <label for="facility_id" class="block text-sm font-medium text-gray-700 mb-1">Select Facility</label>
-                <select id="facility_id" name="facility_id" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                    <option value="">Select a facility</option>
-                    <?php 
-                    if ($facilities_result && $facilities_result->num_rows > 0) {
-                        while ($facility = $facilities_result->fetch_assoc()): 
-                    ?>
-                        <option value="<?php echo $facility['id']; ?>"><?php echo htmlspecialchars($facility['name']); ?></option>
-                    <?php 
-                        endwhile;
-                    } else {
-                        // Debug: Show message if no facilities found
-                        echo '<!-- No active facilities found -->';
-                    }
-                    ?>
-                </select>
-                <p class="mt-1 text-xs text-gray-500">Select the facility you want to book</p>
+            <div class="mb-4" id="otherEventInput" style="display: none;">
+                <label for="other_event_type" class="block text-sm font-medium text-gray-700 mb-1">Specify Event Type</label>
+                <input type="text" id="other_event_type" name="other_event_type" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50" placeholder="Enter event type">
+                <p class="mt-1 text-xs text-gray-500">Please specify the event type</p>
             </div>
             <div class="mb-4" id="equipmentDropdown" style="display: none;">
                 <label for="equipment" class="block text-sm font-medium text-gray-700 mb-1">Equipment/Services Needed</label>
@@ -982,23 +959,23 @@ $facilities_result = $facilities_stmt->get_result();
     function toggleEquipmentDropdown() {
         const purposeSelect = document.getElementById('purpose');
         const equipmentDropdown = document.getElementById('equipmentDropdown');
-        const facilityDropdown = document.getElementById('facilityDropdown');
+        const otherEventInput = document.getElementById('otherEventInput');
         
-        // Show facility dropdown only when "Other" is selected
+        // Show input field only when "Other" is selected
         if (purposeSelect.value === 'Other') {
-            facilityDropdown.style.display = 'block';
-            // Make facility selection required when "Other" is selected
-            const facilitySelect = document.getElementById('facility_id');
-            if (facilitySelect) {
-                facilitySelect.required = true;
+            otherEventInput.style.display = 'block';
+            // Make input field required when "Other" is selected
+            const otherEventInputField = document.getElementById('other_event_type');
+            if (otherEventInputField) {
+                otherEventInputField.required = true;
             }
         } else {
-            facilityDropdown.style.display = 'none';
+            otherEventInput.style.display = 'none';
             // Remove required attribute when not "Other"
-            const facilitySelect = document.getElementById('facility_id');
-            if (facilitySelect) {
-                facilitySelect.required = false;
-                facilitySelect.value = ''; // Reset selection
+            const otherEventInputField = document.getElementById('other_event_type');
+            if (otherEventInputField) {
+                otherEventInputField.required = false;
+                otherEventInputField.value = ''; // Reset value
             }
         }
         
@@ -1087,11 +1064,11 @@ $facilities_result = $facilities_stmt->get_result();
         document.getElementById('purpose').value = '';
         document.getElementById('equipment').value = '';
         document.getElementById('equipmentDropdown').style.display = 'none';
-        document.getElementById('facilityDropdown').style.display = 'none';
-        const facilitySelect = document.getElementById('facility_id');
-        if (facilitySelect) {
-            facilitySelect.value = '';
-            facilitySelect.required = false;
+        document.getElementById('otherEventInput').style.display = 'none';
+        const otherEventInputField = document.getElementById('other_event_type');
+        if (otherEventInputField) {
+            otherEventInputField.value = '';
+            otherEventInputField.required = false;
         }
         document.getElementById('chairPairsField').style.display = 'none';
         document.getElementById('chair_pairs').value = 0;
@@ -1103,7 +1080,12 @@ $facilities_result = $facilities_stmt->get_result();
         document.getElementById('detail-datetime').textContent = formatDate(booking.date) + ', ' + 
                                                                formatTime(booking.start_time) + ' - ' + 
                                                                formatTime(booking.end_time);
-        document.getElementById('detail-purpose').textContent = booking.purpose;
+        // Display purpose with other_event_type if "Other" is selected
+        let purposeText = booking.purpose;
+        if (booking.purpose === 'Other' && additionalInfo.other_event_type) {
+            purposeText = booking.purpose + ' (' + additionalInfo.other_event_type + ')';
+        }
+        document.getElementById('detail-purpose').textContent = purposeText;
         document.getElementById('detail-attendees').textContent = booking.attendees;
         document.getElementById('detail-organization').textContent = additionalInfo.organization;
         document.getElementById('detail-contact-person').textContent = additionalInfo.contact_person;

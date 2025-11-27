@@ -217,6 +217,12 @@ $display_email = isset($request['user_email']) && !empty($request['user_email'])
                         <?php echo $status_text; ?>
                     </span>
                 </div>
+                <?php if (!empty($request['or_number'])): ?>
+                <div class="mb-3">
+                    <span class="block text-sm font-medium text-gray-500">OR No:</span>
+                    <span class="block text-sm text-gray-800 font-semibold text-green-600"><?php echo htmlspecialchars($request['or_number']); ?></span>
+                </div>
+                <?php endif; ?>
                 <div>
                     <span class="block text-sm font-medium text-gray-500">Remarks</span>
                     <span class="block text-sm text-gray-800"><?php echo !empty($request['admin_remarks']) ? htmlspecialchars($request['admin_remarks']) : 'No remarks provided'; ?></span>

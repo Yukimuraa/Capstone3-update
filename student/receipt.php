@@ -152,6 +152,9 @@ $receipt_number = "RCPT-" . date('Ymd', strtotime($order_datetime)) . "-" . subs
                                 <?php if (!empty($first_order['batch_id'])): ?>
                                     <p class="text-gray-600 font-semibold">Batch ID: <?php echo htmlspecialchars($first_order['batch_id']); ?></p>
                                 <?php endif; ?>
+                                <?php if (!empty($first_order['or_number'])): ?>
+                                    <p class="text-gray-600 font-semibold text-green-600">OR No: <?php echo htmlspecialchars($first_order['or_number']); ?></p>
+                                <?php endif; ?>
                                 <p class="text-gray-600">Date: <?php echo $order_date; ?></p>
                                 <p class="text-gray-600">Time: <?php echo $order_time; ?></p>
                             </div>

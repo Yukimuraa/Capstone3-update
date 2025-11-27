@@ -16,9 +16,10 @@ $base_url = "..";
 
 // Handle status updates and mark complete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['mark_complete_batch']) && isset($_POST['batch_id'])) {
+    if (isset($_POST['mark_complete_batch']) && isset($_POST['batch_id']) && isset($_POST['or_number'])) {
         // Mark all orders in batch as completed and deduct inventory
         $batch_id = $_POST['batch_id'];
+        $or_number = !empty($_POST['or_number']) ? sanitize_input($_POST['or_number']) : null;
         
         // Start transaction
         $conn->begin_transaction();
@@ -53,10 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update_inventory->execute();
             }
             
-            // Mark all orders as completed
-        $update_query = "UPDATE orders SET status = 'completed' WHERE batch_id = ?";
-        $stmt = $conn->prepare($update_query);
-        $stmt->bind_param("s", $batch_id);
+            // Mark all orders as completed and update OR number
+            $update_query = "UPDATE orders SET status = 'completed', or_number = ? WHERE batch_id = ?";
+            $stmt = $conn->prepare($update_query);
+            $stmt->bind_param("ss", $or_number, $batch_id);
             $stmt->execute();
             
             // Commit transaction
@@ -72,17 +73,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 create_notification($notify_order['user_id'], "Order Approved", "Your order (Order ID: {$notify_order['order_id']}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
             }
         
-            // Redirect to batch receipt for printing
-            header("Location: print_batch_receipt.php?batch_id=" . urlencode($batch_id));
+            // Redirect back to orders page
+            header("Location: orders.php?success=1");
             exit();
         } catch (Exception $e) {
             // Rollback on error
             $conn->rollback();
             $error_message = "Error completing order: " . $e->getMessage();
         }
-    } elseif (isset($_POST['mark_complete']) && isset($_POST['order_id'])) {
+    } elseif (isset($_POST['mark_complete']) && isset($_POST['order_id']) && isset($_POST['or_number'])) {
         // Mark single order as completed and deduct inventory
         $order_id = (int)$_POST['order_id'];
+        $or_number = !empty($_POST['or_number']) ? sanitize_input($_POST['or_number']) : null;
         
         // Start transaction
         $conn->begin_transaction();
@@ -121,10 +123,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update_inventory->bind_param("iiss", $new_quantity, $in_stock, $size_quantities_json, $order['inventory_id']);
             $update_inventory->execute();
             
-            // Mark order as completed
-            $update_query = "UPDATE orders SET status = 'completed' WHERE id = ?";
+            // Mark order as completed and update OR number
+            $update_query = "UPDATE orders SET status = 'completed', or_number = ? WHERE id = ?";
             $stmt = $conn->prepare($update_query);
-            $stmt->bind_param("i", $order_id);
+            $stmt->bind_param("si", $or_number, $order_id);
             $stmt->execute();
             
             // Commit transaction
@@ -136,14 +138,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $order_id_str = $order['order_id'];
             create_notification($order_user_id, "Order Approved", "Your order (Order ID: {$order_id_str}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
             
-            // Get order_id for receipt
-            $order_data = $conn->prepare("SELECT order_id FROM orders WHERE id = ?");
-            $order_data->bind_param("i", $order_id);
-            $order_data->execute();
-            $order_info = $order_data->get_result()->fetch_assoc();
-            
-            // Redirect to receipt
-            header("Location: print_order_receipt.php?order_id=" . urlencode($order_info['order_id']));
+            // Redirect back to orders page
+            header("Location: orders.php?success=1");
             exit();
         } catch (Exception $e) {
             // Rollback on error
@@ -260,6 +256,12 @@ if (!empty($search)) {
                     </div>
                 <?php endif; ?>
                 
+                <?php if (isset($_GET['success']) && $_GET['success'] == '1'): ?>
+                    <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+                        Order marked as complete successfully!
+                    </div>
+                <?php endif; ?>
+                
                 <?php if (isset($error_message)): ?>
                     <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                         <?php echo $error_message; ?>
@@ -367,33 +369,24 @@ if (!empty($search)) {
                                                         </span>
                                                     </td>
                                                     <td class="px-6 py-4 text-sm">
-                                                        <?php if ($first_item['status'] === 'pending'): ?>
-                                                            <div class="flex gap-2">
-                                                                <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
-                                                                        class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
-                                                                    <i class="fas fa-eye mr-1"></i> View
+                                                        <div class="flex gap-2">
+                                                            <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                                    class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                                <i class="fas fa-eye mr-1"></i> View
+                                                            </button>
+                                                            <?php if ($first_item['status'] === 'pending'): ?>
+                                                                <button onclick="openMarkCompleteModal('<?php echo $current_batch; ?>', 'batch')" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                    <i class="fas fa-check mr-1"></i> Mark Complete
                                                                 </button>
-                                                                <form action="orders.php" method="POST" style="display: inline;">
-                                                                    <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
-                                                                    <input type="hidden" name="mark_complete_batch" value="1">
-                                                                    <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                        <i class="fas fa-check mr-1"></i> Mark Complete & Print
-                                                                    </button>
-                                                                </form>
-                                                            </div>
-                                                        <?php elseif ($first_item['status'] === 'completed'): ?>
-                                                            <div class="flex gap-2">
-                                                                <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
-                                                                        class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                                                    <i class="fas fa-eye mr-1"></i> View
-                                                                </button>
+                                                            <?php else: ?>
                                                                 <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
                                                                    class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                                                                    target="_blank">
-                                                                    <i class="fas fa-print mr-1"></i> Print Receipt
+                                                                    <i class="fas fa-print mr-1"></i> Print
                                                                 </a>
-                                                            </div>
-                                                        <?php endif; ?>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                                 <?php
@@ -449,33 +442,32 @@ if (!empty($search)) {
                                                         </span>
                                                     </td>
                                                     <td class="px-6 py-4 text-sm">
-                                                        <?php if ($order['status'] === 'pending'): ?>
-                                                            <div class="flex gap-2">
-                                                                <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
-                                                                        class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
-                                                                    <i class="fas fa-eye mr-1"></i> View
+                                                        <div class="flex gap-2">
+                                                            <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
+                                                                    class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                                <i class="fas fa-eye mr-1"></i> View
+                                                            </button>
+                                                            <?php if ($order['status'] === 'pending'): ?>
+                                                                <button onclick="openMarkCompleteModal('<?php echo $order['id']; ?>', 'single')" 
+                                                                        class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                                    <i class="fas fa-check mr-1"></i> Mark Complete
                                                                 </button>
-                                                                <form action="orders.php" method="POST" style="display: inline;">
-                                                                    <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
-                                                                    <input type="hidden" name="mark_complete" value="1">
-                                                                    <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                        <i class="fas fa-check mr-1"></i> Mark Complete & Print
-                                                                    </button>
-                                                                </form>
-                                                            </div>
-                                                        <?php elseif ($order['status'] === 'completed'): ?>
-                                                            <div class="flex gap-2">
-                                                                <button onclick="viewSingleOrder(<?php echo $order['id']; ?>)" 
-                                                                        class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                                                    <i class="fas fa-eye mr-1"></i> View
-                                                                </button>
-                                                                <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
-                                                                   class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                                   target="_blank">
-                                                                    <i class="fas fa-print mr-1"></i> Print Receipt
-                                                                </a>
-                                                            </div>
-                                                        <?php endif; ?>
+                                                            <?php else: ?>
+                                                                <?php if (!empty($order['batch_id'])): ?>
+                                                                    <a href="print_batch_receipt.php?batch_id=<?php echo $order['batch_id']; ?>" 
+                                                                       class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                                       target="_blank">
+                                                                        <i class="fas fa-print mr-1"></i> Print
+                                                                    </a>
+                                                                <?php else: ?>
+                                                                    <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
+                                                                       class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                                                       target="_blank">
+                                                                        <i class="fas fa-print mr-1"></i> Print
+                                                                    </a>
+                                                                <?php endif; ?>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                                 <?php
@@ -518,33 +510,24 @@ if (!empty($search)) {
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4 text-sm">
-                                                <?php if ($first_item['status'] === 'pending'): ?>
-                                                    <div class="flex gap-2">
-                                                        <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
-                                                                class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
-                                                            <i class="fas fa-eye mr-1"></i> View
+                                                <div class="flex gap-2">
+                                                    <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
+                                                            class="inline-flex items-center px-3 py-1 border border-blue-600 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50">
+                                                        <i class="fas fa-eye mr-1"></i> View
+                                                    </button>
+                                                    <?php if ($first_item['status'] === 'pending'): ?>
+                                                        <button onclick="openMarkCompleteModal('<?php echo $current_batch; ?>', 'batch')" 
+                                                                class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                                                            <i class="fas fa-check mr-1"></i> Mark Complete
                                                         </button>
-                                                        <form action="orders.php" method="POST" style="display: inline;">
-                                                            <input type="hidden" name="batch_id" value="<?php echo $current_batch; ?>">
-                                                            <input type="hidden" name="mark_complete_batch" value="1">
-                                                            <button type="submit" class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                                                                <i class="fas fa-check mr-1"></i> Mark Complete & Print
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                <?php elseif ($first_item['status'] === 'completed'): ?>
-                                                    <div class="flex gap-2">
-                                                        <button onclick="viewBatchOrder('<?php echo $current_batch; ?>')" 
-                                                                class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                                                            <i class="fas fa-eye mr-1"></i> View
-                                                        </button>
+                                                    <?php else: ?>
                                                         <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
                                                            class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                                                            target="_blank">
-                                                            <i class="fas fa-print mr-1"></i> Print Receipt
+                                                            <i class="fas fa-print mr-1"></i> Print
                                                         </a>
-                                                    </div>
-                                                <?php endif; ?>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
                                         </tr>
                                         <?php
@@ -648,6 +631,73 @@ if (!empty($search)) {
         
         <div id="orderDetailsContent">
             <!-- Content will be loaded dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Mark Complete Modal -->
+<div id="markCompleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Mark Order as Complete</h3>
+                <button type="button" onclick="closeMarkCompleteModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- Warning Question -->
+            <div id="orQuestionSection" class="mb-4">
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                <strong>Did the student show the OR No from cashier?</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeMarkCompleteModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Cancel
+                    </button>
+                    <button type="button" onclick="handleOrNoResponse(true)" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Yes
+                    </button>
+                </div>
+            </div>
+            
+            <!-- OR Number Input Form -->
+            <form id="markCompleteForm" action="orders.php" method="POST" class="hidden">
+                <input type="hidden" name="mark_complete_batch" id="mark_complete_batch" value="">
+                <input type="hidden" name="mark_complete" id="mark_complete" value="">
+                <input type="hidden" name="batch_id" id="mark_complete_batch_id" value="">
+                <input type="hidden" name="order_id" id="mark_complete_order_id" value="">
+                
+                <div class="mb-4">
+                    <label for="or_number" class="block text-sm font-medium text-gray-700 mb-1">Official Receipt (OR) No:</label>
+                    <input type="text" id="or_number" name="or_number" required
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"
+                           placeholder="Enter OR Number">
+                    <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier</p>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeMarkCompleteModal()"
+                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                        <i class="fas fa-check mr-1"></i> Mark Complete
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -786,15 +836,13 @@ if (!empty($search)) {
                 
                 <div class="flex justify-end gap-3 pt-4 border-t">
                     <button onclick="closeOrderModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Cancel
+                        Close
                     </button>
-                    <form action="orders.php" method="POST" style="display: inline;">
-                        <input type="hidden" name="batch_id" value="${batchId}">
-                        <input type="hidden" name="mark_complete_batch" value="1">
-                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            <i class="fas fa-check mr-1"></i> Mark Complete & Print
-                        </button>
-                    </form>
+                    <a href="print_batch_receipt.php?batch_id=${batchId}" 
+                       target="_blank"
+                       class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        <i class="fas fa-print mr-1"></i> Print
+                    </a>
                 </div>
             </div>
         `;
@@ -848,15 +896,16 @@ if (!empty($search)) {
                 
                 <div class="flex justify-end gap-3 pt-4 border-t">
                     <button onclick="closeOrderModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                        Cancel
+                        Close
                     </button>
-                    <form action="orders.php" method="POST" style="display: inline;">
-                        <input type="hidden" name="order_id" value="${order.id}">
-                        <input type="hidden" name="mark_complete" value="1">
-                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            <i class="fas fa-check mr-1"></i> Mark Complete & Print
-                        </button>
-                    </form>
+                    ${order.batch_id ? 
+                        `<a href="print_batch_receipt.php?batch_id=${order.batch_id}" target="_blank" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            <i class="fas fa-print mr-1"></i> Print
+                        </a>` :
+                        `<a href="print_order_receipt.php?order_id=${order.order_id}" target="_blank" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            <i class="fas fa-print mr-1"></i> Print
+                        </a>`
+                    }
                 </div>
             </div>
         `;
@@ -867,6 +916,52 @@ if (!empty($search)) {
 
     function closeOrderModal() {
         document.getElementById('orderModal').classList.add('hidden');
+    }
+    
+    // Mark Complete Modal Functions
+    let currentOrderType = ''; // 'batch' or 'single'
+    let currentOrderId = '';
+    
+    function openMarkCompleteModal(orderId, type) {
+        currentOrderType = type;
+        currentOrderId = orderId;
+        
+        // Reset modal state
+        document.getElementById('orQuestionSection').classList.remove('hidden');
+        document.getElementById('markCompleteForm').classList.add('hidden');
+        document.getElementById('or_number').value = '';
+        document.getElementById('or_number').required = false;
+        
+        // Set form fields based on type
+        if (type === 'batch') {
+            document.getElementById('mark_complete_batch').value = '1';
+            document.getElementById('mark_complete_batch_id').value = orderId;
+            document.getElementById('mark_complete').value = '';
+            document.getElementById('mark_complete_order_id').value = '';
+        } else {
+            document.getElementById('mark_complete').value = '1';
+            document.getElementById('mark_complete_order_id').value = orderId;
+            document.getElementById('mark_complete_batch').value = '';
+            document.getElementById('mark_complete_batch_id').value = '';
+        }
+        
+        document.getElementById('markCompleteModal').classList.remove('hidden');
+    }
+    
+    function closeMarkCompleteModal() {
+        document.getElementById('markCompleteModal').classList.add('hidden');
+        // Reset form
+        document.getElementById('orQuestionSection').classList.remove('hidden');
+        document.getElementById('markCompleteForm').classList.add('hidden');
+        document.getElementById('or_number').value = '';
+    }
+    
+    function handleOrNoResponse(hasOrNo) {
+        // Show OR number input field
+        document.getElementById('orQuestionSection').classList.add('hidden');
+        document.getElementById('markCompleteForm').classList.remove('hidden');
+        document.getElementById('or_number').required = true;
+        document.getElementById('or_number').focus();
     }
 </script>
 

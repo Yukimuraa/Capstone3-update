@@ -100,6 +100,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            if ($stmt->execute()) {
                $success_message = "Item added successfully";
+               
+               // Check if quantity is below 20 and create notification
+               if ($quantity < 20) {
+                   require_once '../includes/notification_functions.php';
+                   create_notification_for_admins(
+                       "Low Stock Alert",
+                       "Item '{$name}' has low stock (Quantity: {$quantity}). Please restock soon.",
+                       "warning",
+                       "admin/inventory.php"
+                   );
+               }
            } else {
                $error_message = "Error adding item: " . $conn->error;
            }
@@ -156,13 +167,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                $size_quantities_json = json_encode([]);
            }
            
-           // Get current image path
-           $stmt = $conn->prepare("SELECT image_path FROM inventory WHERE id = ?");
+           // Get current item data to check previous quantity
+           $stmt = $conn->prepare("SELECT image_path, quantity, name FROM inventory WHERE id = ?");
            $stmt->bind_param("i", $id);
            $stmt->execute();
            $result = $stmt->get_result();
            $item = $result->fetch_assoc();
            $current_image = $item['image_path'];
+           $previous_quantity = $item['quantity'];
+           $item_name = $item['name'];
            
            // Handle image upload
            $image_path = $current_image;
@@ -200,6 +213,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            
            if ($stmt->execute()) {
                $success_message = "Item updated successfully";
+               
+               require_once '../includes/notification_functions.php';
+               
+               // If quantity is now >= 20, mark all low stock notifications for this item as read for all admins
+               if ($quantity >= 20 && $previous_quantity < 20) {
+                   // Item is no longer low stock, mark related notifications as read for all admins
+                   $search_pattern = "%Item '{$item_name}'%";
+                   $update_query = "UPDATE notifications n
+                                   INNER JOIN user_accounts u ON n.user_id = u.id
+                                   SET n.is_read = 1
+                                   WHERE n.type = 'warning' 
+                                   AND n.title = 'Low Stock Alert' 
+                                   AND n.message LIKE ?
+                                   AND n.is_read = 0
+                                   AND u.user_type IN ('admin', 'secretary')";
+                   $stmt_notif = $conn->prepare($update_query);
+                   $stmt_notif->bind_param("s", $search_pattern);
+                   $stmt_notif->execute();
+               }
+               // Check if quantity is below 20 and create notification
+               // Notify if quantity is below 20 and either:
+               // 1. Just dropped from >= 20 to < 20, OR
+               // 2. Decreased further when already below 20
+               elseif ($quantity < 20) {
+                   if ($previous_quantity >= 20 || ($previous_quantity < 20 && $quantity < $previous_quantity)) {
+                       create_notification_for_admins(
+                           "Low Stock Alert",
+                           "Item '{$item_name}' has low stock (Quantity: {$quantity}). Please restock soon.",
+                           "warning",
+                           "admin/inventory.php"
+                       );
+                   }
+               }
            } else {
                $error_message = "Error updating item: " . $conn->error;
            }
@@ -268,7 +314,7 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                <h1 class="text-2xl font-semibold text-gray-900">Inventory Management</h1>
                <div class="flex items-center space-x-4">
-                   <?php require_once '../includes/notification_bell.php'; ?>
+                   <?php require_once '../includes/inventory_notification_bell.php'; ?>
                    <span class="text-gray-700"><?php echo $_SESSION['user_name']; ?></span>
                    <button class="md:hidden rounded-md p-2 inline-flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500" id="menu-button">
                        <span class="sr-only">Open menu</span>
@@ -746,21 +792,8 @@ $total_items = $conn->query($total_items_query)->fetch_assoc();
        }
    });
 
-   document.addEventListener('DOMContentLoaded', function() {
-       const notificationBell = document.getElementById('notification-bell');
-       const notificationDropdown = document.getElementById('notification-dropdown');
-
-       notificationBell.addEventListener('click', function() {
-           notificationDropdown.classList.toggle('hidden');
-       });
-
-       // Close dropdown when clicking outside
-       document.addEventListener('click', function(event) {
-           if (!notificationBell.contains(event.target) && !notificationDropdown.contains(event.target)) {
-               notificationDropdown.classList.add('hidden');
-           }
-       });
-   });
+   // Notification bell handling is now in inventory_notification_bell.php
+   // Removed duplicate code to prevent conflicts
 
    // Add the JavaScript for size options display
    const clothingKeywords = [

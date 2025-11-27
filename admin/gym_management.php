@@ -21,9 +21,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($_POST['action'] === 'approve' && isset($_POST['booking_id'])) {
             $booking_id = sanitize_input($_POST['booking_id']);
             $remarks = sanitize_input($_POST['remarks'] ?? '');
+            $or_number = sanitize_input($_POST['or_number'] ?? '');
             
-            $stmt = $conn->prepare("UPDATE bookings SET status = 'confirmed', additional_info = JSON_SET(COALESCE(additional_info, '{}'), '$.admin_remarks', ?) WHERE booking_id = ? AND facility_type = 'gym'");
-            $stmt->bind_param("ss", $remarks, $booking_id);
+            // Update booking with status, OR number, and remarks
+            $stmt = $conn->prepare("UPDATE bookings SET status = 'confirmed', or_number = ?, additional_info = JSON_SET(COALESCE(additional_info, '{}'), '$.admin_remarks', ?) WHERE booking_id = ? AND facility_type = 'gym'");
+            $stmt->bind_param("sss", $or_number, $remarks, $booking_id);
             
             if ($stmt->execute()) {
                 $_SESSION['success'] = "Reservation has been approved successfully.";
@@ -458,18 +460,10 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                             $additional_info = json_decode($request['additional_info'] ?? '{}', true) ?: [];
                                             $admin_remarks = $additional_info['admin_remarks'] ?? '';
                                             
-                                            // Get facility name if purpose is "Other" and facility_id exists
-                                            $facility_name = '';
-                                            if ($request['purpose'] === 'Other' && isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
-                                                $facility_id = intval($additional_info['facility_id']);
-                                                $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
-                                                $facility_stmt->bind_param("i", $facility_id);
-                                                $facility_stmt->execute();
-                                                $facility_result = $facility_stmt->get_result();
-                                                if ($facility_result->num_rows > 0) {
-                                                    $facility_row = $facility_result->fetch_assoc();
-                                                    $facility_name = $facility_row['name'];
-                                                }
+                                            // Get other event type if purpose is "Other"
+                                            $other_event_type = '';
+                                            if ($request['purpose'] === 'Other' && isset($additional_info['other_event_type']) && !empty($additional_info['other_event_type'])) {
+                                                $other_event_type = $additional_info['other_event_type'];
                                             }
                                             ?>
                                             <tr>
@@ -490,9 +484,9 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                                 </td>
                                                 <td class="px-6 py-4 text-sm text-gray-500">
                                                     <div><?php echo $request['purpose']; ?></div>
-                                                    <?php if ($request['purpose'] === 'Other' && !empty($facility_name)): ?>
+                                                    <?php if ($request['purpose'] === 'Other' && !empty($other_event_type)): ?>
                                                         <div class="text-xs text-gray-400 mt-1">
-                                                            <i class="fas fa-building mr-1"></i>Facility: <?php echo htmlspecialchars($facility_name); ?>
+                                                            <i class="fas fa-info-circle mr-1"></i><?php echo htmlspecialchars($other_event_type); ?>
                                                         </div>
                                                     <?php endif; ?>
                                                 </td>
@@ -512,6 +506,7 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                                             'booking_date' => $request['date'],
                                                             'time_slot' => date('h:i A', strtotime($request['start_time'])) . ' - ' . date('h:i A', strtotime($request['end_time'])),
                                                             'purpose' => $request['purpose'],
+                                                            'other_event_type' => $other_event_type,
                                                             'participants' => $request['attendees'],
                                                             'status' => $request['status'],
                                                             'admin_remarks' => $admin_remarks
@@ -778,19 +773,56 @@ $facilities_management_result = $conn->query($facilities_management_query);
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <form method="POST" action="gym_management.php">
+        
+        <!-- OR Number Question Section -->
+        <div id="orQuestionSection">
+            <div class="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            <strong>Did the user show the OR No: from cashier?</strong>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeApproveModal()"
+                        class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Cancel
+                </button>
+                <button type="button" onclick="handleOrNoResponse(true)" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Yes
+                </button>
+            </div>
+        </div>
+        
+        <!-- OR Number Input Form -->
+        <form id="approveForm" method="POST" action="gym_management.php" class="hidden">
             <input type="hidden" name="action" value="approve">
             <input type="hidden" id="approve_booking_id" name="booking_id">
+            <div class="mb-4">
+                <label for="approve_or_number" class="block text-sm font-medium text-gray-700 mb-1">Official Receipt (OR) No:</label>
+                <input type="text" id="approve_or_number" name="or_number" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"
+                       placeholder="Enter OR Number">
+                <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier</p>
+            </div>
             <div class="mb-4">
                 <label for="approve_remarks" class="block text-sm font-medium text-gray-700 mb-1">Remarks (Optional)</label>
                 <textarea id="approve_remarks" name="remarks" rows="3" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"></textarea>
             </div>
-            <div class="flex justify-end">
-                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeApproveModal()">
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeApproveModal()"
+                        class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                     Cancel
                 </button>
-                <button type="submit" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
-                    Approve Booking
+                <button type="submit"
+                        class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                    <i class="fas fa-check mr-1"></i> Approve Booking
                 </button>
             </div>
         </form>
@@ -979,7 +1011,12 @@ $facilities_management_result = $conn->query($facilities_management_query);
             day: 'numeric' 
         }) + ', ' + booking.time_slot;
         
-        document.getElementById('detail-purpose').textContent = booking.purpose;
+        // Display purpose with other_event_type if "Other" is selected
+        let purposeText = booking.purpose;
+        if (booking.purpose === 'Other' && booking.other_event_type) {
+            purposeText = booking.purpose + ' (' + booking.other_event_type + ')';
+        }
+        document.getElementById('detail-purpose').textContent = purposeText;
         document.getElementById('detail-participants').textContent = booking.participants + ' participants';
         
         // Set status with appropriate styling
@@ -1026,11 +1063,27 @@ $facilities_management_result = $conn->query($facilities_management_query);
     // Approve modal functions
     function openApproveModal(bookingId) {
         document.getElementById('approve_booking_id').value = bookingId;
+        // Reset modal to show OR question first
+        document.getElementById('orQuestionSection').classList.remove('hidden');
+        document.getElementById('approveForm').classList.add('hidden');
+        document.getElementById('approve_or_number').value = '';
+        document.getElementById('approve_remarks').value = '';
         document.getElementById('approveModal').classList.remove('hidden');
     }
     
     function closeApproveModal() {
         document.getElementById('approveModal').classList.add('hidden');
+        // Reset modal state
+        document.getElementById('orQuestionSection').classList.remove('hidden');
+        document.getElementById('approveForm').classList.add('hidden');
+    }
+    
+    function handleOrNoResponse(hasOrNo) {
+        // Show OR number input field
+        document.getElementById('orQuestionSection').classList.add('hidden');
+        document.getElementById('approveForm').classList.remove('hidden');
+        document.getElementById('approve_or_number').required = true;
+        document.getElementById('approve_or_number').focus();
     }
     
     // Reject modal functions

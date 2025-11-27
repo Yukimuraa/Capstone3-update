@@ -571,7 +571,7 @@ $hours = $start->diff($end)->h + ($start->diff($end)->i / 60);
                 <div class="receipt-section" style="margin-bottom: 6px;">
                     <div class="receipt-field">
                         <span class="receipt-label">Official Receipt No.:</span>
-                        <span class="receipt-value"><?php echo $receipt_no; ?></span>
+                        <span class="receipt-value"></span>
                     </div>
                     <div class="receipt-field">
                         <span class="receipt-label">Date:</span>

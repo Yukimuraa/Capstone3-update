@@ -68,7 +68,7 @@ switch ($report_type) {
                 date('M d, Y', strtotime($row['date_covered'])),
                 $row['no_of_vehicles'],
                 ucfirst($row['status']),
-                'PHP ' . number_format((float)($row['total_amount'] ?? 0), 2),
+                '₱' . number_format((float)($row['total_amount'] ?? 0), 2),
                 isset($row['payment_status']) ? ucfirst($row['payment_status']) : '—'
             ];
         }
@@ -95,7 +95,7 @@ switch ($report_type) {
             $data[] = [
                 $row['item_name'],
                 number_format($row['qty_issued']),
-                'PHP ' . number_format($row['revenue'], 2)
+                '₱' . number_format($row['revenue'], 2)
             ];
         }
         break;
@@ -145,7 +145,7 @@ switch ($report_type) {
                 $r['billing_id'],
                 $r['service'],
                 $r['requester'] . ' — ' . $r['details'],
-                'PHP ' . number_format((float)$r['amount'], 2),
+                '₱' . number_format((float)$r['amount'], 2),
                 ucfirst($r['pay_status']),
                 date('M d, Y', strtotime($r['created_at']))
             ];
@@ -201,9 +201,9 @@ switch ($report_type) {
         $col_orders = (float)($conn->query("SELECT SUM(total_price) as s FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         $col_bus = (float)($conn->query("SELECT SUM(total_amount) as s FROM billing_statements WHERE payment_status='paid' AND DATE(payment_date) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         
-        $data[] = ['Gym', number_format($count_bookings), number_format($approved_bookings), 'PHP 0.00'];
-        $data[] = ['Bus', number_format($count_bus), number_format($approved_bus), 'PHP ' . number_format($col_bus, 2)];
-        $data[] = ['Item Sales', '—', '—', 'PHP ' . number_format($col_orders, 2)];
+        $data[] = ['Gym', number_format($count_bookings), number_format($approved_bookings), '₱0.00'];
+        $data[] = ['Bus', number_format($count_bus), number_format($approved_bus), '₱' . number_format($col_bus, 2)];
+        $data[] = ['Item Sales', '—', '—', '₱' . number_format($col_orders, 2)];
         break;
         
     case 'gym':
@@ -350,17 +350,8 @@ if ($format === 'pdf') {
         $pdf->setPrintFooter(false);
         $pdf->SetMargins(15, 15, 15);
         $pdf->SetAutoPageBreak(true, 15);
-        
-        // Use helvetica font (default TCPDF font)
-        // Note: Peso sign is replaced with "PHP" text for better compatibility
         $pdf->SetFont('helvetica', '', 10);
         $pdf->AddPage();
-        
-        // Function to replace peso sign with "PHP" for better compatibility in PDF
-        function fixPesoSignForPDF($text) {
-            // Replace peso sign with "PHP" text which is universally supported
-            return str_replace('₱', 'PHP ', $text);
-        }
         
         // Header
         $html = '<h1 style="text-align:center; font-size:18px; margin-bottom:10px;">' . htmlspecialchars($title) . '</h1>';
@@ -377,9 +368,7 @@ if ($format === 'pdf') {
         foreach ($data as $row) {
             $html .= '<tr>';
             foreach ($row as $cell) {
-                // Fix peso sign in cell content - replace with "PHP" for PDF compatibility
-                $cell_fixed = fixPesoSignForPDF($cell);
-                $html .= '<td>' . htmlspecialchars($cell_fixed, ENT_QUOTES, 'UTF-8') . '</td>';
+                $html .= '<td>' . htmlspecialchars($cell) . '</td>';
             }
             $html .= '</tr>';
         }
