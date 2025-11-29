@@ -8,6 +8,17 @@ require_admin();
 $page_title = "Bus Reservation Report - CHMSU BAO";
 $base_url = "..";
 
+// One-time fix: Update all approved schedules with OR numbers to have payment_status = 'paid'
+$fix_query = "UPDATE billing_statements bs
+              JOIN bus_schedules s ON bs.schedule_id = s.id
+              SET bs.payment_status = 'paid', 
+                  bs.payment_date = COALESCE(bs.payment_date, s.updated_at, NOW())
+              WHERE s.status = 'approved' 
+              AND s.or_number IS NOT NULL 
+              AND s.or_number != '' 
+              AND (bs.payment_status IS NULL OR bs.payment_status != 'paid')";
+$conn->query($fix_query);
+
 // Filters
 $start_date = isset($_GET['start_date']) ? sanitize_input($_GET['start_date']) : '';
 $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : '';
@@ -67,7 +78,7 @@ $result = $stmt->get_result();
 // Totals
 $total_requests = 0;
 $total_amount = 0.00;
-$pending = 0; $approved = 0; $rejected = 0; $completed = 0;
+$pending = 0; $approved = 0; $rejected = 0;
 
 $rows = [];
 while ($row = $result->fetch_assoc()) {
@@ -80,7 +91,6 @@ while ($row = $result->fetch_assoc()) {
 		case 'pending': $pending++; break;
 		case 'approved': $approved++; break;
 		case 'rejected': $rejected++; break;
-		case 'completed': $completed++; break;
 	}
 }
 ?>
@@ -122,7 +132,7 @@ while ($row = $result->fetch_assoc()) {
 							<label class="block text-sm text-gray-700 mb-1">Status</label>
 							<select name="status" class="w-full rounded-md border-gray-300">
 								<option value="">All</option>
-								<?php foreach (['pending','approved','rejected','completed'] as $s): ?>
+								<?php foreach (['pending','approved','rejected'] as $s): ?>
 									<option value="<?php echo $s; ?>" <?php echo $status===$s?'selected':''; ?>><?php echo ucfirst($s); ?></option>
 								<?php endforeach; ?>
 							</select>
@@ -191,7 +201,16 @@ while ($row = $result->fetch_assoc()) {
 											<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $cls; ?>"><?php echo ucfirst($r['status']); ?></span>
 										</td>
 										<td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-emerald-600">₱<?php echo number_format((float)($r['total_amount'] ?? 0), 2); ?></td>
-										<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo isset($r['payment_status']) ? ucfirst($r['payment_status']) : '—'; ?></td>
+										<td class="px-6 py-4 whitespace-nowrap text-sm">
+											<?php 
+											$payment_status = $r['payment_status'] ?? 'pending';
+											if ($payment_status === 'paid') {
+												echo '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Paid</span>';
+											} else {
+												echo '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>';
+											}
+											?>
+										</td>
 									</tr>
 								<?php endforeach; else: ?>
 									<tr><td colspan="8" class="px-6 py-4 text-center text-sm text-gray-500">No reservations found</td></tr>

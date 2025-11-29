@@ -13,6 +13,18 @@ $base_url = "..";
 $error = '';
 $success = '';
 
+// Create uploads directory if it doesn't exist
+$upload_dir = "../uploads/bus_approvals/";
+if (!file_exists($upload_dir)) {
+    mkdir($upload_dir, 0777, true);
+}
+
+// Ensure approval_document column exists in bus_schedules table
+$check_column = $conn->query("SHOW COLUMNS FROM bus_schedules LIKE 'approval_document'");
+if ($check_column->num_rows == 0) {
+    $conn->query("ALTER TABLE bus_schedules ADD COLUMN approval_document VARCHAR(255) NULL AFTER status");
+}
+
 // Get user profile picture
 $user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
 $user_stmt->bind_param("i", $_SESSION['user_id']);
@@ -290,13 +302,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Calculate date_covered (use start_date for compatibility)
             $date_covered = $start_date;
             
+            // Handle approval document upload
+            $approval_document_path = null;
+            if (!isset($_FILES['approval_document']) || $_FILES['approval_document']['error'] !== 0) {
+                $error = 'President approval document is required. Please upload the approval document.';
+            } else {
+                $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg', 'application/pdf'];
+                $file_type = $_FILES['approval_document']['type'];
+                
+                if (!in_array($file_type, $allowed_types)) {
+                    $error = 'Invalid file type. Only JPG, PNG, GIF, and PDF files are allowed for approval documents.';
+                } elseif ($_FILES['approval_document']['size'] > 5242880) { // 5MB limit
+                    $error = 'File size too large. Maximum file size is 5MB.';
+                } else {
+                    $file_extension = pathinfo($_FILES['approval_document']['name'], PATHINFO_EXTENSION);
+                    $file_name = 'approval_' . time() . '_' . uniqid() . '.' . $file_extension;
+                    $target_path = $upload_dir . $file_name;
+                    
+                    if (move_uploaded_file($_FILES['approval_document']['tmp_name'], $target_path)) {
+                        $approval_document_path = 'uploads/bus_approvals/' . $file_name;
+                    } else {
+                        $error = 'Error uploading approval document. Please try again.';
+                    }
+                }
+            }
+            
             // Validate dates
-            if (empty($start_date) || empty($end_date)) {
+            if (!empty($error)) {
+                // Error already set from file upload validation
+            } elseif (empty($start_date) || empty($end_date)) {
                 $error = 'Start date and end date are required.';
             } elseif (strtotime($end_date) < strtotime($start_date)) {
                 $error = 'End date cannot be before start date.';
             } elseif ($no_of_days <= 0) {
                 $error = 'Invalid date range. Number of days must be at least 1.';
+            } elseif (empty($approval_document_path)) {
+                $error = 'President approval document is required.';
             } else {
                 // Check if bus is available for the date range
                 $date_check = checkBusAvailabilityForRange($conn, $bus_no, $start_date, $end_date);
@@ -314,9 +355,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Combine school name and client organization
                     $full_client = $school_name . ' - ' . $client;
                     
-                    // Insert bus schedule
-                    $stmt = $conn->prepare("INSERT INTO bus_schedules (client, destination, purpose, date_covered, vehicle, bus_no, no_of_days, no_of_vehicles, user_id, user_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'pending')");
-                    $stmt->bind_param("ssssssiii", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no, $no_of_days, $no_of_vehicles, $_SESSION['user_id']);
+                    // Insert bus schedule with approval document
+                    $stmt = $conn->prepare("INSERT INTO bus_schedules (client, destination, purpose, date_covered, vehicle, bus_no, no_of_days, no_of_vehicles, user_id, user_type, status, approval_document) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'pending', ?)");
+                    $stmt->bind_param("sssssssiis", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no, $no_of_days, $no_of_vehicles, $_SESSION['user_id'], $approval_document_path);
                     
                     if ($stmt->execute()) {
                         $schedule_id = $conn->insert_id;
@@ -351,13 +392,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Calculate billing statement (include continuation if provided)
                         $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation);
                         
-                        // Insert billing statement
+                        // Insert billing statement with default payment_status as 'pending'
                         $billing_stmt = $conn->prepare("INSERT INTO billing_statements 
                             (schedule_id, client, destination, purpose, date_covered, no_of_days, vehicle, bus_no, no_of_vehicles,
                              from_location, to_location, distance_km, total_distance_km, fuel_rate, computed_distance, runtime_liters,
                              fuel_cost, runtime_cost, maintenance_cost, standby_cost, additive_cost, rate_per_bus, subtotal_per_vehicle, total_amount,
-                             prepared_by, recommending_approval) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                             prepared_by, recommending_approval, payment_status) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
                         
                         $prepared_by = $_SESSION['user_name'] ?? 'Student';
                         $recommending = 'NEUYER JAN C. BALA-AN, Director, Business Affairs Office';
@@ -517,6 +558,39 @@ while ($bus = $buses_result->fetch_assoc()) {
                         </div>
                     </div>
         <?php endif; ?>
+                
+                <!-- Important Reminder Notice -->
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-6 mb-6 rounded-lg shadow-md">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-yellow-400 text-3xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <h3 class="text-lg font-bold text-yellow-800 mb-2">
+                                <i class="fas fa-info-circle mr-2"></i>Important Reminder
+                            </h3>
+                            <div class="text-sm text-yellow-700 space-y-2">
+                                <p class="font-semibold">
+                                    You must submit a letter to the president for approval before requesting a bus schedule.
+                                </p>
+                                <p>
+                                    After it is approved, you can request a bus schedule. Please ensure you have the approval document ready before submitting your request.
+                                </p>
+                                <div class="mt-3 p-3 bg-yellow-100 rounded border border-yellow-300">
+                                    <p class="font-semibold text-yellow-900 mb-1">
+                                        <i class="fas fa-list-ol mr-2"></i>Process Steps:
+                                    </p>
+                                    <ol class="list-decimal list-inside space-y-1 text-yellow-800">
+                                        <li>Submit a letter to the President's Office requesting bus schedule approval</li>
+                                        <li>Wait for the president's approval and obtain the signed document</li>
+                                        <li>Upload the approved document when requesting a bus schedule</li>
+                                        <li>Submit your bus schedule request with the approval document</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Statistics Cards -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -713,14 +787,31 @@ while ($bus = $buses_result->fetch_assoc()) {
 <!-- Add Schedule Modal -->
 <div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-screen overflow-y-auto">
-        <div class="flex justify-between items-center mb-6">
+        <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium text-gray-900">New Bus Schedule Request</h3>
             <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeAddModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
         
-        <form id="busRequestForm" method="POST" action="">
+        <!-- Reminder in Modal -->
+        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-info-circle text-blue-400"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm font-semibold text-blue-800">
+                        Reminder: President approval is required
+                    </p>
+                    <p class="text-xs text-blue-700 mt-1">
+                        Make sure you have obtained approval from the president before submitting this request. You will need to upload the approval document below.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <form id="busRequestForm" method="POST" action="" enctype="multipart/form-data">
             <input type="hidden" name="action" value="add_schedule">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -817,6 +908,46 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <input type="text" id="purpose" name="purpose" required 
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
                            value="<?php echo isset($_POST['purpose']) ? htmlspecialchars($_POST['purpose']) : 'Bayanihan'; ?>">
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label for="approval_document" class="block text-sm font-medium text-gray-700 mb-1">President Approval Document * <span class="text-red-600">Required</span></label>
+                    <div class="mt-1 flex items-center justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors">
+                        <div class="space-y-1 text-center">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <div class="flex text-sm text-gray-600">
+                                <label for="approval_document" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                    <span>Upload approval document</span>
+                                    <input id="approval_document" name="approval_document" type="file" class="sr-only" required accept="image/jpeg,image/png,image/gif,image/jpg,application/pdf" onchange="previewApprovalDocument(event)">
+                                </label>
+                                <p class="pl-1">or drag and drop</p>
+                            </div>
+                            <p class="text-xs text-gray-500">PNG, JPG, GIF, PDF up to 5MB</p>
+                        </div>
+                    </div>
+                    <div id="approval_preview" class="mt-3 hidden">
+                        <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-alt text-blue-600 text-xl mr-3"></i>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900" id="approval_filename">filename.pdf</p>
+                                    <p class="text-xs text-gray-500" id="approval_filesize">0 KB</p>
+                                </div>
+                            </div>
+                            <button type="button" onclick="removeApprovalDocument()" class="text-red-600 hover:text-red-800">
+                                <i class="fas fa-times-circle text-xl"></i>
+                            </button>
+                        </div>
+                        <div id="approval_image_preview" class="mt-2 hidden">
+                            <img id="approval_image" class="max-h-48 rounded-md border border-gray-300" src="" alt="Approval document preview">
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">
+                        <i class="fas fa-info-circle text-blue-600 mr-1"></i>
+                        Upload the official approval document from the president to schedule a bus.
+                    </p>
                 </div>
                 
                 <div>
@@ -1048,6 +1179,8 @@ function openAddModal() {
 
 function closeAddModal() {
     document.getElementById('addModal').classList.add('hidden');
+    // Reset approval document upload
+    removeApprovalDocument();
 }
 
 function viewSchedule(schedule) {
@@ -1104,6 +1237,17 @@ function viewSchedule(schedule) {
                 <label class="block text-sm font-medium text-gray-500">Number of Days</label>
                 <p class="text-sm text-gray-900">${schedule.no_of_days || 1}</p>
             </div>
+            ${schedule.or_number ? `
+            <div class="md:col-span-2 bg-green-50 border-l-4 border-green-400 p-4 rounded">
+                <label class="block text-sm font-medium text-green-700 mb-1">
+                    <i class="fas fa-receipt mr-1"></i>Official Receipt Number
+                </label>
+                <p class="text-lg font-bold text-green-900">${schedule.or_number}</p>
+                <p class="text-xs text-green-600 mt-1">
+                    <i class="fas fa-check-circle mr-1"></i>Payment verified and approved
+                </p>
+            </div>
+            ` : ''}
         </div>
     `;
     document.getElementById('viewModal').classList.remove('hidden');
@@ -2074,6 +2218,53 @@ document.addEventListener('click', function(event) {
         suggestionsDiv.classList.add('hidden');
     }
 });
+
+// Approval document preview functions
+function previewApprovalDocument(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const preview = document.getElementById('approval_preview');
+    const filename = document.getElementById('approval_filename');
+    const filesize = document.getElementById('approval_filesize');
+    const imagePreview = document.getElementById('approval_image_preview');
+    const imageElement = document.getElementById('approval_image');
+    
+    // Display file info
+    filename.textContent = file.name;
+    filesize.textContent = formatFileSize(file.size);
+    preview.classList.remove('hidden');
+    
+    // Preview image if it's an image file
+    if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            imageElement.src = e.target.result;
+            imagePreview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    } else {
+        imagePreview.classList.add('hidden');
+    }
+}
+
+function removeApprovalDocument() {
+    const fileInput = document.getElementById('approval_document');
+    const preview = document.getElementById('approval_preview');
+    const imagePreview = document.getElementById('approval_image_preview');
+    
+    fileInput.value = '';
+    preview.classList.add('hidden');
+    imagePreview.classList.add('hidden');
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>

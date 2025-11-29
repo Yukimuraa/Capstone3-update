@@ -251,30 +251,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            }
        }
        
-       // Delete item
-       elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
-           $id = intval($_POST['id']);
-           
-           // Get image path before deleting
-           $stmt = $conn->prepare("SELECT image_path FROM inventory WHERE id = ?");
-           $stmt->bind_param("i", $id);
-           $stmt->execute();
-           $result = $stmt->get_result();
-           $item = $result->fetch_assoc();
-           
-           $stmt = $conn->prepare("DELETE FROM inventory WHERE id = ?");
-           $stmt->bind_param("i", $id);
-           
-           if ($stmt->execute()) {
-               // Delete image file if exists
-               if ($item['image_path'] && file_exists("../" . $item['image_path'])) {
-                   unlink("../" . $item['image_path']);
-               }
-               $success_message = "Item deleted successfully";
-           } else {
-               $error_message = "Error deleting item: " . $conn->error;
-           }
-       }
+        // Delete item
+        elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
+            $id = intval($_POST['id']);
+            
+            // Get image path before deleting
+            $stmt = $conn->prepare("SELECT image_path FROM inventory WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $item = $result->fetch_assoc();
+            
+            $stmt = $conn->prepare("DELETE FROM inventory WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            
+            if ($stmt->execute()) {
+                // Delete image file if exists
+                if ($item && $item['image_path'] && file_exists("../" . $item['image_path'])) {
+                    unlink("../" . $item['image_path']);
+                }
+                $success_message = "Item deleted successfully";
+            } else {
+                $error_message = "Error deleting item: " . $conn->error;
+            }
+        }
    }
 }
 

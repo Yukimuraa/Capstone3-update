@@ -149,15 +149,22 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                                     <p class="text-sm text-gray-500 mb-4"><?php echo $item['description']; ?></p>
                                     <div class="flex justify-between items-center">
                                         <p class="font-medium text-lg">₱<?php echo number_format($item['price'], 2); ?></p>
-                                        <?php if ($item['in_stock']): ?>
-                                            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">
-                                                In Stock
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
-                                                Out of Stock
-                                            </span>
-                                        <?php endif; ?>
+                                        <div class="text-right">
+                                            <?php if ($item['in_stock']): ?>
+                                                <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">
+                                                    In Stock
+                                                </span>
+                                                <div class="mt-1">
+                                                    <span class="text-xs font-medium text-gray-600">
+                                                        Stock: <span class="font-bold text-blue-600"><?php echo $item['quantity']; ?></span>
+                                                    </span>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                                                    Out of Stock
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="px-4 py-3 bg-gray-50 flex justify-center items-center">
@@ -290,54 +297,68 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                 }
             }
             
-            // Store sizeQuantities for quantity limit updates
+            // Store sizeQuantities and cart stock data for validation
             sizeSelect.dataset.sizeQuantities = JSON.stringify(sizeQuantities);
             
-            // Get cart quantities for this item to calculate available stock
+            // Fetch cart stock first, then display sizes with accurate available stock
             fetch('get_cart_stock.php?item_id=' + item.id)
                 .then(response => response.json())
                 .then(cartStock => {
-                    // Add sizes - only show sizes with available stock
+                    // Add sizes with available stock (total minus cart/pending)
                     if (item.sizes) {
                         try {
                             const sizes = JSON.parse(item.sizes);
                             
-                            // Only add sizes that have stock > 0
+                            // Show all sizes with available stock
                             sizes.forEach(size => {
                                 const totalStock = sizeQuantities[size] || 0;
-                                // Subtract items already in cart for this size
                                 const inCart = (cartStock[size] || 0);
                                 const availableStock = totalStock - inCart;
                                 
-                                if (availableStock > 0) {
-                                    const option = document.createElement('option');
-                                    option.value = size;
-                                    option.textContent = size + ' (Stock: ' + availableStock + ')';
-                                    option.dataset.stock = availableStock;
-                                    sizeSelect.appendChild(option);
+                                const option = document.createElement('option');
+                                option.value = size;
+                                // Display available stock (updates after adding to cart)
+                                option.textContent = size + ' (Stock: ' + availableStock + ')';
+                                // Store both for validation
+                                option.dataset.totalStock = totalStock;
+                                option.dataset.availableStock = availableStock;
+                                option.dataset.itemId = item.id;
+                                
+                                // Disable if no stock available
+                                if (availableStock <= 0) {
+                                    option.disabled = true;
+                                    option.style.color = '#9CA3AF';
                                 }
+                                
+                                sizeSelect.appendChild(option);
                             });
                         } catch (e) {
                             console.error('Error parsing sizes:', e);
-                            // If parsing fails, don't show any sizes
                         }
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching cart stock:', error);
-                    // Fallback: show sizes without cart deduction
+                    // Fallback: show sizes with total stock if fetch fails
                     if (item.sizes) {
                         try {
                             const sizes = JSON.parse(item.sizes);
                             sizes.forEach(size => {
-                                const stock = sizeQuantities[size] || 0;
-                                if (stock > 0) {
-                                    const option = document.createElement('option');
-                                    option.value = size;
-                                    option.textContent = size + ' (Stock: ' + stock + ')';
-                                    option.dataset.stock = stock;
-                                    sizeSelect.appendChild(option);
+                                const totalStock = sizeQuantities[size] || 0;
+                                
+                                const option = document.createElement('option');
+                                option.value = size;
+                                option.textContent = size + ' (Stock: ' + totalStock + ')';
+                                option.dataset.totalStock = totalStock;
+                                option.dataset.availableStock = totalStock;
+                                option.dataset.itemId = item.id;
+                                
+                                if (totalStock <= 0) {
+                                    option.disabled = true;
+                                    option.style.color = '#9CA3AF';
                                 }
+                                
+                                sizeSelect.appendChild(option);
                             });
                         } catch (e) {
                             console.error('Error parsing sizes:', e);
@@ -345,14 +366,25 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                     }
                 });
             
-            // Update quantity max when size is selected
-            // Use onchange to avoid duplicate listeners
+            // Update quantity max when size is selected - use pre-calculated available stock
             sizeSelect.onchange = function() {
                 const quantityInput = document.getElementById('modal-quantity');
                 const selectedOption = this.options[this.selectedIndex];
-                if (selectedOption && selectedOption.dataset.stock) {
-                    quantityInput.max = selectedOption.dataset.stock;
-                    quantityInput.value = Math.min(parseInt(quantityInput.value) || 1, parseInt(selectedOption.dataset.stock));
+                
+                if (selectedOption && selectedOption.dataset.availableStock) {
+                    const availableStock = parseInt(selectedOption.dataset.availableStock);
+                    
+                    // Update max quantity based on available stock
+                    quantityInput.max = Math.max(0, availableStock);
+                    quantityInput.value = Math.min(parseInt(quantityInput.value) || 1, Math.max(1, availableStock));
+                    
+                    // Show alert if no stock available
+                    if (availableStock <= 0) {
+                        alert('This size is currently unavailable. Please select another size.');
+                        this.value = '';
+                        quantityInput.max = 0;
+                        quantityInput.value = 1;
+                    }
                 } else {
                     quantityInput.max = item.quantity;
                 }

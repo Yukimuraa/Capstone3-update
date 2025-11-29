@@ -13,6 +13,12 @@ $base_url = "..";
 $error = '';
 $success = '';
 
+// Ensure or_number column exists in bus_schedules table
+$check_or_column = $conn->query("SHOW COLUMNS FROM bus_schedules LIKE 'or_number'");
+if ($check_or_column->num_rows == 0) {
+    $conn->query("ALTER TABLE bus_schedules ADD COLUMN or_number VARCHAR(50) NULL AFTER approval_document");
+}
+
 // Get success/error messages from URL parameters (for redirects)
 if (isset($_GET['success'])) {
     $success = urldecode($_GET['success']);
@@ -213,15 +219,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($_POST['action'] === 'approve_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
+            $or_number = isset($_POST['or_number']) ? trim(sanitize_input($_POST['or_number'])) : '';
             
-            // Start transaction
-            $conn->begin_transaction();
-            
-            try {
-                // Update schedule status
-                $update_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'approved' WHERE id = ?");
-                $update_stmt->bind_param("i", $schedule_id);
-                $update_stmt->execute();
+            // Validate OR number
+            if (empty($or_number)) {
+                $error = 'OR Number is required to approve the schedule.';
+            } else {
+                // Start transaction
+                $conn->begin_transaction();
+                
+                try {
+                    // Update schedule status with OR number
+                    $update_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'approved', or_number = ? WHERE id = ?");
+                    $update_stmt->bind_param("si", $or_number, $schedule_id);
+                    $update_stmt->execute();
                 
                 // Get schedule details
                 $schedule_query = "SELECT * FROM bus_schedules WHERE id = ?";
@@ -291,18 +302,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 }
                 
-                $conn->commit();
+                    // Update billing statement payment status to 'paid' since OR Number is provided
+                    $payment_date = date('Y-m-d H:i:s');
+                    $update_payment = $conn->prepare("UPDATE billing_statements SET payment_status = 'paid', payment_date = ? WHERE schedule_id = ?");
+                    $update_payment->bind_param("si", $payment_date, $schedule_id);
+                    $update_payment->execute();
                 
-                // Send notification to user
-                require_once '../includes/notification_functions.php';
-                $schedule_user_id = $schedule['user_id'];
-                $date_formatted = date('F j, Y', strtotime($schedule['date_covered']));
-                create_notification($schedule_user_id, "Bus Schedule Approved", "Your bus schedule request for {$date_formatted} (Destination: {$schedule['destination']}) has been approved!", "success", "student/bus.php");
-                
-                $success = 'Schedule approved and buses allocated successfully!';
-            } catch (Exception $e) {
-                $conn->rollback();
-                $error = $e->getMessage();
+                    $conn->commit();
+                    
+                    // Send notification to user
+                    require_once '../includes/notification_functions.php';
+                    $schedule_user_id = $schedule['user_id'];
+                    $date_formatted = date('F j, Y', strtotime($schedule['date_covered']));
+                    create_notification($schedule_user_id, "Bus Schedule Approved", "Your bus schedule request for {$date_formatted} (Destination: {$schedule['destination']}) has been approved! OR Number: {$or_number}", "success", "student/bus.php");
+                    
+                    $success = 'Schedule approved successfully with OR Number: ' . htmlspecialchars($or_number) . '! Payment marked as paid.';
+                } catch (Exception $e) {
+                    $conn->rollback();
+                    $error = $e->getMessage();
+                }
             }
         } elseif ($_POST['action'] === 'reject_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
@@ -518,14 +536,30 @@ include '../includes/header.php';
         <div class="flex justify-between items-center mb-6">
             <h3 class="text-xl font-semibold text-gray-800 flex items-center">
                 <span class="ml-2 text-lg font-normal text-gray-500">
-                    <?php echo $view_filter === 'current_month' ? '(' . date('F Y') . ')' : '(All Requests)'; ?>
+                    <?php 
+                    if ($view_filter === 'current_month') {
+                        echo '(' . date('F Y') . ')';
+                    } elseif ($view_filter === 'pending') {
+                        echo '(Pending Requests)';
+                    } elseif ($view_filter === 'approved') {
+                        echo '(Approved Requests)';
+                    } else {
+                        echo '(All Requests)';
+                    }
+                    ?>
                 </span>
             </h3>
-            <div class="flex gap-2">
-                <a href="?tab=schedules&view=all" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow">
-                    <i class="fas fa-list mr-2"></i>All Requests
+            <div class="flex flex-wrap gap-2">
+                <a href="?tab=schedules&view=all" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                    <i class="fas fa-list mr-2"></i>All
                 </a>
-                <a href="?tab=schedules&view=current_month" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'current_month' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow">
+                <a href="?tab=schedules&view=pending" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                    <i class="fas fa-clock mr-2"></i>Pending
+                </a>
+                <a href="?tab=schedules&view=approved" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                    <i class="fas fa-check-circle mr-2"></i>Approved
+                </a>
+                <a href="?tab=schedules&view=current_month" class="px-4 py-2 rounded-lg <?php echo $view_filter === 'current_month' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
                     <i class="fas fa-calendar mr-2"></i>Current Month
                 </a>
             </div>
@@ -586,6 +620,68 @@ include '../includes/header.php';
                          LIMIT ? OFFSET ?";
             $list_stmt = $conn->prepare($list_sql);
             $list_stmt->bind_param("iiii", $current_month, $current_year, $rows_per_page, $offset);
+            $list_stmt->execute();
+            $list_result = $list_stmt->get_result();
+        } elseif ($view_filter === 'pending') {
+            // Show PENDING requests only
+            // Pagination setup
+            $rows_per_page = 10;
+            $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $offset = ($current_page - 1) * $rows_per_page;
+            
+            $count_sql = "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM bus_schedules WHERE status = 'pending'";
+            $count_result = $conn->query($count_sql);
+            $schedule_stats = $count_result->fetch_assoc();
+            $total_rows = $schedule_stats['total'];
+            $total_pages = ceil($total_rows / $rows_per_page);
+            
+            // Get pending schedules with billing info and user info
+            $list_sql = "SELECT bs.*, bst.total_amount, u.name as user_name, u.email as user_email, u.user_type, b.plate_number
+                         FROM bus_schedules bs 
+                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                         LEFT JOIN user_accounts u ON bs.user_id = u.id
+                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
+                         WHERE bs.status = 'pending'
+                         ORDER BY bs.id DESC, bs.created_at DESC 
+                         LIMIT ? OFFSET ?";
+            $list_stmt = $conn->prepare($list_sql);
+            $list_stmt->bind_param("ii", $rows_per_page, $offset);
+            $list_stmt->execute();
+            $list_result = $list_stmt->get_result();
+        } elseif ($view_filter === 'approved') {
+            // Show APPROVED requests only
+            // Pagination setup
+            $rows_per_page = 10;
+            $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $offset = ($current_page - 1) * $rows_per_page;
+            
+            $count_sql = "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                FROM bus_schedules WHERE status = 'approved'";
+            $count_result = $conn->query($count_sql);
+            $schedule_stats = $count_result->fetch_assoc();
+            $total_rows = $schedule_stats['total'];
+            $total_pages = ceil($total_rows / $rows_per_page);
+            
+            // Get approved schedules with billing info and user info
+            $list_sql = "SELECT bs.*, bst.total_amount, u.name as user_name, u.email as user_email, u.user_type, b.plate_number
+                         FROM bus_schedules bs 
+                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
+                         LEFT JOIN user_accounts u ON bs.user_id = u.id
+                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
+                         WHERE bs.status = 'approved'
+                         ORDER BY bs.id DESC, bs.created_at DESC 
+                         LIMIT ? OFFSET ?";
+            $list_stmt = $conn->prepare($list_sql);
+            $list_stmt->bind_param("ii", $rows_per_page, $offset);
             $list_stmt->execute();
             $list_result = $list_stmt->get_result();
         } else {
@@ -757,15 +853,11 @@ include '../includes/header.php';
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                             <?php if ($row['status'] === 'pending'): ?>
-                                                <form method="POST" class="inline">
-                                                    <input type="hidden" name="action" value="approve_schedule">
-                                                    <input type="hidden" name="schedule_id" value="<?php echo $row['id']; ?>">
-                                                    <button type="submit" class="text-green-600 hover:text-green-900" 
-                                                            onclick="return confirm('Are you sure you want to approve this schedule?')"
-                                                            title="Approve">
-                                                        <i class="fas fa-check"></i>
-                                                    </button>
-                                                </form>
+                                                <button type="button" class="text-green-600 hover:text-green-900" 
+                                                        onclick="openApproveModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['client'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['destination'], ENT_QUOTES); ?>')"
+                                                        title="Approve">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
                                                 <button type="button" class="text-red-600 hover:text-red-900"
                                                         onclick="openRejectModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars($row['client'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($row['destination'], ENT_QUOTES); ?>')"
                                                         title="Reject">
@@ -786,7 +878,11 @@ include '../includes/header.php';
                         <?php else: ?>
                             <tr><td colspan="11" class="border px-4 py-2 text-center text-gray-500">
                                 <?php if ($view_filter === 'current_month'): ?>
-                                    No schedules found for this month. <a href="?view=all" class="text-blue-600 hover:underline">View all requests</a>
+                                    No schedules found for this month. <a href="?tab=schedules&view=all" class="text-blue-600 hover:underline">View all requests</a>
+                                <?php elseif ($view_filter === 'pending'): ?>
+                                    No pending requests found. <a href="?tab=schedules&view=all" class="text-blue-600 hover:underline">View all requests</a>
+                                <?php elseif ($view_filter === 'approved'): ?>
+                                    No approved requests found. <a href="?tab=schedules&view=all" class="text-blue-600 hover:underline">View all requests</a>
                                 <?php else: ?>
                                     No bus requests found in the system.
                                 <?php endif; ?>
@@ -1177,15 +1273,15 @@ include '../includes/header.php';
 </div>
 
 <!-- View Schedule Details Modal -->
-<div id="viewModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl my-8">
-        <div class="flex justify-between items-center mb-4 border-b pb-4">
+<div id="viewModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 overflow-y-auto p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl my-8 max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center px-6 py-4 border-b flex-shrink-0">
             <h3 class="text-xl font-semibold text-gray-900">Bus Schedule Details</h3>
             <button type="button" onclick="closeViewModal()" class="text-gray-400 hover:text-gray-500">
                 <i class="fas fa-times text-xl"></i>
             </button>
         </div>
-        <div class="space-y-4">
+        <div class="overflow-y-auto flex-1 px-6 py-4 space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <p class="text-sm font-medium text-gray-500">Schedule ID</p>
@@ -1241,6 +1337,12 @@ include '../includes/header.php';
                     <p class="text-sm font-medium text-gray-500">Total Amount</p>
                     <p id="view-amount" class="text-base font-semibold text-green-600"></p>
                 </div>
+                <div id="view-or-container" class="hidden">
+                    <p class="text-sm font-medium text-gray-500">
+                        <i class="fas fa-receipt text-green-600 mr-1"></i>OR Number
+                    </p>
+                    <p id="view-or-number" class="text-base font-semibold text-blue-600"></p>
+                </div>
                 <div>
                     <p class="text-sm font-medium text-gray-500">Created At</p>
                     <p id="view-created" class="text-base text-gray-900"></p>
@@ -1250,8 +1352,53 @@ include '../includes/header.php';
                     <p id="view-updated" class="text-base text-gray-900"></p>
                 </div>
             </div>
+            
+            <!-- Approval Document Section -->
+            <div id="approval-document-section" class="mt-6 border-t pt-4 hidden">
+                <div class="mb-3">
+                    <p class="text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-file-alt text-blue-600 mr-2"></i>President Approval Document
+                    </p>
+                </div>
+                <div id="approval-document-container" class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <!-- Image preview for image files -->
+                    <div id="approval-image-preview" class="hidden">
+                        <img id="approval-image" src="" alt="Approval Document" class="max-w-full h-auto max-h-96 object-contain rounded-lg border border-gray-300 shadow-sm">
+                        <div class="mt-3 flex justify-end">
+                            <a id="approval-download-link-img" href="" download class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                <i class="fas fa-download mr-2"></i>Download Document
+                            </a>
+                        </div>
+                    </div>
+                    <!-- PDF preview for PDF files -->
+                    <div id="approval-pdf-preview" class="hidden">
+                        <div class="flex items-center justify-between p-4 bg-white rounded-md border border-gray-300">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-pdf text-red-600 text-3xl mr-3"></i>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900" id="approval-pdf-name">Approval Document</p>
+                                    <p class="text-xs text-gray-500">PDF Document</p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2">
+                                <a id="approval-view-link" href="" target="_blank" class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    <i class="fas fa-eye mr-2"></i>View
+                                </a>
+                                <a id="approval-download-link-pdf" href="" download class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                    <i class="fas fa-download mr-2"></i>Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- No document message -->
+                    <div id="approval-no-document" class="text-center py-4 text-gray-500 hidden">
+                        <i class="fas fa-file-slash text-gray-400 text-3xl mb-2"></i>
+                        <p class="text-sm">No approval document uploaded</p>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="mt-6 flex justify-end space-x-3 border-t pt-4">
+        <div class="flex justify-end space-x-3 border-t px-6 py-4 flex-shrink-0 bg-gray-50 rounded-b-lg">
             <button type="button" onclick="closeViewModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                 Close
             </button>
@@ -1304,6 +1451,76 @@ include '../includes/header.php';
                 <button type="submit" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
                     <i class="fas fa-times mr-2"></i>
                     Yes, Reject Schedule
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Approve Schedule with OR Number Modal -->
+<div id="approveModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex items-center mb-4">
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
+                <i class="fas fa-exclamation-triangle text-yellow-600 text-xl"></i>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Approve Bus Schedule</h3>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-question-circle text-yellow-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-yellow-800">
+                            Did the user show the OR No. from cashier?
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 rounded-lg p-4 space-y-2 mb-4">
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Client:</p>
+                    <p class="text-sm text-gray-900" id="approve-client"></p>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-gray-500">Destination:</p>
+                    <p class="text-sm text-gray-900" id="approve-destination"></p>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label for="or_number" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-receipt text-green-600 mr-1"></i>
+                    Enter OR Number <span class="text-red-600">*</span>
+                </label>
+                <input type="text" id="or_number" name="or_number" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                       placeholder="e.g., OR-2025-00001">
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Official Receipt Number from the cashier is required to approve.
+                </p>
+            </div>
+        </div>
+        
+        <form method="POST" id="approveForm">
+            <input type="hidden" name="action" value="approve_schedule">
+            <input type="hidden" name="schedule_id" id="approve-schedule-id">
+            <input type="hidden" name="or_number" id="approve-or-number-hidden">
+            
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeApproveModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+                <button type="button" onclick="submitApproval()" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    <i class="fas fa-check mr-2"></i>
+                    Yes, Approve Schedule
                 </button>
             </div>
         </form>
@@ -1489,6 +1706,17 @@ function openViewModal(schedule) {
     document.getElementById('view-user-email').textContent = schedule.user_email || '';
     document.getElementById('view-user-type').textContent = schedule.user_type ? '(' + schedule.user_type.charAt(0).toUpperCase() + schedule.user_type.slice(1) + ')' : '';
     document.getElementById('view-amount').textContent = schedule.total_amount ? '₱' + parseFloat(schedule.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+    
+    // Display OR Number if available
+    const orContainer = document.getElementById('view-or-container');
+    const orNumberElement = document.getElementById('view-or-number');
+    if (schedule.or_number && schedule.or_number.trim() !== '') {
+        orNumberElement.textContent = schedule.or_number;
+        orContainer.classList.remove('hidden');
+    } else {
+        orContainer.classList.add('hidden');
+    }
+    
     document.getElementById('view-created').textContent = schedule.created_at ? new Date(schedule.created_at).toLocaleString('en-US') : '-';
     document.getElementById('view-updated').textContent = schedule.updated_at ? new Date(schedule.updated_at).toLocaleString('en-US') : '-';
     
@@ -1520,6 +1748,47 @@ function openViewModal(schedule) {
         printLink.classList.add('hidden');
     }
     
+    // Handle approval document display
+    const approvalSection = document.getElementById('approval-document-section');
+    const approvalImagePreview = document.getElementById('approval-image-preview');
+    const approvalPdfPreview = document.getElementById('approval-pdf-preview');
+    const approvalNoDocument = document.getElementById('approval-no-document');
+    
+    // Hide all preview sections first
+    approvalImagePreview.classList.add('hidden');
+    approvalPdfPreview.classList.add('hidden');
+    approvalNoDocument.classList.add('hidden');
+    
+    if (schedule.approval_document && schedule.approval_document.trim() !== '') {
+        approvalSection.classList.remove('hidden');
+        const docPath = '../' + schedule.approval_document;
+        const fileName = schedule.approval_document.split('/').pop();
+        const fileExtension = fileName.split('.').pop().toLowerCase();
+        
+        // Check if it's an image or PDF
+        if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+            // Display as image
+            document.getElementById('approval-image').src = docPath;
+            document.getElementById('approval-download-link-img').href = docPath;
+            document.getElementById('approval-download-link-img').download = fileName;
+            approvalImagePreview.classList.remove('hidden');
+        } else if (fileExtension === 'pdf') {
+            // Display PDF controls
+            document.getElementById('approval-pdf-name').textContent = fileName;
+            document.getElementById('approval-view-link').href = docPath;
+            document.getElementById('approval-download-link-pdf').href = docPath;
+            document.getElementById('approval-download-link-pdf').download = fileName;
+            approvalPdfPreview.classList.remove('hidden');
+        } else {
+            // Unknown file type
+            approvalNoDocument.classList.remove('hidden');
+        }
+    } else {
+        // No document uploaded
+        approvalSection.classList.remove('hidden');
+        approvalNoDocument.classList.remove('hidden');
+    }
+    
     document.getElementById('viewModal').classList.remove('hidden');
 }
 
@@ -1536,6 +1805,35 @@ function openRejectModal(scheduleId, client, destination) {
 
 function closeRejectModal() {
     document.getElementById('rejectModal').classList.add('hidden');
+}
+
+// Approve Schedule Functions
+function openApproveModal(scheduleId, client, destination) {
+    document.getElementById('approve-schedule-id').value = scheduleId;
+    document.getElementById('approve-client').textContent = client;
+    document.getElementById('approve-destination').textContent = destination;
+    document.getElementById('or_number').value = ''; // Clear previous value
+    document.getElementById('approveModal').classList.remove('hidden');
+}
+
+function closeApproveModal() {
+    document.getElementById('approveModal').classList.add('hidden');
+}
+
+function submitApproval() {
+    const orNumber = document.getElementById('or_number').value.trim();
+    
+    if (!orNumber) {
+        alert('Please enter the OR Number from the cashier.');
+        document.getElementById('or_number').focus();
+        return;
+    }
+    
+    // Set the hidden field value
+    document.getElementById('approve-or-number-hidden').value = orNumber;
+    
+    // Submit the form
+    document.getElementById('approveForm').submit();
 }
 
 // Bus Status Management Functions

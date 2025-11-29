@@ -23,16 +23,24 @@ if ($mode === 'daily') {
     $end = sprintf('%04d-12-31', $year);
 }
 
-// Requests submitted (gym bookings + bus schedules + general requests)
+// Requests submitted (gym bookings + bus schedules + orders + general requests)
 $count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-$count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+$count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 $count_requests = (int)$conn->query("SELECT COUNT(*) as c FROM requests WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-$total_requests = $count_bookings + $count_bus + $count_requests;
 
 // Approvals
 $approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-$approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-$approved_total = $approved_bookings + $approved_bus;
+$approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+
+// Orders (Item Sales)
+$count_orders = (int)$conn->query("SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+$completed_orders = (int)$conn->query("SELECT COUNT(*) as c FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+
+// Total requests includes all services
+$total_requests = $count_bookings + $count_bus + $count_orders + $count_requests;
+
+// Approvals
+$approved_total = $approved_bookings + $approved_bus + $completed_orders;
 
 // Collections (orders completed + bus payments paid)
 $col_orders = (float)($conn->query("SELECT SUM(total_price) as s FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
@@ -40,7 +48,7 @@ $col_bus = (float)($conn->query("SELECT SUM(total_amount) as s FROM billing_stat
 $collected_total = $col_orders + $col_bus;
 
 // Most requested service (by count)
-$svc = [ 'Gym' => $count_bookings, 'Bus' => $count_bus, 'Requests' => $count_requests ];
+$svc = [ 'Gym' => $count_bookings, 'Bus' => $count_bus, 'Item Sales' => $count_orders, 'Requests' => $count_requests ];
 arsort($svc); $top_service = key($svc);
 ?>
 
@@ -141,8 +149,8 @@ arsort($svc); $top_service = key($svc);
 								</tr>
 								<tr>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Item Sales</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">—</td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">—</td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500"><?php echo number_format($count_orders); ?></td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500"><?php echo number_format($completed_orders); ?></td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">₱<?php echo number_format($col_orders,2); ?></td>
 								</tr>
 							</tbody>

@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $notify_orders->execute();
             $notify_result = $notify_orders->get_result();
             while ($notify_order = $notify_result->fetch_assoc()) {
-                create_notification($notify_order['user_id'], "Order Approved", "Your order (Order ID: {$notify_order['order_id']}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
+                create_notification($notify_order['user_id'], "Order Approved", "Your order (Order ID: {$notify_order['order_id']}) has been approved and completed. Thank you for your purchase!", "success", "student/receipt.php?order_id=" . urlencode($notify_order['order_id']));
             }
         
             // Redirect back to orders page
@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_once '../includes/notification_functions.php';
             $order_user_id = $order['user_id'];
             $order_id_str = $order['order_id'];
-            create_notification($order_user_id, "Order Approved", "Your order (Order ID: {$order_id_str}) has been approved and completed. Thank you for your purchase!", "success", "student/cart.php");
+            create_notification($order_user_id, "Order Approved", "Your order (Order ID: {$order_id_str}) has been approved and completed. Thank you for your purchase!", "success", "student/receipt.php?order_id=" . urlencode($order_id_str));
             
             // Redirect back to orders page
             header("Location: orders.php?success=1");
@@ -165,6 +165,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get search parameter
 $search = isset($_GET['search']) ? sanitize_input($_GET['search']) : '';
 
+// Get status filter parameter
+$status_filter = isset($_GET['status']) ? sanitize_input($_GET['status']) : '';
+
 // Pagination - rows per page (display rows, not order rows)
 $rows_per_page = 10;
 $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
@@ -175,18 +178,40 @@ $query = "SELECT o.*, u.name as user_name, u.email as user_email, i.name as item
           JOIN user_accounts u ON o.user_id = u.id 
           JOIN inventory i ON o.inventory_id = i.id";
 
+// Build WHERE clause for filters
+$where_clauses = [];
+$params = [];
+$param_types = '';
+
 // Add search filter if search term provided
 if (!empty($search)) {
     $search_term = "%$search%";
-    $query .= " WHERE (o.order_id LIKE ? OR o.batch_id LIKE ? OR u.name LIKE ? OR i.name LIKE ?)";
+    $where_clauses[] = "(o.order_id LIKE ? OR o.batch_id LIKE ? OR u.name LIKE ? OR i.name LIKE ?)";
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $params[] = $search_term;
+    $param_types .= 'ssss';
+}
+
+// Add status filter if provided
+if (!empty($status_filter) && in_array($status_filter, ['pending', 'completed', 'cancelled'])) {
+    $where_clauses[] = "o.status = ?";
+    $params[] = $status_filter;
+    $param_types .= 's';
+}
+
+// Add WHERE clause if any filters are active
+if (!empty($where_clauses)) {
+    $query .= " WHERE " . implode(" AND ", $where_clauses);
 }
 
 $query .= " ORDER BY o.created_at DESC, o.batch_id, o.id";
 
 // Get all orders first to count display rows (batches + single orders)
-if (!empty($search)) {
+if (!empty($params)) {
     $stmt = $conn->prepare($query);
-    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->bind_param($param_types, ...$params);
     $stmt->execute();
     $all_orders_result = $stmt->get_result();
 } else {
@@ -217,9 +242,9 @@ $offset = ($current_page - 1) * $rows_per_page;
 $fetch_limit = ($offset + $rows_per_page) * 10; // Fetch 10x to ensure we get enough groups
 $limited_query = $query . " LIMIT " . intval($fetch_limit);
 
-if (!empty($search)) {
+if (!empty($params)) {
     $stmt = $conn->prepare($limited_query);
-    $stmt->bind_param("ssss", $search_term, $search_term, $search_term, $search_term);
+    $stmt->bind_param($param_types, ...$params);
     $stmt->execute();
     $orders = $stmt->get_result();
 } else {
@@ -268,9 +293,29 @@ if (!empty($search)) {
                     </div>
                 <?php endif; ?>
                 
-                <!-- Search Bar -->
+                <!-- Filter and Search Bar -->
                 <div class="mb-6 bg-white rounded-lg shadow p-4">
+                    <!-- Status Filter Buttons -->
+                    <div class="mb-4 flex gap-2 flex-wrap">
+                        <a href="orders.php<?php echo !empty($search) ? '?search=' . urlencode($search) : ''; ?>" 
+                           class="px-4 py-2 rounded-md text-sm font-medium <?php echo empty($status_filter) ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                            <i class="fas fa-list mr-1"></i>All Orders
+                        </a>
+                        <a href="orders.php?status=pending<?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                           class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                            <i class="fas fa-clock mr-1"></i>Pending
+                        </a>
+                        <a href="orders.php?status=completed<?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                           class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter === 'completed' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                            <i class="fas fa-check-circle mr-1"></i>Completed
+                        </a>
+                    </div>
+                    
+                    <!-- Search Form -->
                     <form method="GET" action="orders.php" class="flex gap-4 items-end">
+                        <?php if (!empty($status_filter)): ?>
+                            <input type="hidden" name="status" value="<?php echo htmlspecialchars($status_filter); ?>">
+                        <?php endif; ?>
                         <div class="flex-1">
                             <label for="search" class="block text-sm font-medium text-gray-700 mb-1">
                                 <i class="fas fa-search mr-1"></i>Search Orders
@@ -290,20 +335,26 @@ if (!empty($search)) {
                                 class="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                                 <i class="fas fa-search mr-1"></i>Search
                             </button>
-                            <?php if (!empty($search)): ?>
+                            <?php if (!empty($search) || !empty($status_filter)): ?>
                                 <a 
                                     href="orders.php" 
                                     class="px-6 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                                    <i class="fas fa-times mr-1"></i>Clear
+                                    <i class="fas fa-times mr-1"></i>Clear All
                                 </a>
                             <?php endif; ?>
                         </div>
                     </form>
-                    <?php if (!empty($search)): ?>
+                    <?php if (!empty($search) || !empty($status_filter)): ?>
                         <div class="mt-3 text-sm text-gray-600">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Showing results for: <strong>"<?php echo htmlspecialchars($search); ?>"</strong>
-                            (<?php echo $orders->num_rows; ?> order<?php echo $orders->num_rows != 1 ? 's' : ''; ?> found)
+                            <?php if (!empty($search)): ?>
+                                Showing results for: <strong>"<?php echo htmlspecialchars($search); ?>"</strong>
+                            <?php endif; ?>
+                            <?php if (!empty($status_filter)): ?>
+                                <?php if (!empty($search)): ?> | <?php endif; ?>
+                                Status: <strong><?php echo ucfirst($status_filter); ?></strong>
+                            <?php endif; ?>
+                            (<?php echo $total_display_rows; ?> result<?php echo $total_display_rows != 1 ? 's' : ''; ?> found)
                         </div>
                     <?php endif; ?>
                 </div>
@@ -547,6 +598,17 @@ if (!empty($search)) {
                 
                 <!-- Pagination -->
                 <?php if ($total_pages > 1): ?>
+                    <?php
+                    // Build query string for pagination
+                    $pagination_params = [];
+                    if (!empty($search)) {
+                        $pagination_params[] = 'search=' . urlencode($search);
+                    }
+                    if (!empty($status_filter)) {
+                        $pagination_params[] = 'status=' . urlencode($status_filter);
+                    }
+                    $pagination_query = !empty($pagination_params) ? '&' . implode('&', $pagination_params) : '';
+                    ?>
                     <div class="mt-6 flex items-center justify-between bg-white px-4 py-3 rounded-lg shadow">
                         <div class="text-sm text-gray-700">
                             Showing <span class="font-medium"><?php echo $total_display_rows > 0 ? $offset + 1 : 0; ?></span> to 
@@ -555,7 +617,7 @@ if (!empty($search)) {
                         </div>
                         <div class="flex gap-2">
                             <?php if ($current_page > 1): ?>
-                                <a href="?page=<?php echo $current_page - 1; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                <a href="?page=<?php echo $current_page - 1; ?><?php echo $pagination_query; ?>" 
                                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                                     <i class="fas fa-chevron-left mr-1"></i>Previous
                                 </a>
@@ -571,7 +633,7 @@ if (!empty($search)) {
                             $end_page = min($total_pages, $current_page + 2);
                             
                             if ($start_page > 1): ?>
-                                <a href="?page=1<?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                <a href="?page=1<?php echo $pagination_query; ?>" 
                                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">1</a>
                                 <?php if ($start_page > 2): ?>
                                     <span class="px-4 py-2 text-gray-500">...</span>
@@ -584,7 +646,7 @@ if (!empty($search)) {
                                         <?php echo $i; ?>
                                     </span>
                                 <?php else: ?>
-                                    <a href="?page=<?php echo $i; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                    <a href="?page=<?php echo $i; ?><?php echo $pagination_query; ?>" 
                                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                                         <?php echo $i; ?>
                                     </a>
@@ -595,14 +657,14 @@ if (!empty($search)) {
                                 <?php if ($end_page < $total_pages - 1): ?>
                                     <span class="px-4 py-2 text-gray-500">...</span>
                                 <?php endif; ?>
-                                <a href="?page=<?php echo $total_pages; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                <a href="?page=<?php echo $total_pages; ?><?php echo $pagination_query; ?>" 
                                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                                     <?php echo $total_pages; ?>
                                 </a>
                             <?php endif; ?>
                             
                             <?php if ($current_page < $total_pages): ?>
-                                <a href="?page=<?php echo $current_page + 1; ?><?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                                <a href="?page=<?php echo $current_page + 1; ?><?php echo $pagination_query; ?>" 
                                    class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                                     Next<i class="fas fa-chevron-right ml-1"></i>
                                 </a>
