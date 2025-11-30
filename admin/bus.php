@@ -1344,10 +1344,6 @@ include '../includes/header.php';
                     <p id="view-or-number" class="text-base font-semibold text-blue-600"></p>
                 </div>
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Created At</p>
-                    <p id="view-created" class="text-base text-gray-900"></p>
-                </div>
-                <div>
                     <p class="text-sm font-medium text-gray-500">Last Updated</p>
                     <p id="view-updated" class="text-base text-gray-900"></p>
                 </div>
@@ -1500,11 +1496,15 @@ include '../includes/header.php';
                     Enter OR Number <span class="text-red-600">*</span>
                 </label>
                 <input type="text" id="or_number" name="or_number" required
+                       pattern="[0-9]*"
+                       inputmode="numeric"
+                       onkeypress="return (event.charCode >= 48 && event.charCode <= 57)"
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                       placeholder="e.g., OR-2025-00001">
+                       placeholder="Enter OR Number (Numbers only)">
                 <p class="text-xs text-gray-500 mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
-                    Official Receipt Number from the cashier is required to approve.
+                    Official Receipt Number from the cashier is required to approve. (Numbers only)
                 </p>
             </div>
         </div>
@@ -1717,7 +1717,6 @@ function openViewModal(schedule) {
         orContainer.classList.add('hidden');
     }
     
-    document.getElementById('view-created').textContent = schedule.created_at ? new Date(schedule.created_at).toLocaleString('en-US') : '-';
     document.getElementById('view-updated').textContent = schedule.updated_at ? new Date(schedule.updated_at).toLocaleString('en-US') : '-';
     
     // Set status with styling

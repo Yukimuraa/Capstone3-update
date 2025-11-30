@@ -194,132 +194,132 @@ switch ($report_type) {
             $end = sprintf('%04d-12-31', $year);
         }
         
-        $count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
         $count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-        $approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND (status='confirmed' OR status='approved') AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
         $approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
         $col_orders = (float)($conn->query("SELECT SUM(total_price) as s FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         $col_bus = (float)($conn->query("SELECT SUM(total_amount) as s FROM billing_statements WHERE payment_status='paid' AND DATE(payment_date) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         
-        $data[] = ['Gym', number_format($count_bookings), number_format($approved_bookings), '₱0.00'];
+        // Gym collections: sum total from cost_breakdown in additional_info for confirmed bookings with or_number
+        $gym_collections_query = "SELECT additional_info FROM bookings WHERE facility_type='gym' AND (status='confirmed' OR status='approved') AND or_number IS NOT NULL AND or_number != '' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'";
+        $gym_collections_result = $conn->query($gym_collections_query);
+        $col_gym = 0.0;
+        if ($gym_collections_result) {
+            while ($row = $gym_collections_result->fetch_assoc()) {
+                if (!empty($row['additional_info'])) {
+                    $additional_info = json_decode($row['additional_info'], true);
+                    if (isset($additional_info['cost_breakdown']['total'])) {
+                        $col_gym += (float)$additional_info['cost_breakdown']['total'];
+                    }
+                }
+            }
+        }
+        
+        $data[] = ['Gym', number_format($count_bookings), number_format($approved_bookings), '₱' . number_format($col_gym, 2)];
         $data[] = ['Bus', number_format($count_bus), number_format($approved_bus), '₱' . number_format($col_bus, 2)];
         $data[] = ['Item Sales', '—', '—', '₱' . number_format($col_orders, 2)];
         break;
         
     case 'gym':
-        // Gym reports have different sub-types
-        if ($report_type_param === 'usage') {
-            $title = 'Gym Usage Report';
-            $headers = ['Date', 'Facility', 'Booking Count'];
-            
-            $start_date = isset($_GET['start_date']) ? sanitize_input($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
-            $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : date('Y-m-d');
-            
-            $query = "SELECT b.date as booking_date, 'Gymnasium' as facility_name, COUNT(*) as booking_count 
-                      FROM bookings b 
-                      WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ? 
-                      GROUP BY b.date 
-                      ORDER BY b.date ASC";
-            
-            $stmt = $conn->prepare($query);
-            $stmt->bind_param("ss", $start_date, $end_date);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            while ($row = $result->fetch_assoc()) {
-                $data[] = [
-                    date('F j, Y', strtotime($row['booking_date'])),
-                    $row['facility_name'],
-                    $row['booking_count']
-                ];
+        // Gym reports - show detailed booking information
+        $title = 'Gym Bookings Detailed Report';
+        $headers = ['Booking ID', 'Status', 'Facility', 'Date', 'Time', 'Purpose', 'Attendees', 'Requested On', 'Requester Name', 'Department/Organization', 'Equipment/Services'];
+        
+        // Get date filters
+        $start_date = isset($_GET['start_date']) ? sanitize_input($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
+        $end_date = isset($_GET['end_date']) ? sanitize_input($_GET['end_date']) : date('Y-m-d');
+        $status_filter = isset($_GET['status']) ? sanitize_input($_GET['status']) : '';
+        
+        // Build query to get detailed booking information
+        $query = "SELECT b.booking_id, b.status, b.date, b.start_time, b.end_time, b.purpose, b.attendees, 
+                         b.created_at, b.or_number, b.additional_info,
+                         u.name as user_name, u.email as user_email, u.organization
+                  FROM bookings b
+                  LEFT JOIN user_accounts u ON b.user_id = u.id
+                  WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ?";
+        
+        $params = [$start_date, $end_date];
+        $types = "ss";
+        
+        // Apply status filter
+        if (!empty($status_filter)) {
+            if ($status_filter === 'approved') {
+                $query .= " AND (b.status = 'approved' OR b.status = 'confirmed')";
+            } else {
+                $query .= " AND b.status = ?";
+                $params[] = $status_filter;
+                $types .= "s";
             }
-        } elseif ($report_type_param === 'utilization') {
-            $title = 'Facility Utilization Report';
-            $headers = ['Facility', 'Capacity', 'Total Bookings', 'Approved', 'Rejected', 'Cancelled', 'Utilization Rate'];
-            
-            $month = isset($_GET['month']) ? sanitize_input($_GET['month']) : date('Y-m');
-            $start_date = $month . '-01';
-            $end_date = date('Y-m-t', strtotime($start_date));
-            
-            $facilities_query = "SELECT id, name as facility_name, capacity FROM gym_facilities ORDER BY name ASC";
-            $facility_stmt = $conn->prepare($facilities_query);
-            $facility_stmt->execute();
-            $facilities_result = $facility_stmt->get_result();
-            
-            $stats_query = "SELECT 
-                      COUNT(*) as booking_count,
-                      COUNT(CASE WHEN status = 'confirmed' OR status = 'approved' THEN 1 ELSE NULL END) as approved_count,
-                      COUNT(CASE WHEN status = 'rejected' THEN 1 ELSE NULL END) as rejected_count,
-                      COUNT(CASE WHEN status = 'cancelled' THEN 1 ELSE NULL END) as cancelled_count
-                      FROM bookings 
-                      WHERE facility_type = 'gym' AND date BETWEEN ? AND ?";
-            
-            $stats_stmt = $conn->prepare($stats_query);
-            $stats_stmt->bind_param("ss", $start_date, $end_date);
-            $stats_stmt->execute();
-            $stats_result = $stats_stmt->get_result();
-            $stats = $stats_result->fetch_assoc();
-            
-            while ($facility = $facilities_result->fetch_assoc()) {
-                $days_in_month = date('t', strtotime($start_date));
-                $max_possible_bookings = $days_in_month;
-                $utilization_rate = $max_possible_bookings > 0 ? (($stats['approved_count'] / $max_possible_bookings) * 100) : 0;
-                
-                $data[] = [
-                    $facility['facility_name'],
-                    $facility['capacity'],
-                    $stats['booking_count'] ?? 0,
-                    $stats['approved_count'] ?? 0,
-                    $stats['rejected_count'] ?? 0,
-                    $stats['cancelled_count'] ?? 0,
-                    number_format($utilization_rate, 2) . '%'
-                ];
-            }
-        } elseif ($report_type_param === 'status') {
-            $title = 'Booking Status Report';
-            $headers = ['Status', 'Facility', 'Booking Count'];
-            
-            $period = isset($_GET['period']) ? sanitize_input($_GET['period']) : 'month';
-            $end_date = date('Y-m-d');
-            switch ($period) {
-                case 'week': $start_date = date('Y-m-d', strtotime('-1 week')); break;
-                case 'month': $start_date = date('Y-m-d', strtotime('-1 month')); break;
-                case 'quarter': $start_date = date('Y-m-d', strtotime('-3 months')); break;
-                case 'year': $start_date = date('Y-m-d', strtotime('-1 year')); break;
-                default: $start_date = date('Y-m-d', strtotime('-1 month'));
+        }
+        
+        $query .= " ORDER BY b.date DESC, b.created_at DESC";
+        
+        $stmt = $conn->prepare($query);
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        while ($row = $result->fetch_assoc()) {
+            // Parse additional_info JSON
+            $additional_info = [];
+            if (!empty($row['additional_info'])) {
+                $additional_info = json_decode($row['additional_info'], true);
             }
             
-            $query = "SELECT b.status, 'Gymnasium' as facility_name, COUNT(*) as booking_count 
-                      FROM bookings b 
-                      WHERE b.facility_type = 'gym' AND b.date BETWEEN ? AND ?";
-            
-            $params = [$start_date, $end_date];
-            $types = "ss";
-            
-            if (!empty($status)) {
-                if ($status === 'approved') {
-                    $query .= " AND (b.status = 'approved' OR b.status = 'confirmed')";
-                } else {
-                    $query .= " AND b.status = ?";
-                    $params[] = $status;
-                    $types .= "s";
+            // Get facility name
+            $facility_name = "Gymnasium"; // Default
+            if (isset($additional_info['facility_id']) && !empty($additional_info['facility_id'])) {
+                $facility_id = intval($additional_info['facility_id']);
+                $facility_stmt = $conn->prepare("SELECT name FROM gym_facilities WHERE id = ?");
+                $facility_stmt->bind_param("i", $facility_id);
+                $facility_stmt->execute();
+                $facility_result = $facility_stmt->get_result();
+                if ($facility_result->num_rows > 0) {
+                    $facility_row = $facility_result->fetch_assoc();
+                    $facility_name = $facility_row['name'];
                 }
             }
             
-            $query .= " GROUP BY b.status ORDER BY b.status";
+            // Format booking ID (already in GYM-YYYY-XXX format)
+            $booking_id = $row['booking_id'];
             
-            $stmt = $conn->prepare($query);
-            $stmt->bind_param($types, ...$params);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            while ($row = $result->fetch_assoc()) {
-                $data[] = [
-                    ucfirst($row['status']),
-                    $row['facility_name'],
-                    $row['booking_count']
-                ];
+            // Format status
+            $status_display = ucfirst($row['status']);
+            if ($row['status'] === 'confirmed') {
+                $status_display = 'Approved';
             }
+            
+            // Format date
+            $date_formatted = date('F j, Y', strtotime($row['date']));
+            
+            // Format time
+            $time_formatted = date('g:i A', strtotime($row['start_time'])) . ' - ' . date('g:i A', strtotime($row['end_time']));
+            
+            // Format requested on
+            $requested_on = date('F j, Y g:i A', strtotime($row['created_at']));
+            
+            // Get equipment/services
+            $equipment = isset($additional_info['equipment']) ? $additional_info['equipment'] : 'None selected';
+            
+            // Get organization/department
+            $organization = !empty($row['organization']) ? $row['organization'] : 'N/A';
+            
+            $data[] = [
+                $booking_id,
+                $status_display,
+                $facility_name,
+                $date_formatted,
+                $time_formatted,
+                $row['purpose'],
+                $row['attendees'] ?? 'N/A',
+                $requested_on,
+                $row['user_name'] ?? 'N/A',
+                $organization,
+                $equipment
+            ];
         }
         break;
 }
@@ -390,6 +390,14 @@ if ($format === 'pdf') {
         
         $filename = strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His');
         
+        // Get base URL for logo
+        $logo_path = '../image/CHMSUWebLOGO.png';
+        $logo_base64 = '';
+        if (file_exists($logo_path)) {
+            $logo_data = file_get_contents($logo_path);
+            $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
+        }
+        
         echo '<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -407,16 +415,49 @@ if ($format === 'pdf') {
             margin: 20px;
             color: #333;
         }
+        .report-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            color: white;
+            padding: 20px;
+            margin: -20px -20px 30px -20px;
+            text-align: center;
+            border-top: 4px solid #fbbf24;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        .logo-container img {
+            height: 80px;
+            width: auto;
+        }
+        .report-header h1 {
+            margin: 10px 0 5px 0;
+            font-size: 24px;
+            color: white;
+            font-weight: bold;
+        }
+        .report-header p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.95);
+        }
         .header {
             text-align: center;
             margin-bottom: 30px;
             border-bottom: 2px solid #333;
             padding-bottom: 15px;
+            background: white;
+            padding: 20px;
         }
-        .header h1 {
+        .header h2 {
             margin: 0;
-            font-size: 24px;
+            font-size: 20px;
             color: #1a1a1a;
+            font-weight: bold;
         }
         .header p {
             margin: 5px 0 0 0;
@@ -427,6 +468,9 @@ if ($format === 'pdf') {
             margin-bottom: 20px;
             font-size: 12px;
             color: #555;
+            padding: 10px;
+            background: #f9fafb;
+            border-left: 4px solid #1e3a8a;
         }
         table {
             width: 100%;
@@ -448,53 +492,56 @@ if ($format === 'pdf') {
         tr:nth-child(even) {
             background-color: #f9fafb;
         }
-        .instructions {
-            background-color: #fff3cd;
-            border: 1px solid #ffc107;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #333;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
         }
-        .instructions h3 {
-            margin-top: 0;
-            color: #856404;
-        }
-        .instructions ol {
-            margin: 10px 0;
-            padding-left: 20px;
-        }
-        .instructions li {
-            margin: 5px 0;
-        }
-        .btn-print {
-            background-color: #007bff;
+        .back-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #1e3a8a;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
-            margin-bottom: 20px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
         }
-        .btn-print:hover {
-            background-color: #0056b3;
+        .back-button:hover {
+            background-color: #1e40af;
+        }
+        @media print {
+            .back-button {
+                display: none;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="no-print instructions">
-        <h3>📄 How to Save as PDF:</h3>
-        <ol>
-            <li>Click the "Print" button below, or press <strong>Ctrl+P</strong> (Windows) / <strong>Cmd+P</strong> (Mac)</li>
-            <li>In the print dialog, select "Save as PDF" or "Microsoft Print to PDF" as the destination</li>
-            <li>Click "Save" and choose where to save the file</li>
-        </ol>
-        <p><strong>Note:</strong> For automatic PDF generation, please install TCPDF by running: <code>composer require tecnickcom/tcpdf</code></p>
-        <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <button class="back-button no-print" onclick="window.history.back()">
+        <i class="fas fa-arrow-left"></i> Back
+    </button>
+    <div class="report-header">
+        <div class="logo-container">';
+        if ($logo_base64) {
+            echo '<img src="' . $logo_base64 . '" alt="CHMSU Logo">';
+        }
+        echo '</div>
+        <h1>BUSINESS AFFAIRS OFFICE REPORTS</h1>
+        <p>CITY OF TALISAY, Province of Negros Occidental</p>
+        <p>CHMSU - Carlos Hilado Memorial State University</p>
     </div>
     
     <div class="header">
-        <h1>' . htmlspecialchars($title) . '</h1>
+        <h2>' . htmlspecialchars($title) . '</h2>
         <p>Generated on: ' . date('F j, Y, g:i a') . '</p>
     </div>';
         
@@ -528,13 +575,19 @@ if ($format === 'pdf') {
         echo '</tbody>
     </table>
     
+    <div class="footer">
+        <p><strong>City of Talisay Business Affairs Office</strong></p>
+        <p>This report was generated automatically on ' . date('F j, Y') . ' at ' . date('g:i A') . '</p>
+        <p>For inquiries, please contact the Business Affairs Office</p>
+    </div>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script>
         // Auto-trigger print dialog after page loads
         window.onload = function() {
             // Small delay to ensure page is fully rendered
             setTimeout(function() {
-                // Uncomment the line below to auto-open print dialog
-                // window.print();
+                window.print();
             }, 500);
         };
     </script>
@@ -543,30 +596,274 @@ if ($format === 'pdf') {
         exit;
     }
     
-} else { // Excel (CSV format)
+} else { // Excel format
     // Clear output buffer
     if (ob_get_length()) {
         ob_end_clean();
     }
     
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.csv"');
-    
-    // Add BOM for UTF-8
-    echo "\xEF\xBB\xBF";
-    
-    $output = fopen('php://output', 'w');
-    
-    // Write headers
-    fputcsv($output, $headers);
-    
-    // Write data
-    foreach ($data as $row) {
-        fputcsv($output, $row);
+    // Check if PhpSpreadsheet is available
+    $phpspreadsheet_available = false;
+    if (file_exists('../vendor/autoload.php')) {
+        require_once '../vendor/autoload.php';
+        if (class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            $phpspreadsheet_available = true;
+        }
     }
     
-    fclose($output);
-    exit;
+    if ($phpspreadsheet_available) {
+        // Use PhpSpreadsheet for proper Excel formatting with borders
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        $currentRow = 1;
+        
+        // Professional Report Header
+        $sheet->setCellValue('A' . $currentRow, 'BUSINESS AFFAIRS OFFICE REPORTS');
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true)->setSize(16);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow++;
+        
+        $sheet->setCellValue('A' . $currentRow, 'CITY OF TALISAY, Province of Negros Occidental');
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow++;
+        
+        $sheet->setCellValue('A' . $currentRow, 'CHMSU - Carlos Hilado Memorial State University');
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setSize(12);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow += 2;
+        
+        // Generation date and time
+        $generated_date = date('F j, Y');
+        $generated_time = date('g:i A');
+        $sheet->setCellValue('A' . $currentRow, 'Generated on:');
+        $sheet->setCellValue('B' . $currentRow, $generated_date . ' at ' . $generated_time);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
+        $currentRow += 2;
+        
+        // Report title
+        $sheet->setCellValue('A' . $currentRow, $title);
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow += 2;
+        
+        // Covered period/filters
+        $period_info = [];
+        
+        // Handle mode-based filters (for summary reports)
+        if (isset($mode)) {
+            if ($mode === 'daily') {
+                $period_info[] = 'Date: ' . date('F j, Y', strtotime($date));
+            } elseif ($mode === 'monthly') {
+                $period_info[] = 'Month: ' . date('F Y', strtotime($month . '-01'));
+            } elseif ($mode === 'yearly') {
+                $period_info[] = 'Year: ' . $year;
+            }
+        }
+        
+        // Handle date range filters
+        if (!empty($start_date) && !empty($end_date)) {
+            if ($start_date === $end_date) {
+                $period_info[] = 'Date: ' . date('F j, Y', strtotime($start_date));
+            } else {
+                $period_info[] = 'Period: ' . date('F j, Y', strtotime($start_date)) . ' - ' . date('F j, Y', strtotime($end_date));
+            }
+        } elseif (!empty($start_date)) {
+            $period_info[] = 'From: ' . date('F j, Y', strtotime($start_date));
+        } elseif (!empty($end_date)) {
+            $period_info[] = 'To: ' . date('F j, Y', strtotime($end_date));
+        }
+        
+        // Handle other filters
+        if (!empty($status)) {
+            $period_info[] = 'Status: ' . ucfirst($status);
+        }
+        if (!empty($role)) {
+            $period_info[] = 'Role: ' . ucfirst($role);
+        }
+        if (!empty($department)) {
+            $period_info[] = 'Department: ' . htmlspecialchars($department);
+        }
+        if (!empty($service)) {
+            $period_info[] = 'Service: ' . ucfirst($service);
+        }
+        if (!empty($report_type_param)) {
+            $period_info[] = 'Report Type: ' . ucfirst($report_type_param);
+        }
+        
+        if (!empty($period_info)) {
+            $col = 'A';
+            foreach ($period_info as $info) {
+                $sheet->setCellValue($col . $currentRow, $info);
+                $col++;
+            }
+            $currentRow += 2;
+        }
+        
+        // Table headers with borders and styling
+        $headerRow = $currentRow;
+        $col = 'A';
+        foreach ($headers as $header) {
+            $sheet->setCellValue($col . $currentRow, $header);
+            $sheet->getStyle($col . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($col . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($col . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)
+                ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+            $sheet->getStyle($col . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            $col++;
+        }
+        $currentRow++;
+        
+        // Write data with borders
+        foreach ($data as $row) {
+            $col = 'A';
+            foreach ($row as $cell) {
+                $sheet->setCellValue($col . $currentRow, $cell);
+                $sheet->getStyle($col . $currentRow)->getBorders()->getAllBorders()
+                    ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $col++;
+            }
+            $currentRow++;
+        }
+        
+        // Auto-size columns
+        foreach (range('A', chr(64 + count($headers))) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+        
+        // Add footer
+        $currentRow += 2;
+        $sheet->setCellValue('A' . $currentRow, 'City of Talisay Business Affairs Office');
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow++;
+        
+        $sheet->setCellValue('A' . $currentRow, 'This report was generated automatically on ' . $generated_date . ' at ' . $generated_time);
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setSize(10);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $currentRow++;
+        
+        $sheet->setCellValue('A' . $currentRow, 'For inquiries, please contact the Business Affairs Office');
+        $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+        $sheet->getStyle('A' . $currentRow)->getFont()->setSize(10);
+        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        
+        // Set filename
+        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.xlsx';
+        
+        // Output file
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+        
+    } else {
+        // Fallback to CSV format if PhpSpreadsheet is not available
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.csv"');
+        
+        // Add BOM for UTF-8
+        echo "\xEF\xBB\xBF";
+        
+        $output = fopen('php://output', 'w');
+        
+        // Professional Report Header (like the image)
+        fputcsv($output, []); // Empty row
+        fputcsv($output, ['BUSINESS AFFAIRS OFFICE REPORTS']);
+        fputcsv($output, ['CITY OF TALISAY, Province of Negros Occidental']);
+        fputcsv($output, ['CHMSU - Carlos Hilado Memorial State University']);
+        fputcsv($output, []); // Empty row
+        
+        // Generation date and time
+        $generated_date = date('F j, Y');
+        $generated_time = date('g:i A');
+        fputcsv($output, ['Generated on:', $generated_date . ' at ' . $generated_time]);
+        fputcsv($output, []); // Empty row
+        
+        // Report title
+        fputcsv($output, [$title]);
+        fputcsv($output, []); // Empty row
+        
+        // Covered period/filters
+        $period_info = [];
+        
+        // Handle mode-based filters (for summary reports)
+        if (isset($mode)) {
+            if ($mode === 'daily') {
+                $period_info[] = 'Date: ' . date('F j, Y', strtotime($date));
+            } elseif ($mode === 'monthly') {
+                $period_info[] = 'Month: ' . date('F Y', strtotime($month . '-01'));
+            } elseif ($mode === 'yearly') {
+                $period_info[] = 'Year: ' . $year;
+            }
+        }
+        
+        // Handle date range filters
+        if (!empty($start_date) && !empty($end_date)) {
+            if ($start_date === $end_date) {
+                $period_info[] = 'Date: ' . date('F j, Y', strtotime($start_date));
+            } else {
+                $period_info[] = 'Period: ' . date('F j, Y', strtotime($start_date)) . ' - ' . date('F j, Y', strtotime($end_date));
+            }
+        } elseif (!empty($start_date)) {
+            $period_info[] = 'From: ' . date('F j, Y', strtotime($start_date));
+        } elseif (!empty($end_date)) {
+            $period_info[] = 'To: ' . date('F j, Y', strtotime($end_date));
+        }
+        
+        // Handle other filters
+        if (!empty($status)) {
+            $period_info[] = 'Status: ' . ucfirst($status);
+        }
+        if (!empty($role)) {
+            $period_info[] = 'Role: ' . ucfirst($role);
+        }
+        if (!empty($department)) {
+            $period_info[] = 'Department: ' . htmlspecialchars($department);
+        }
+        if (!empty($service)) {
+            $period_info[] = 'Service: ' . ucfirst($service);
+        }
+        if (!empty($report_type_param)) {
+            $period_info[] = 'Report Type: ' . ucfirst($report_type_param);
+        }
+        
+        if (!empty($period_info)) {
+            fputcsv($output, $period_info);
+            fputcsv($output, []); // Empty row
+        }
+        
+        // Table headers
+        fputcsv($output, $headers);
+        
+        // Write data
+        foreach ($data as $row) {
+            fputcsv($output, $row);
+        }
+        
+        // Footer
+        fputcsv($output, []); // Empty row
+        fputcsv($output, ['City of Talisay Business Affairs Office']);
+        fputcsv($output, ['This report was generated automatically on ' . $generated_date . ' at ' . $generated_time]);
+        fputcsv($output, ['For inquiries, please contact the Business Affairs Office']);
+        
+        fclose($output);
+        exit;
+    }
 }
 ?>
 

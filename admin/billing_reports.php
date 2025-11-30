@@ -147,7 +147,6 @@ foreach ($rows as $r) {
 							<a href="download_report.php?type=billing&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
 								<i class="fas fa-file-excel mr-1"></i> Excel
 							</a>
-							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
 						</div>
 					</div>
 					<div class="overflow-x-auto">

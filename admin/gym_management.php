@@ -209,7 +209,7 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
-$count_query = "SELECT COUNT(*) as total FROM bookings b $conditions_sql";
+$count_query = "SELECT COUNT(*) as total FROM bookings b LEFT JOIN user_accounts u ON b.user_id = u.id $conditions_sql";
 $stmt = $conn->prepare($count_query);
 if (!empty($query_params)) {
     $stmt->bind_param($param_types, ...$query_params);
@@ -807,9 +807,13 @@ $facilities_management_result = $conn->query($facilities_management_query);
             <div class="mb-4">
                 <label for="approve_or_number" class="block text-sm font-medium text-gray-700 mb-1">Official Receipt (OR) No:</label>
                 <input type="text" id="approve_or_number" name="or_number" required
+                       pattern="[0-9]*"
+                       inputmode="numeric"
+                       onkeypress="return (event.charCode >= 48 && event.charCode <= 57)"
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"
-                       placeholder="Enter OR Number">
-                <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier</p>
+                       placeholder="Enter OR Number (Numbers only)">
+                <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier (Numbers only)</p>
             </div>
             <div class="mb-4">
                 <label for="approve_remarks" class="block text-sm font-medium text-gray-700 mb-1">Remarks (Optional)</label>

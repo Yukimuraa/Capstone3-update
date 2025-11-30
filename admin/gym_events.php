@@ -213,11 +213,13 @@ $facilities_result = $conn->query($facilities_query);
                             <div>
                                 <label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
                                 <input type="date" id="start_date" name="start_date" required 
+                                       min="<?php echo date('Y-m-d'); ?>"
                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500">
                             </div>
                             <div>
                                 <label for="end_date" class="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
                                 <input type="date" id="end_date" name="end_date" required 
+                                       min="<?php echo date('Y-m-d'); ?>"
                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500">
                             </div>
                             <div>
@@ -232,16 +234,10 @@ $facilities_result = $conn->query($facilities_query);
                             </div>
                             <div>
                                 <label for="affected_facilities" class="block text-sm font-medium text-gray-700 mb-1">Affected Facilities</label>
-                                <select id="affected_facilities" name="affected_facilities" 
-                                        class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500">
-                                    <option value="all">All Facilities</option>
-                                    <?php 
-                                    $facilities_result->data_seek(0); // Reset pointer
-                                    while ($facility = $facilities_result->fetch_assoc()): 
-                                    ?>
-                                        <option value="<?php echo $facility['id']; ?>"><?php echo htmlspecialchars($facility['name']); ?></option>
-                                    <?php endwhile; ?>
-                                </select>
+                                <input type="text" id="affected_facilities" value="All Facilities" readonly
+                                       class="w-full rounded-md border-gray-300 shadow-sm bg-gray-100 cursor-not-allowed"
+                                       style="background-color: #f3f4f6;">
+                                <input type="hidden" name="affected_facilities" value="all">
                             </div>
                         </div>
                         <div class="mb-4">
@@ -372,6 +368,22 @@ $facilities_result = $conn->query($facilities_query);
             this.appendChild(hiddenInput);
         }
     });
+    
+    // Ensure end date is not before start date and prevent past dates
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    
+    if (startDateInput) {
+        startDateInput.addEventListener('change', function() {
+            const startDate = this.value;
+            if (startDate && endDateInput) {
+                endDateInput.min = startDate;
+                if (endDateInput.value && endDateInput.value < startDate) {
+                    endDateInput.value = startDate;
+                }
+            }
+        });
+    }
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>

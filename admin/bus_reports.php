@@ -166,7 +166,6 @@ while ($row = $result->fetch_assoc()) {
 							<a href="download_report.php?type=bus&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
 								<i class="fas fa-file-excel mr-1"></i> Excel
 							</a>
-							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
 						</div>
 					</div>
 					<div class="overflow-x-auto">
@@ -286,13 +285,6 @@ while ($row = $result->fetch_assoc()) {
 		document.getElementById('sidebar').classList.toggle('-translate-x-full');
 	});
 
-	// Hide buttons on print
-	window.onbeforeprint = function() {
-		document.querySelectorAll('button').forEach(function(el) { el.style.display = 'none'; });
-	};
-	window.onafterprint = function() {
-		document.querySelectorAll('button').forEach(function(el) { el.style.display = ''; });
-	};
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>

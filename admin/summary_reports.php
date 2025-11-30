@@ -24,12 +24,12 @@ if ($mode === 'daily') {
 }
 
 // Requests submitted (gym bookings + bus schedules + orders + general requests)
-$count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+$count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 $count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 $count_requests = (int)$conn->query("SELECT COUNT(*) as c FROM requests WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 
 // Approvals
-$approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+$approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND (status='confirmed' OR status='approved') AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 $approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
 
 // Orders (Item Sales)
@@ -42,10 +42,26 @@ $total_requests = $count_bookings + $count_bus + $count_orders + $count_requests
 // Approvals
 $approved_total = $approved_bookings + $approved_bus + $completed_orders;
 
-// Collections (orders completed + bus payments paid)
+// Collections (orders completed + bus payments paid + gym bookings paid)
 $col_orders = (float)($conn->query("SELECT SUM(total_price) as s FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
 $col_bus = (float)($conn->query("SELECT SUM(total_amount) as s FROM billing_statements WHERE payment_status='paid' AND DATE(payment_date) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
-$collected_total = $col_orders + $col_bus;
+
+// Gym collections: sum total from cost_breakdown in additional_info for confirmed bookings with or_number
+$gym_collections_query = "SELECT additional_info FROM bookings WHERE facility_type='gym' AND (status='confirmed' OR status='approved') AND or_number IS NOT NULL AND or_number != '' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'";
+$gym_collections_result = $conn->query($gym_collections_query);
+$col_gym = 0.0;
+if ($gym_collections_result) {
+    while ($row = $gym_collections_result->fetch_assoc()) {
+        if (!empty($row['additional_info'])) {
+            $additional_info = json_decode($row['additional_info'], true);
+            if (isset($additional_info['cost_breakdown']['total'])) {
+                $col_gym += (float)$additional_info['cost_breakdown']['total'];
+            }
+        }
+    }
+}
+
+$collected_total = $col_orders + $col_bus + $col_gym;
 
 // Most requested service (by count)
 $svc = [ 'Gym' => $count_bookings, 'Bus' => $count_bus, 'Item Sales' => $count_orders, 'Requests' => $count_requests ];
@@ -121,7 +137,6 @@ arsort($svc); $top_service = key($svc);
 							<a href="download_report.php?type=summary&format=excel&<?php echo http_build_query($_GET); ?>" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
 								<i class="fas fa-file-excel mr-1"></i> Excel
 							</a>
-							<button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"><i class="fas fa-print mr-1"></i> Print</button>
 						</div>
 					</div>
 					<div class="overflow-x-auto">
@@ -139,7 +154,7 @@ arsort($svc); $top_service = key($svc);
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Gym</td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500"><?php echo number_format($count_bookings); ?></td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500"><?php echo number_format($approved_bookings); ?></td>
-									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">₱0.00</td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">₱<?php echo number_format($col_gym, 2); ?></td>
 								</tr>
 								<tr>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Bus</td>
@@ -171,8 +186,6 @@ arsort($svc); $top_service = key($svc);
 	document.getElementById('menu-button').addEventListener('click', function() {
 		document.getElementById('sidebar').classList.toggle('-translate-x-full');
 	});
-	window.onbeforeprint = function() { document.querySelectorAll('button').forEach(function(el){ el.style.display='none'; }); };
-	window.onafterprint = function() { document.querySelectorAll('button').forEach(function(el){ el.style.display=''; }); };
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
