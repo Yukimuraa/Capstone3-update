@@ -222,7 +222,7 @@ while ($row = $result->fetch_assoc()) {
                                         <div class="mt-4 p-3 bg-blue-50 rounded-lg">
                                             <p class="text-xs text-blue-800">
                                                 <i class="fas fa-info-circle mr-1"></i>
-                                                You will need to proceed to the cashier for payment after placing your order.
+                                                you will need to proceed to the BAO Office to take your order of payment slip after placing your order. and go back to BAO Office
                                             </p>
                                         </div>
                                     </div>

@@ -215,12 +215,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php if (!empty($success)): ?>
                 <div class="success-message px-4 py-3 rounded-lg mb-6 text-sm">
                     <i class="fas fa-check-circle mr-2"></i><?php echo $success; ?>
-                    <?php if (isset($reset_link)): ?>
-                        <div class="mt-3 p-3 bg-gray-50 rounded text-xs overflow-x-auto">
-                            <p class="font-semibold mb-1">Reset Link (for demonstration only):</p>
-                            <a href="<?php echo $reset_link; ?>" class="text-red-600 break-all hover:underline"><?php echo $reset_link; ?></a>
-                        </div>
-                    <?php endif; ?>
                 </div>
                 <div class="text-center mt-6 pt-6 border-t border-gray-200">
                     <p class="text-gray-600 text-sm">

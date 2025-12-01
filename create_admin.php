@@ -39,8 +39,52 @@ function validatePassword($password) {
     return $errors;
 }
 
+// Handle OTP resend
+if (isset($_POST['resend_otp'])) {
+    if (isset($_SESSION['temp_admin'])) {
+        $tempAdmin = $_SESSION['temp_admin'];
+        $email = $tempAdmin['email'];
+        
+        // Generate new OTP
+        $otp = rand(100000, 999999);
+        $otpExpiry = time() + ($emailConfig['otp']['expiry_minutes'] * 60);
+        
+        $_SESSION['otp'] = $otp;
+        $_SESSION['otp_expiry'] = $otpExpiry;
+        
+        // Send new OTP via email
+        $mail = new PHPMailer(true);
+        
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $emailConfig['smtp']['host'];
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $emailConfig['smtp']['username'];
+            $mail->Password   = $emailConfig['smtp']['password'];
+            $mail->SMTPSecure = $emailConfig['smtp']['encryption'] === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = $emailConfig['smtp']['port'];
+            $mail->SMTPDebug  = $emailConfig['smtp']['debug'];
+            
+            $mail->setFrom($emailConfig['smtp']['from_email'], $emailConfig['smtp']['from_name']);
+            $mail->addAddress($email);
+            
+            $mail->isHTML(true);
+            $mail->Subject = 'Your OTP for Admin Account Creation';
+            $mail->Body    = "Your OTP code is: <b>$otp</b><br>This code will expire in {$emailConfig['otp']['expiry_minutes']} minutes.";
+            $mail->AltBody = "Your OTP code is: $otp\nThis code will expire in {$emailConfig['otp']['expiry_minutes']} minutes.";
+            
+            $mail->send();
+            $success = "check your email to see otp code again";
+            $showOtpField = true;
+        } catch (Exception $e) {
+            $error = "Failed to send OTP. Mailer Error: {$mail->ErrorInfo}";
+        }
+    } else {
+        $error = "Session expired. Please start over.";
+        $showOtpField = false;
+    }
 // Handle OTP verification
-if (isset($_POST['verify_otp'])) {
+} elseif (isset($_POST['verify_otp'])) {
     $userOtp = $_POST['otp'] ?? '';
     $storedOtp = $_SESSION['otp'] ?? '';
     $otpExpiry = $_SESSION['otp_expiry'] ?? 0;
@@ -55,20 +99,35 @@ if (isset($_POST['verify_otp'])) {
         $error = "Invalid OTP. Please try again.";
         $showOtpField = true;
     } else {
-        // OTP verified, create admin account
+        // OTP verified, check if email is still available before creating account
         $tempAdmin = $_SESSION['temp_admin'];
-        $hashed_password = password_hash($tempAdmin['password'], PASSWORD_DEFAULT);
-
-        $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type) VALUES (?, ?, ?, 'admin')");
-        $stmt->bind_param("sss", $tempAdmin['name'], $tempAdmin['email'], $hashed_password);
-
-        if ($stmt->execute()) {
+        $email = $tempAdmin['email'];
+        
+        // Check if email already exists
+        $check_stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
+        $check_stmt->bind_param("s", $email);
+        $check_stmt->execute();
+        $check_result = $check_stmt->get_result();
+        
+        if ($check_result->num_rows > 0) {
+            $error = "Email already taken";
+            $showOtpField = false;
             unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_admin']);
-            // Redirect to admin login page after successful account creation
-            header("Location: admin_login.php?success=1");
-            exit();
         } else {
-            $error = "Error creating admin user: " . $conn->error;
+            // Create admin account
+            $hashed_password = password_hash($tempAdmin['password'], PASSWORD_DEFAULT);
+            $user_type = $tempAdmin['user_type'] ?? 'admin';
+            $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("ssss", $tempAdmin['name'], $tempAdmin['email'], $hashed_password, $user_type);
+
+            if ($stmt->execute()) {
+                unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_admin']);
+                // Redirect to admin login page after successful account creation
+                header("Location: admin_login.php?success=1");
+                exit();
+            } else {
+                $error = "Error creating admin user: " . $conn->error;
+            }
         }
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_admin'])) {
@@ -76,12 +135,15 @@ if (isset($_POST['verify_otp'])) {
     $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
+    $user_type = $_POST['user_type'] ?? '';
     
     // Validate inputs
-    if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
+    if (empty($name) || empty($email) || empty($password) || empty($confirm_password) || empty($user_type)) {
         $error = "All fields are required";
     } elseif (!preg_match("/^[a-zA-Z\s]+$/", $name)) {
         $error = "Full name must contain only letters and spaces";
+    } elseif (!in_array($user_type, ['admin', 'secretary'])) {
+        $error = "Invalid user type selected";
     } elseif ($password !== $confirm_password) {
         $error = "Passwords do not match";
     } else {
@@ -97,7 +159,8 @@ if (isset($_POST['verify_otp'])) {
             $result = $stmt->get_result();
             
             if ($result->num_rows > 0) {
-                $error = "Email already exists";
+                $error = "Email already taken";
+                $showOtpField = false;
             } else {
                 // Generate OTP
                 $otp = rand(100000, 999999);
@@ -108,7 +171,8 @@ if (isset($_POST['verify_otp'])) {
                 $_SESSION['temp_admin'] = [
                     'name' => $name,
                     'email' => $email,
-                    'password' => $password
+                    'password' => $password,
+                    'user_type' => $user_type
                 ];
 
                 // Send OTP via email
@@ -370,13 +434,25 @@ if (isset($_POST['verify_otp'])) {
 
             <?php if ($showOtpField): ?>
                 <!-- OTP Verification Form -->
+                <?php if (!empty($error)): ?>
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                        <p><i class="fas fa-exclamation-circle mr-2"></i><?php echo $error; ?></p>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if (!empty($success)): ?>
+                    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
+                        <p><i class="fas fa-check-circle mr-2"></i><?php echo $success; ?></p>
+                    </div>
+                <?php endif; ?>
+                
                 <div class="text-center mb-6">
                     <div class="bg-blue-50 rounded-lg p-4 mb-4">
                         <i class="fas fa-envelope-open-text text-blue-600 text-4xl mb-2"></i>
                         <p class="text-sm text-gray-700">Check your email for the 6-digit OTP code</p>
                     </div>
                 </div>
-                <form method="POST">
+                <form method="POST" id="otpForm">
                     <div class="mb-6">
                         <label for="otp" class="block text-gray-700 font-semibold mb-3">
                             <i class="fas fa-key mr-2"></i>Enter OTP Code
@@ -387,16 +463,46 @@ if (isset($_POST['verify_otp'])) {
                     <button type="submit" name="verify_otp" class="w-full submit-btn text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                         <i class="fas fa-check-circle mr-2"></i>Verify OTP
                     </button>
-                    <div class="text-center mt-4">
+                </form>
+                <div class="text-center mt-4">
+                    <form method="POST" class="inline">
                         <p class="text-sm text-gray-600">
                             Didn't receive the code? 
-                            <a href="admin_forgot-password.php" class="text-red-600 hover:underline font-semibold">Resend</a>
+                            <button type="submit" name="resend_otp" class="text-red-600 hover:underline font-semibold bg-transparent border-none cursor-pointer p-0">Resend</button>
                         </p>
-                    </div>
-                </form>
+                    </form>
+                </div>
             <?php else: ?>
                 <!-- Registration Form -->
+                <?php if (!empty($error)): ?>
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                        <p><i class="fas fa-exclamation-circle mr-2"></i><?php echo $error; ?></p>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if (!empty($success)): ?>
+                    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
+                        <p><i class="fas fa-check-circle mr-2"></i><?php echo $success; ?></p>
+                    </div>
+                <?php endif; ?>
+                
                 <form method="POST" id="adminForm">
+                    <div class="mb-5">
+                        <label for="user_type" class="block text-gray-700 font-semibold mb-2">
+                            <i class="fas fa-user-tag mr-2"></i>User Type
+                        </label>
+                        <div class="input-with-icon" style="position: relative; width: 100%;">
+                            <span class="icon">
+                                <i class="fas fa-user-tag"></i>
+                            </span>
+                            <select id="user_type" name="user_type" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" required>
+                                <option value="">Select user type</option>
+                                <option value="admin">BAO Admin</option>
+                                <option value="secretary">BAO Secretary</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="mb-5">
                         <label for="name" class="block text-gray-700 font-semibold mb-2">
                             <i class="fas fa-user mr-2"></i>Full Name
@@ -405,7 +511,7 @@ if (isset($_POST['verify_otp'])) {
                             <span class="icon">
                                 <i class="fas fa-user"></i>
                             </span>
-                            <input type="text" id="name" name="name" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" placeholder="Enter full name" pattern="[a-zA-Z\s]+" title="Only letters and spaces allowed" required>
+                            <input type="text" id="name" name="name" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" placeholder="Enter full name" pattern="[a-zA-Z\s]+" title="Only letters and spaces allowed" oninput="this.value = this.value.replace(/[^a-zA-Z\s]/g, '')" required>
                         </div>
                     </div>
 
