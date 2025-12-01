@@ -219,20 +219,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($_POST['action'] === 'approve_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
-            $or_number = isset($_POST['or_number']) ? trim(sanitize_input($_POST['or_number'])) : '';
             
-            // Validate OR number
-            if (empty($or_number)) {
-                $error = 'OR Number is required to approve the schedule.';
-            } else {
-                // Start transaction
-                $conn->begin_transaction();
-                
-                try {
-                    // Update schedule status with OR number
-                    $update_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'approved', or_number = ? WHERE id = ?");
-                    $update_stmt->bind_param("si", $or_number, $schedule_id);
-                    $update_stmt->execute();
+            // Start transaction
+            $conn->begin_transaction();
+            
+            try {
+                // Update schedule status (no OR number required)
+                $update_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'approved' WHERE id = ?");
+                $update_stmt->bind_param("i", $schedule_id);
+                $update_stmt->execute();
                 
                 // Get schedule details
                 $schedule_query = "SELECT * FROM bus_schedules WHERE id = ?";
@@ -314,14 +309,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     require_once '../includes/notification_functions.php';
                     $schedule_user_id = $schedule['user_id'];
                     $date_formatted = date('F j, Y', strtotime($schedule['date_covered']));
-                    create_notification($schedule_user_id, "Bus Schedule Approved", "Your bus schedule request for {$date_formatted} (Destination: {$schedule['destination']}) has been approved! OR Number: {$or_number}", "success", "student/bus.php");
+                    create_notification($schedule_user_id, "Bus Schedule Approved", "Your bus schedule request for {$date_formatted} (Destination: {$schedule['destination']}) has been approved!", "success", "student/bus.php");
                     
-                    $success = 'Schedule approved successfully with OR Number: ' . htmlspecialchars($or_number) . '! Payment marked as paid.';
+                    $success = 'Schedule approved successfully!';
                 } catch (Exception $e) {
                     $conn->rollback();
                     $error = $e->getMessage();
                 }
-            }
         } elseif ($_POST['action'] === 'reject_schedule') {
             $schedule_id = intval($_POST['schedule_id']);
             
@@ -1453,12 +1447,12 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- Approve Schedule with OR Number Modal -->
+<!-- Approve Schedule Modal -->
 <div id="approveModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
         <div class="flex items-center mb-4">
-            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
-                <i class="fas fa-exclamation-triangle text-yellow-600 text-xl"></i>
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <i class="fas fa-check-circle text-green-600 text-xl"></i>
             </div>
             <div class="ml-4">
                 <h3 class="text-lg font-medium text-gray-900">Approve Bus Schedule</h3>
@@ -1466,19 +1460,6 @@ include '../includes/header.php';
         </div>
         
         <div class="mb-6">
-            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-                <div class="flex">
-                    <div class="flex-shrink-0">
-                        <i class="fas fa-question-circle text-yellow-400"></i>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-yellow-800">
-                            Did the user show the OR No. from cashier?
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
             <div class="bg-gray-50 rounded-lg p-4 space-y-2 mb-4">
                 <div>
                     <p class="text-xs font-medium text-gray-500">Client:</p>
@@ -1490,29 +1471,26 @@ include '../includes/header.php';
                 </div>
             </div>
             
-            <div class="mb-4">
-                <label for="or_number" class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-receipt text-green-600 mr-1"></i>
-                    Enter OR Number <span class="text-red-600">*</span>
-                </label>
-                <input type="text" id="or_number" name="or_number" required
-                       pattern="[0-9]*"
-                       inputmode="numeric"
-                       onkeypress="return (event.charCode >= 48 && event.charCode <= 57)"
-                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                       placeholder="Enter OR Number (Numbers only)">
-                <p class="text-xs text-gray-500 mt-1">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Official Receipt Number from the cashier is required to approve. (Numbers only)
-                </p>
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-question-circle text-blue-400"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-blue-800">
+                            Are you sure you want to approve this?
+                        </p>
+                        <p class="text-xs text-blue-600 mt-1">
+                            Please ensure you have reviewed the president approval document before approving.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
         
         <form method="POST" id="approveForm">
             <input type="hidden" name="action" value="approve_schedule">
             <input type="hidden" name="schedule_id" id="approve-schedule-id">
-            <input type="hidden" name="or_number" id="approve-or-number-hidden">
             
             <div class="flex justify-end space-x-3">
                 <button type="button" onclick="closeApproveModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
@@ -1811,7 +1789,6 @@ function openApproveModal(scheduleId, client, destination) {
     document.getElementById('approve-schedule-id').value = scheduleId;
     document.getElementById('approve-client').textContent = client;
     document.getElementById('approve-destination').textContent = destination;
-    document.getElementById('or_number').value = ''; // Clear previous value
     document.getElementById('approveModal').classList.remove('hidden');
 }
 
@@ -1820,18 +1797,7 @@ function closeApproveModal() {
 }
 
 function submitApproval() {
-    const orNumber = document.getElementById('or_number').value.trim();
-    
-    if (!orNumber) {
-        alert('Please enter the OR Number from the cashier.');
-        document.getElementById('or_number').focus();
-        return;
-    }
-    
-    // Set the hidden field value
-    document.getElementById('approve-or-number-hidden').value = orNumber;
-    
-    // Submit the form
+    // Submit the form directly
     document.getElementById('approveForm').submit();
 }
 

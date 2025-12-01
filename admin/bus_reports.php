@@ -50,6 +50,25 @@ $count_stmt->execute();
 $total_rows = $count_stmt->get_result()->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $rows_per_page);
 
+// Calculate total amount from ALL filtered records (not just paginated)
+$total_amount_query = "SELECT COALESCE(SUM(bs.total_amount), 0) as total_amount
+          FROM bus_schedules s
+          LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
+          WHERE 1=1";
+
+$total_amount_params = [];
+$total_amount_types = "";
+
+if (!empty($start_date)) { $total_amount_query .= " AND s.date_covered >= ?"; $total_amount_params[] = $start_date; $total_amount_types .= "s"; }
+if (!empty($end_date))   { $total_amount_query .= " AND s.date_covered <= ?"; $total_amount_params[] = $end_date;   $total_amount_types .= "s"; }
+if (!empty($status))     { $total_amount_query .= " AND s.status = ?";         $total_amount_params[] = $status;     $total_amount_types .= "s"; }
+if (!empty($department)) { $total_amount_query .= " AND s.client LIKE ?";      $total_amount_params[] = "%$department%"; $total_amount_types .= "s"; }
+
+$total_amount_stmt = $conn->prepare($total_amount_query);
+if (!empty($total_amount_params)) { $total_amount_stmt->bind_param($total_amount_types, ...$total_amount_params); }
+$total_amount_stmt->execute();
+$total_amount = (float)($total_amount_stmt->get_result()->fetch_assoc()['total_amount'] ?? 0);
+
 // Build schedule query
 $query = "SELECT s.id, s.client, s.destination, s.purpose, s.date_covered, s.vehicle, s.bus_no, s.no_of_days, s.no_of_vehicles, s.status,
                  bs.total_amount, bs.payment_status, bs.payment_date
@@ -75,23 +94,40 @@ if (!empty($params)) { $stmt->bind_param($types, ...$params); }
 $stmt->execute();
 $result = $stmt->get_result();
 
-// Totals
-$total_requests = 0;
-$total_amount = 0.00;
-$pending = 0; $approved = 0; $rejected = 0;
+// Count status totals from ALL filtered records (not just paginated)
+$status_count_query = "SELECT s.status, COUNT(*) as count
+          FROM bus_schedules s
+          LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
+          WHERE 1=1";
 
+$status_count_params = [];
+$status_count_types = "";
+
+if (!empty($start_date)) { $status_count_query .= " AND s.date_covered >= ?"; $status_count_params[] = $start_date; $status_count_types .= "s"; }
+if (!empty($end_date))   { $status_count_query .= " AND s.date_covered <= ?"; $status_count_params[] = $end_date;   $status_count_types .= "s"; }
+if (!empty($status))     { $status_count_query .= " AND s.status = ?";         $status_count_params[] = $status;     $status_count_types .= "s"; }
+if (!empty($department)) { $status_count_query .= " AND s.client LIKE ?";      $status_count_params[] = "%$department%"; $status_count_types .= "s"; }
+
+$status_count_query .= " GROUP BY s.status";
+
+$status_count_stmt = $conn->prepare($status_count_query);
+if (!empty($status_count_params)) { $status_count_stmt->bind_param($status_count_types, ...$status_count_params); }
+$status_count_stmt->execute();
+$status_result = $status_count_stmt->get_result();
+
+$pending = 0; $approved = 0; $rejected = 0;
+while ($status_row = $status_result->fetch_assoc()) {
+	switch ($status_row['status']) {
+		case 'pending': $pending = (int)$status_row['count']; break;
+		case 'approved': $approved = (int)$status_row['count']; break;
+		case 'rejected': $rejected = (int)$status_row['count']; break;
+	}
+}
+
+// Get paginated rows for display
 $rows = [];
 while ($row = $result->fetch_assoc()) {
 	$rows[] = $row;
-	$total_requests++;
-	if (isset($row['total_amount'])) {
-		$total_amount += (float)$row['total_amount'];
-	}
-	switch ($row['status']) {
-		case 'pending': $pending++; break;
-		case 'approved': $approved++; break;
-		case 'rejected': $rejected++; break;
-	}
 }
 ?>
 
@@ -149,7 +185,7 @@ while ($row = $result->fetch_assoc()) {
 
 				<!-- KPIs -->
 				<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Requests</p><h3 class="text-2xl font-bold"><?php echo number_format($total_requests); ?></h3></div>
+					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Requests</p><h3 class="text-2xl font-bold"><?php echo number_format($total_rows); ?></h3></div>
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Approved</p><h3 class="text-2xl font-bold text-green-600"><?php echo number_format($approved); ?></h3></div>
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Pending</p><h3 class="text-2xl font-bold text-yellow-600"><?php echo number_format($pending); ?></h3></div>
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Amount</p><h3 class="text-2xl font-bold text-emerald-600">₱<?php echo number_format($total_amount,2); ?></h3></div>
@@ -179,7 +215,6 @@ while ($row = $result->fetch_assoc()) {
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicles</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
 									<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
-									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
@@ -200,19 +235,9 @@ while ($row = $result->fetch_assoc()) {
 											<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $cls; ?>"><?php echo ucfirst($r['status']); ?></span>
 										</td>
 										<td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-emerald-600">₱<?php echo number_format((float)($r['total_amount'] ?? 0), 2); ?></td>
-										<td class="px-6 py-4 whitespace-nowrap text-sm">
-											<?php 
-											$payment_status = $r['payment_status'] ?? 'pending';
-											if ($payment_status === 'paid') {
-												echo '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Paid</span>';
-											} else {
-												echo '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>';
-											}
-											?>
-										</td>
 									</tr>
 								<?php endforeach; else: ?>
-									<tr><td colspan="8" class="px-6 py-4 text-center text-sm text-gray-500">No reservations found</td></tr>
+									<tr><td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">No reservations found</td></tr>
 								<?php endif; ?>
 							</tbody>
 						</table>

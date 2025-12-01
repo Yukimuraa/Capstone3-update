@@ -70,6 +70,7 @@ if (!empty($billing['to_location'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Billing Statement - USE OF VEHICLE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -236,12 +237,30 @@ if (!empty($billing['to_location'])) {
         .print-button:hover {
             background: #0056b3;
         }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .back-button:hover {
+            background: #5a6268;
+        }
         @media print {
             @page {
                 size: A4;
                 margin: 8mm;
             }
-            .print-button {
+            .print-button,
+            .back-button {
                 display: none;
             }
             body {
@@ -349,6 +368,9 @@ if (!empty($billing['to_location'])) {
     </style>
 </head>
 <body>
+    <a href="../admin/bus.php" class="back-button">
+        <i class="fas fa-arrow-left"></i> Back
+    </a>
     <button class="print-button" onclick="window.print()">
         <i class="fas fa-print"></i> Print Receipt
     </button>
@@ -484,21 +506,6 @@ if (!empty($billing['to_location'])) {
             </div>
         </div>
 
-        <div class="form-section" style="margin-top: 15px; padding: 10px; background-color: #f0f8ff; border: 2px solid #333; border-radius: 5px;">
-            <div class="form-row" style="align-items: center;">
-                <label style="font-weight: bold; font-size: 13px; min-width: 180px;">OR No. (Official Receipt):</label>
-                <span style="flex: 1; padding: 8px; border: 2px solid #333; border-radius: 3px; background-color: white; min-height: 25px; font-weight: bold; font-size: 14px;">
-                    <?php echo !empty($billing['or_number']) ? htmlspecialchars($billing['or_number']) : '_______________________________'; ?>
-                </span>
-            </div>
-            <p style="margin: 5px 0 0 0; font-size: 10px; color: #666; font-style: italic;">
-                <?php if (empty($billing['or_number'])): ?>
-                    * To be filled by the Cashier upon payment
-                <?php else: ?>
-                    Payment confirmed
-                <?php endif; ?>
-            </p>
-        </div>
 
         <div class="notes">
             <p><strong>Important Notes:</strong></p>

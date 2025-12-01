@@ -168,46 +168,13 @@ $users_result = $conn->query($users_query);
                     <?php unset($_SESSION['error']); ?>
                 <?php endif; ?>
                 
-                <!-- Filters -->
+                <!-- Manage Facilities Button -->
                 <div class="bg-white rounded-lg shadow p-4 mb-6">
-                    <form action="gym_bookings.php" method="GET" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                            <select id="status" name="status" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                                <option value="">All Statuses</option>
-                                <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="confirmed" <?php echo $status_filter === 'confirmed' ? 'selected' : ''; ?>>Confirmed</option>
-                                <option value="rejected" <?php echo $status_filter === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
-                                <option value="cancelled" <?php echo $status_filter === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                            <input type="date" id="date" name="date" value="<?php echo $date_filter; ?>" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                        </div>
-                        <div>
-                            <label for="user_id" class="block text-sm font-medium text-gray-700 mb-1">User</label>
-                            <select id="user_id" name="user_id" class="w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50">
-                                <option value="">All Users</option>
-                                <?php while ($user = $users_result->fetch_assoc()): ?>
-                                    <option value="<?php echo $user['id']; ?>" <?php echo $user_filter === (int)$user['id'] ? 'selected' : ''; ?>>
-                                        <?php echo $user['name']; ?> (<?php echo $user['email']; ?>)
-                                    </option>
-                                <?php endwhile; ?>
-                            </select>
-                        </div>
-                        <div class="md:col-span-3 flex items-center">
-                            <button type="submit" class="bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
-                                <i class="fas fa-filter mr-1"></i> Filter
-                            </button>
-                            <a href="gym_bookings.php" class="ml-2 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                                <i class="fas fa-sync-alt mr-1"></i> Reset
-                            </a>
-                            <a href="gym_management.php" class="ml-auto bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                                <i class="fas fa-cog mr-1"></i> Manage Facilities
-                            </a>
-                        </div>
-                    </form>
+                    <div class="flex justify-end">
+                        <a href="gym_management.php" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            <i class="fas fa-cog mr-1"></i> Manage Facilities
+                        </a>
+                    </div>
                 </div>
                 
                 <!-- Big Calendar (no external dependency) -->

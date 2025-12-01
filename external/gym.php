@@ -37,20 +37,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $chair_pairs = isset($_POST['chair_pairs']) ? intval($_POST['chair_pairs']) : 0;
             $other_event_type = isset($_POST['other_event_type']) && !empty($_POST['other_event_type']) ? sanitize_input($_POST['other_event_type']) : null;
             
-            // Normalize times to HH:MM:SS format for proper comparison
-            $start_time = trim($start_time);
-            $end_time = trim($end_time);
-            $start_normalized = (strlen($start_time) === 5) ? $start_time . ':00' : $start_time;
-            $end_normalized = (strlen($end_time) === 5) ? $end_time . ':00' : $end_time;
-            
-            // Validate booking date (must be in the future)
-            $booking_date = new DateTime($date);
-            $today = new DateTime();
-            $today->setTime(0, 0, 0); // Set time to beginning of day
-            
-            if ($booking_date < $today) {
-                $error_message = "Booking date must be in the future.";
-            } 
+            // Validate input formats
+            if (!preg_match('/^[A-Za-z\s]+$/', $organization)) {
+                $error_message = "Organization name must contain only letters and spaces.";
+            } elseif (!preg_match('/^[A-Za-z\s]+$/', $contact_person)) {
+                $error_message = "Contact person name must contain only letters and spaces.";
+            } elseif (!preg_match('/^[0-9]+$/', $contact_number)) {
+                $error_message = "Contact number must contain only numbers.";
+            } else {
+                // Normalize times to HH:MM:SS format for proper comparison
+                $start_time = trim($start_time);
+                $end_time = trim($end_time);
+                $start_normalized = (strlen($start_time) === 5) ? $start_time . ':00' : $start_time;
+                $end_normalized = (strlen($end_time) === 5) ? $end_time . ':00' : $end_time;
+                
+                // Validate booking date (must be at least 3 days in advance)
+                $booking_date = new DateTime($date);
+                $today = new DateTime();
+                $today->setTime(0, 0, 0); // Set time to beginning of day
+                $min_booking_date = clone $today;
+                $min_booking_date->modify('+3 days'); // Add 3 days to today
+                
+                if ($booking_date < $min_booking_date) {
+                    $error_message = "Reservations must be made at least 3 days in advance. The earliest available date is " . $min_booking_date->format('F j, Y') . ".";
+                } 
 			// Validate time (end time must be after start time)
 			elseif ($start_time >= $end_time) {
                 $error_message = "End time must be after start time.";
@@ -70,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					$error_message = "The gymnasium is unavailable from 12:00 PM to 1:00 PM (Lunch Break).";
 				}
 			}
+            } // Close the else block for input format validation
             
             // If no validation errors, proceed to check overlaps and insert booking
             if (empty($error_message)) {
@@ -100,7 +111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					// Equipment costs
 					$sound_system_cost = 0;
 					$electricity_cost = 0;
-					$led_wall_cost = 0;
 					$chairs_cost = 0;
 					
 					if (strpos($equipment, 'Sound System') !== false) {
@@ -109,18 +119,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					if (strpos($equipment, 'Electricity') !== false) {
 						$electricity_cost = $hours * 150; // Per hour
 					}
-					if (strpos($equipment, 'LED WALL') !== false) {
-						$led_wall_cost = $hours * 200; // Per hour
-					}
-					if (strpos($equipment, 'Chairs') !== false) {
-						// Calculate cost based on individual chairs
-						$chairs_cost = max(0, $chair_pairs) * 20; // ₱20 per individual chair
-						$number_of_pairs = 0; // Not used anymore, but keep for compatibility
+					// Chairs are always available - calculate cost based on quantity
+					// First 200 chairs are free, then ₱8 per additional chair
+					$chair_count = max(0, $chair_pairs);
+					if ($chair_count > 200) {
+						$chairs_cost = ($chair_count - 200) * 8; // ₱8 per chair beyond 200
 					} else {
-						$number_of_pairs = 0;
+						$chairs_cost = 0; // First 200 chairs are free
 					}
+					$number_of_pairs = 0; // Not used anymore, but keep for compatibility
 					
-					$total_cost = $gym_cost + $sound_system_cost + $electricity_cost + $led_wall_cost + $chairs_cost;
+					$total_cost = $gym_cost + $sound_system_cost + $electricity_cost + $chairs_cost;
 					
 					// Generate a collision-resistant booking ID and retry on duplicates
 					$year = date('Y');
@@ -133,7 +142,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 							'gymnasium' => $gym_cost,
 							'sound_system' => $sound_system_cost,
 							'electricity' => $electricity_cost,
-							'led_wall' => $led_wall_cost,
 							'chairs' => $chairs_cost,
 							'total' => $total_cost,
 							'hours' => round($hours, 2)
@@ -274,6 +282,20 @@ $bookings_stmt->bind_param("iii", $user_id, $offset, $per_page);
 $bookings_stmt->execute();
 $bookings_result = $bookings_stmt->get_result();
 
+// Get event types from database
+$event_types_query = "SELECT name FROM gym_event_types WHERE is_active = 1 ORDER BY name ASC";
+$event_types_result = $conn->query($event_types_query);
+$event_types = [];
+if ($event_types_result) {
+    while ($row = $event_types_result->fetch_assoc()) {
+        $event_types[] = $row['name'];
+    }
+}
+// If no event types found, use default list
+if (empty($event_types)) {
+    $event_types = ['Badminton', 'Basketball', 'Volleyball', 'Graduation Ceremony', 'Sports Tournament', 'Conference', 'Cultural Event', 'School Program', 'Other'];
+}
+
 // Facilities query removed - no longer using facility dropdown
 
 // Note: We no longer fully disable dates on the calendar to allow partial-day bookings
@@ -369,7 +391,7 @@ $bookings_result = $bookings_stmt->get_result();
                         <div class="p-4">
                             <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
                                 <li>Reservation must be made at least 3 days in advance.</li>
-                                <li>Maximum capacity of the gymnasium is 500 people.</li>
+                                <li>Maximum capacity of the gymnasium is 2500 people.</li>
                                 <li>Reservation are subject to approval by the administration.</li>
                                 <li>Cancellations must be made at least 24 hours before the scheduled time.</li>
                                 <li>The organization is responsible for cleaning up after the event.</li>
@@ -383,8 +405,7 @@ $bookings_result = $bookings_stmt->get_result();
                                     <li><strong>Gymnasium:</strong> ₱700 per hour</li>
                                     <li><strong>Sound System:</strong> ₱150 per hour</li>
                                     <li><strong>Electricity:</strong> ₱150 per hour</li>
-                                    <li><strong>LED WALL Electricity:</strong> ₱200 per hour</li>
-                                    <li><strong>Chairs:</strong> ₱20 per chair</li>
+                                    <li><strong>Chairs:</strong> First 200 chairs are free, then ₱8 per additional chair</li>
                                 </ul>
                             </div>
                         </div>
@@ -622,7 +643,11 @@ $bookings_result = $bookings_stmt->get_result();
             <div class="mb-4">
                 <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
                 <input type="date" id="date" name="date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                <p class="mt-1 text-xs text-gray-500">Select an available date</p>
+                <p class="mt-1 text-xs text-gray-500">Select an available date (minimum 3 days in advance)</p>
+                <p class="mt-1 text-xs text-amber-600">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Reservations must be made at least 3 days in advance.
+                </p>
             </div>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
@@ -638,15 +663,9 @@ $bookings_result = $bookings_stmt->get_result();
                 <label for="purpose" class="block text-sm font-medium text-gray-700 mb-1">Purpose/Event Type</label>
                 <select id="purpose" name="purpose" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50" onchange="toggleEquipmentDropdown()">
                     <option value="">Select event type</option>
-                    <option value="Badminton">Badminton</option>
-                    <option value="Basketball">Basketball</option>
-                    <option value="Volleyball">Volleyball</option>
-                    <option value="Graduation Ceremony">Graduation Ceremony</option>
-                    <option value="Sports Tournament">Sports Tournament</option>
-                    <option value="Conference">Conference</option>
-                    <option value="Cultural Event">Cultural Event</option>
-                    <option value="School Program">School Program</option>
-                    <option value="Other">Other</option>
+                    <?php foreach ($event_types as $event_type): ?>
+                        <option value="<?php echo htmlspecialchars($event_type); ?>"><?php echo htmlspecialchars($event_type); ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="mb-4" id="otherEventInput" style="display: none;">
@@ -660,44 +679,55 @@ $bookings_result = $bookings_stmt->get_result();
                     <option value="">Select equipment/service</option>
                     <option value="Sound System">Sound System</option>
                     <option value="Electricity">Electricity</option>
-                    <option value="LED WALL">LED WALL</option>
                     <option value="Chairs">Chairs</option>
                     <option value="Sound System + Electricity">Sound System + Electricity</option>
-                    <option value="Sound System + LED WALL">Sound System + LED WALL</option>
                     <option value="Sound System + Chairs">Sound System + Chairs</option>
-                    <option value="Electricity + LED WALL">Electricity + LED WALL</option>
                     <option value="Electricity + Chairs">Electricity + Chairs</option>
-                    <option value="LED WALL + Chairs">LED WALL + Chairs</option>
-                    <option value="Sound System + Electricity + LED WALL">Sound System + Electricity + LED WALL</option>
                     <option value="Sound System + Electricity + Chairs">Sound System + Electricity + Chairs</option>
-                    <option value="Sound System + LED WALL + Chairs">Sound System + LED WALL + Chairs</option>
-                    <option value="Electricity + LED WALL + Chairs">Electricity + LED WALL + Chairs</option>
-                    <option value="Sound System + Electricity + LED WALL + Chairs">Sound System + Electricity + LED WALL + Chairs</option>
                 </select>
                 <p class="mt-1 text-xs text-gray-500">Select the equipment or services you need for your event</p>
             </div>
-            <div class="mb-4" id="chairPairsField" style="display: none;">
+            <div class="mb-4" id="chairPairsField">
                 <label for="chair_pairs" class="block text-sm font-medium text-gray-700 mb-1">Number of Chairs</label>
                 <input type="number" id="chair_pairs" name="chair_pairs" min="0" value="0" class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                <p class="mt-1 text-xs text-gray-500">Enter the number of individual chairs needed (₱20 per chair)</p>
+                <p class="mt-1 text-xs text-gray-500">First 200 chairs are free. Additional chairs beyond 200 are ₱8 each.</p>
             </div>
             <div class="mb-4">
                 <label for="attendees" class="block text-sm font-medium text-gray-700 mb-1">Expected Number of Attendees</label>
-                <input type="number" id="attendees" name="attendees" min="1" max="500" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                <p class="mt-1 text-xs text-gray-500">Maximum capacity: 500 people</p>
+                <input type="number" id="attendees" name="attendees" min="1" max="2500" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                <p class="mt-1 text-xs text-gray-500">Maximum capacity: 2500 people</p>
             </div>
             <div class="mb-4">
                 <label for="organization" class="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
-                <input type="text" id="organization" name="organization" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                <input type="text" id="organization" name="organization" required 
+                       pattern="[A-Za-z\s]+" 
+                       title="Organization name must contain only letters and spaces"
+                       onkeypress="return /[A-Za-z\s]/.test(event.key)" 
+                       oninput="this.value = this.value.replace(/[^A-Za-z\s]/g, '')"
+                       class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                <p class="mt-1 text-xs text-gray-500">Letters and spaces only</p>
             </div>
             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div>
                     <label for="contact_person" class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-                    <input type="text" id="contact_person" name="contact_person" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                    <input type="text" id="contact_person" name="contact_person" required 
+                           pattern="[A-Za-z\s]+" 
+                           title="Contact person name must contain only letters and spaces"
+                           onkeypress="return /[A-Za-z\s]/.test(event.key)" 
+                           oninput="this.value = this.value.replace(/[^A-Za-z\s]/g, '')"
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                    <p class="mt-1 text-xs text-gray-500">Letters and spaces only</p>
                 </div>
                 <div>
                     <label for="contact_number" class="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
-                    <input type="text" id="contact_number" name="contact_number" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                    <input type="text" id="contact_number" name="contact_number" required 
+                           pattern="[0-9]+" 
+                           title="Contact number must contain only numbers"
+                           inputmode="numeric"
+                           onkeypress="return (event.charCode >= 48 && event.charCode <= 57)" 
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
+                    <p class="mt-1 text-xs text-gray-500">Numbers only</p>
                 </div>
             </div>
             <div class="flex justify-end">
@@ -807,18 +837,21 @@ $bookings_result = $bookings_stmt->get_result();
                         <span class="font-medium text-gray-900">₱<?php echo number_format($costs['electricity'], 2); ?></span>
                     </div>
                     <?php endif; ?>
-                    <?php if ($costs['led_wall'] > 0): ?>
-                    <div class="flex justify-between">
-                        <span class="text-gray-700">LED WALL Electricity (₱200/hour × <?php echo $receipt['hours']; ?> hrs):</span>
-                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['led_wall'], 2); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($costs['chairs'] > 0): 
-                        $chairs_count = isset($receipt['chairs_count']) ? $receipt['chairs_count'] : 0;
+                    <?php 
+                    $chairs_count = isset($receipt['chairs_count']) ? $receipt['chairs_count'] : 0;
+                    if ($chairs_count > 0): 
+                        $free_chairs = min(200, $chairs_count);
+                        $paid_chairs = max(0, $chairs_count - 200);
                     ?>
                     <div class="flex justify-between">
-                        <span class="text-gray-700">Chairs (<?php echo $chairs_count; ?> chairs × ₱20):</span>
-                        <span class="font-medium text-gray-900">₱<?php echo number_format($costs['chairs'], 2); ?></span>
+                        <span class="text-gray-700">Chairs (<?php echo $chairs_count; ?> total):</span>
+                        <span class="font-medium text-gray-900">
+                            <?php if ($chairs_count <= 200): ?>
+                                Free (<?php echo $chairs_count; ?> chairs)
+                            <?php else: ?>
+                                ₱<?php echo number_format($costs['chairs'], 2); ?> (<?php echo $free_chairs; ?> free + <?php echo $paid_chairs; ?> × ₱8)
+                            <?php endif; ?>
+                        </span>
                     </div>
                     <?php endif; ?>
                     <div class="border-t-2 border-blue-300 pt-2 mt-2">
@@ -983,27 +1016,18 @@ $bookings_result = $bookings_stmt->get_result();
             equipmentDropdown.style.display = 'block';
         } else {
             equipmentDropdown.style.display = 'none';
-            // Also hide chair pairs field if equipment dropdown is hidden
-            document.getElementById('chairPairsField').style.display = 'none';
         }
-        // Check if chairs field should be shown
-        toggleChairPairsField();
+        // Chairs are always available, so always show the field
+        document.getElementById('chairPairsField').style.display = 'block';
     }
     
-    // Toggle chair pairs field when Chairs is selected in equipment
+    // Toggle chair pairs field - chairs are always available
     function toggleChairPairsField() {
         const equipmentSelect = document.getElementById('equipment');
         const chairPairsField = document.getElementById('chairPairsField');
         
-        if (equipmentSelect && equipmentSelect.value && equipmentSelect.value.includes('Chairs')) {
-            chairPairsField.style.display = 'block';
-        } else {
-            chairPairsField.style.display = 'none';
-            // Reset the value when hidden
-            if (document.getElementById('chair_pairs')) {
-                document.getElementById('chair_pairs').value = 0;
-            }
-        }
+        // Chairs are always available, so always show the field
+        chairPairsField.style.display = 'block';
     }
     
     // Reminder modal functions
@@ -1070,7 +1094,8 @@ $bookings_result = $bookings_stmt->get_result();
             otherEventInputField.value = '';
             otherEventInputField.required = false;
         }
-        document.getElementById('chairPairsField').style.display = 'none';
+        // Chairs are always available, so keep the field visible
+        document.getElementById('chairPairsField').style.display = 'block';
         document.getElementById('chair_pairs').value = 0;
     }
     
@@ -1210,9 +1235,14 @@ $bookings_result = $bookings_stmt->get_result();
         }, 500);
         <?php endif; ?>
         // Initialize flatpickr calendar (do not disable entire dates)
+        // Calculate minimum date (3 days from today)
+        const today = new Date();
+        const minDate = new Date(today);
+        minDate.setDate(today.getDate() + 3);
+        
         flatpickr("#booking-calendar", {
             inline: true,
-            minDate: "today",
+            minDate: minDate,
             dateFormat: "Y-m-d",
             onChange: function(selectedDates, dateStr) {
                 if (selectedDates.length > 0) {
@@ -1478,8 +1508,13 @@ $bookings_result = $bookings_stmt->get_result();
         });
         
         // Initialize date picker in booking form
+        // Calculate minimum date (3 days from today)
+        const todayForm = new Date();
+        const minDateForm = new Date(todayForm);
+        minDateForm.setDate(todayForm.getDate() + 3);
+        
         flatpickr("#date", {
-            minDate: "today",
+            minDate: minDateForm,
             dateFormat: "Y-m-d"
         });
     });

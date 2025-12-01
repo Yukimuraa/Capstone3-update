@@ -77,6 +77,36 @@ while ($row = $result->fetch_assoc()) {
     $cart_items[] = $row;
     $total_price += $row['price'] * $row['quantity'];
 }
+
+// Validate P.E. T-shirt and P.E. Pants requirement: They must be ordered together with matching quantities
+$pe_tshirt_quantity = 0;
+$pe_pants_quantity = 0;
+$pe_tshirt_name = '';
+$pe_pants_name = '';
+
+foreach ($cart_items as $item) {
+    $item_name_lower = strtolower($item['name']);
+    // Check for P.E. T-shirt (various formats: "P.E T-Shirt", "P.E. T-Shirt", "PE T-Shirt", etc.)
+    if ((stripos($item_name_lower, 'p.e') !== false || stripos($item_name_lower, 'pe') !== false) && 
+        (stripos($item_name_lower, 't-shirt') !== false || stripos($item_name_lower, 'tshirt') !== false)) {
+        $pe_tshirt_quantity += $item['quantity'];
+        if (empty($pe_tshirt_name)) {
+            $pe_tshirt_name = $item['name'];
+        }
+    }
+    // Check for P.E. Pants (various formats: "P.E - Pants", "P.E. Pants", "PE Pants", etc.)
+    if ((stripos($item_name_lower, 'p.e') !== false || stripos($item_name_lower, 'pe') !== false) && 
+        stripos($item_name_lower, 'pants') !== false) {
+        $pe_pants_quantity += $item['quantity'];
+        if (empty($pe_pants_name)) {
+            $pe_pants_name = $item['name'];
+        }
+    }
+}
+
+$has_pe_tshirt = $pe_tshirt_quantity > 0;
+$has_pe_pants = $pe_pants_quantity > 0;
+$pe_quantities_match = ($pe_tshirt_quantity === $pe_pants_quantity);
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -120,6 +150,38 @@ while ($row = $result->fetch_assoc()) {
                 <?php if (!empty($success)): ?>
                     <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4">
                         <p><?php echo $success; ?></p>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if ($has_pe_tshirt && !$has_pe_pants): ?>
+                    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-yellow-600 text-xl mr-3 mt-0.5"></i>
+                            <div>
+                                <p class="font-semibold">P.E. Pants Required</p>
+                                <p class="text-sm mt-1">You have <strong><?php echo htmlspecialchars($pe_tshirt_name); ?></strong> (Quantity: <?php echo $pe_tshirt_quantity; ?>) in your cart. P.E. Pants is required when ordering P.E. T-shirt. Please add <?php echo $pe_tshirt_quantity; ?> P.E. Pants to your cart before proceeding to checkout.</p>
+                            </div>
+                        </div>
+                    </div>
+                <?php elseif ($has_pe_pants && !$has_pe_tshirt): ?>
+                    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-yellow-600 text-xl mr-3 mt-0.5"></i>
+                            <div>
+                                <p class="font-semibold">P.E. T-shirt Required</p>
+                                <p class="text-sm mt-1">You have <strong><?php echo htmlspecialchars($pe_pants_name); ?></strong> (Quantity: <?php echo $pe_pants_quantity; ?>) in your cart. P.E. T-shirt is required when ordering P.E. Pants. Please add <?php echo $pe_pants_quantity; ?> P.E. T-shirt(s) to your cart before proceeding to checkout.</p>
+                            </div>
+                        </div>
+                    </div>
+                <?php elseif ($has_pe_tshirt && $has_pe_pants && !$pe_quantities_match): ?>
+                    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-triangle text-yellow-600 text-xl mr-3 mt-0.5"></i>
+                            <div>
+                                <p class="font-semibold">Quantity Mismatch</p>
+                                <p class="text-sm mt-1">You have <strong><?php echo $pe_tshirt_quantity; ?> P.E. T-shirt(s)</strong> but only <strong><?php echo $pe_pants_quantity; ?> P.E. Pants</strong> in your cart. The quantities must match. Please adjust your cart so you have <?php echo $pe_tshirt_quantity; ?> P.E. Pants to match your <?php echo $pe_tshirt_quantity; ?> P.E. T-shirt(s).</p>
+                            </div>
+                        </div>
                     </div>
                 <?php endif; ?>
                 
@@ -214,9 +276,27 @@ while ($row = $result->fetch_assoc()) {
                                         </div>
                                         
                                         <div class="pt-4">
-                                            <a href="checkout.php" class="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                                <i class="fas fa-check mr-2"></i> Proceed to Checkout
-                                            </a>
+                                            <?php if (($has_pe_tshirt && !$has_pe_pants) || ($has_pe_pants && !$has_pe_tshirt) || ($has_pe_tshirt && $has_pe_pants && !$pe_quantities_match)): ?>
+                                                <button disabled class="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-gray-400 cursor-not-allowed opacity-50">
+                                                    <i class="fas fa-ban mr-2"></i> Cannot Proceed to Checkout
+                                                </button>
+                                                <div class="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                                    <p class="text-xs text-yellow-800">
+                                                        <i class="fas fa-info-circle mr-1"></i>
+                                                        <?php if ($has_pe_tshirt && !$has_pe_pants): ?>
+                                                            P.E. Pants is required when ordering P.E. T-shirt. Please add <?php echo $pe_tshirt_quantity; ?> P.E. Pants to your cart.
+                                                        <?php elseif ($has_pe_pants && !$has_pe_tshirt): ?>
+                                                            P.E. T-shirt is required when ordering P.E. Pants. Please add <?php echo $pe_pants_quantity; ?> P.E. T-shirt(s) to your cart.
+                                                        <?php else: ?>
+                                                            P.E. T-shirt quantity (<?php echo $pe_tshirt_quantity; ?>) must match P.E. Pants quantity (<?php echo $pe_pants_quantity; ?>). Please adjust your cart.
+                                                        <?php endif; ?>
+                                                    </p>
+                                                </div>
+                                            <?php else: ?>
+                                                <a href="checkout.php" class="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                                    <i class="fas fa-check mr-2"></i> Proceed to Checkout
+                                                </a>
+                                            <?php endif; ?>
                                         </div>
                                         
                                         <div class="mt-4 p-3 bg-blue-50 rounded-lg">

@@ -14,6 +14,30 @@ $user_name = $_SESSION['user_sessions'][$active_type]['user_name'];
 $page_title = "Gym Management - CHMSU BAO";
 $base_url = "..";
 
+// Create gym_event_types table if it doesn't exist
+$create_table_sql = "CREATE TABLE IF NOT EXISTS gym_event_types (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+$conn->query($create_table_sql);
+
+// Insert default event types if table is empty
+$check_defaults = $conn->query("SELECT COUNT(*) as count FROM gym_event_types");
+if ($check_defaults && $check_defaults->fetch_assoc()['count'] == 0) {
+    $default_types = [
+        'Badminton', 'Basketball', 'Volleyball', 'Graduation Ceremony',
+        'Sports Tournament', 'Conference', 'Cultural Event', 'School Program', 'Other'
+    ];
+    $stmt = $conn->prepare("INSERT INTO gym_event_types (name) VALUES (?)");
+    foreach ($default_types as $type) {
+        $stmt->bind_param("s", $type);
+        $stmt->execute();
+    }
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -142,6 +166,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        
+        // Add new event type
+        elseif ($_POST['action'] === 'add_event_type') {
+            $event_type_name = sanitize_input($_POST['event_type_name']);
+            
+            if (empty($event_type_name)) {
+                $_SESSION['error'] = "Event type name is required.";
+            } else {
+                $stmt = $conn->prepare("INSERT INTO gym_event_types (name) VALUES (?)");
+                $stmt->bind_param("s", $event_type_name);
+                
+                if ($stmt->execute()) {
+                    $_SESSION['success'] = "Event type has been added successfully.";
+                } else {
+                    if ($conn->errno == 1062) {
+                        $_SESSION['error'] = "Event type already exists.";
+                    } else {
+                        $_SESSION['error'] = "Error adding event type: " . $conn->error;
+                    }
+                }
+            }
+        }
+        
+        // Update event type
+        elseif ($_POST['action'] === 'update_event_type' && isset($_POST['event_type_id'])) {
+            $event_type_id = (int)$_POST['event_type_id'];
+            $event_type_name = sanitize_input($_POST['event_type_name']);
+            
+            if (empty($event_type_name)) {
+                $_SESSION['error'] = "Event type name is required.";
+            } else {
+                $stmt = $conn->prepare("UPDATE gym_event_types SET name = ? WHERE id = ?");
+                $stmt->bind_param("si", $event_type_name, $event_type_id);
+                
+                if ($stmt->execute()) {
+                    $_SESSION['success'] = "Event type has been updated successfully.";
+                } else {
+                    if ($conn->errno == 1062) {
+                        $_SESSION['error'] = "Event type already exists.";
+                    } else {
+                        $_SESSION['error'] = "Error updating event type: " . $conn->error;
+                    }
+                }
+            }
+        }
+        
+        // Delete event type
+        elseif ($_POST['action'] === 'delete_event_type' && isset($_POST['event_type_id'])) {
+            $event_type_id = (int)$_POST['event_type_id'];
+            
+            // Check if event type is in use (don't allow deletion if it's "Other")
+            $check_stmt = $conn->prepare("SELECT name FROM gym_event_types WHERE id = ?");
+            $check_stmt->bind_param("i", $event_type_id);
+            $check_stmt->execute();
+            $result = $check_stmt->get_result();
+            $row = $result->fetch_assoc();
+            
+            if ($row && $row['name'] === 'Other') {
+                $_SESSION['error'] = "Cannot delete 'Other' event type as it is required by the system.";
+            } else {
+                $stmt = $conn->prepare("DELETE FROM gym_event_types WHERE id = ?");
+                $stmt->bind_param("i", $event_type_id);
+                
+                if ($stmt->execute()) {
+                    $_SESSION['success'] = "Event type has been deleted successfully.";
+                } else {
+                    $_SESSION['error'] = "Error deleting event type: " . $conn->error;
+                }
+            }
+        }
+        
+        // Toggle event type status
+        elseif ($_POST['action'] === 'toggle_event_type_status' && isset($_POST['event_type_id'])) {
+            $event_type_id = (int)$_POST['event_type_id'];
+            
+            $stmt = $conn->prepare("UPDATE gym_event_types SET is_active = NOT is_active WHERE id = ?");
+            $stmt->bind_param("i", $event_type_id);
+            
+            if ($stmt->execute()) {
+                $_SESSION['success'] = "Event type status has been updated successfully.";
+            } else {
+                $_SESSION['error'] = "Error updating event type status: " . $conn->error;
+            }
+        }
     }
     
     // Redirect to prevent form resubmission
@@ -152,7 +260,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get filter parameters
 $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
 $date_filter = isset($_GET['date']) ? $_GET['date'] : 'all';
-$facility_filter = isset($_GET['facility']) ? (int)$_GET['facility'] : 0;
 $search = isset($_GET['search']) ? sanitize_input($_GET['search']) : '';
 
 // Build the query based on filters
@@ -184,12 +291,7 @@ if ($date_filter == 'upcoming') {
     $param_types .= "s";
 }
 
-// Facility filter (if facility_id is in additional_info)
-if ($facility_filter > 0) {
-    $query_conditions[] = "JSON_EXTRACT(b.additional_info, '$.facility_id') = ?";
-    $query_params[] = $facility_filter;
-    $param_types .= "i";
-}
+// Facility filter removed - no longer filtering by facility
 
 // Search filter
 if (!empty($search)) {
@@ -254,6 +356,10 @@ $stats = $stats_result->fetch_assoc();
 // Get facilities for management
 $facilities_management_query = "SELECT * FROM gym_facilities ORDER BY name ASC";
 $facilities_management_result = $conn->query($facilities_management_query);
+
+// Get event types for management
+$event_types_query = "SELECT * FROM gym_event_types ORDER BY name ASC";
+$event_types_result = $conn->query($event_types_query);
 ?>
 
 <?php include '../includes/header.php'; ?>
@@ -300,8 +406,8 @@ $facilities_management_result = $conn->query($facilities_management_query);
                             <button class="tab-button border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="bookings">
                                 Bookings
                             </button>
-                            <button class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="facilities">
-                                Facilities
+                            <button class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="event-type">
+                                Event Type
                             </button>
                         </nav>
                     </div>
@@ -370,7 +476,7 @@ $facilities_management_result = $conn->query($facilities_management_query);
                     
                     <!-- Filters -->
                     <div class="mb-6 bg-white rounded-lg shadow p-4">
-                        <form action="gym_management.php" method="GET" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <form action="gym_management.php" method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
                                 <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
                                 <select id="status" name="status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -384,17 +490,6 @@ $facilities_management_result = $conn->query($facilities_management_query);
                             <div>
                                 <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
                                 <input type="date" id="date" name="date" value="<?php echo $date_filter; ?>" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                            </div>
-                            <div>
-                                <label for="facility" class="block text-sm font-medium text-gray-700 mb-1">Facility</label>
-                                <select id="facility" name="facility" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
-                                    <option value="0">All Facilities</option>
-                                    <?php while ($facility = $facilities_result->fetch_assoc()): ?>
-                                        <option value="<?php echo $facility['id']; ?>" <?php echo $facility_filter === $facility['id'] ? 'selected' : ''; ?>>
-                                            <?php echo $facility['name']; ?>
-                                        </option>
-                                    <?php endwhile; ?>
-                                </select>
                             </div>
                             <div>
                                 <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
@@ -629,20 +724,20 @@ $facilities_management_result = $conn->query($facilities_management_query);
                     </div>
                 </div>
                 
-                <!-- Facilities Tab Content -->
-                <div id="facilities-tab" class="tab-content hidden">
-                    <!-- Add Facility Button -->
+                <!-- Event Type Tab Content -->
+                <div id="event-type-tab" class="tab-content hidden">
+                    <!-- Add Event Type Button -->
                     <div class="mb-6">
-                        <button type="button" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="openAddFacilityModal()">
-                            <i class="fas fa-plus mr-1"></i> Add New Facility
+                        <button type="button" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="openAddEventTypeModal()">
+                            <i class="fas fa-plus mr-1"></i> Add New Event Type
                         </button>
                     </div>
                     
-                    <!-- Facilities Table -->
+                    <!-- Event Types Table -->
                     <div class="bg-white rounded-lg shadow">
                         <div class="px-4 py-5 border-b border-gray-200 sm:px-6">
-                            <h3 class="text-lg font-medium text-gray-900">Gym Facilities</h3>
-                            <p class="mt-1 text-sm text-gray-500">Manage gym facilities</p>
+                            <h3 class="text-lg font-medium text-gray-900">Event Types</h3>
+                            <p class="mt-1 text-sm text-gray-500">Manage purpose/event types for gym reservations</p>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
@@ -650,53 +745,43 @@ $facilities_management_result = $conn->query($facilities_management_query);
                                     <tr>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capacity</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
-                                    <?php if ($facilities_management_result->num_rows > 0): ?>
-                                        <?php while ($facility = $facilities_management_result->fetch_assoc()): ?>
+                                    <?php if ($event_types_result->num_rows > 0): ?>
+                                        <?php while ($event_type = $event_types_result->fetch_assoc()): ?>
                                             <?php 
-                                            $status_class = '';
-                                            
-                                            switch ($facility['status']) {
-                                                case 'active':
-                                                    $status_class = 'bg-green-100 text-green-800';
-                                                    break;
-                                                case 'inactive':
-                                                    $status_class = 'bg-red-100 text-red-800';
-                                                    break;
-                                                case 'maintenance':
-                                                    $status_class = 'bg-yellow-100 text-yellow-800';
-                                                    break;
-                                            }
+                                            $status_class = $event_type['is_active'] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
+                                            $status_text = $event_type['is_active'] ? 'Active' : 'Inactive';
                                             ?>
                                             <tr>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $facility['id']; ?></td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $facility['name']; ?></td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $facility['capacity']; ?> people</td>
-                                                <td class="px-6 py-4 text-sm text-gray-500"><?php echo $facility['description']; ?></td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $event_type['id']; ?></td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo htmlspecialchars($event_type['name']); ?></td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                        <?php echo ucfirst($facility['status']); ?>
+                                                        <?php echo $status_text; ?>
                                                     </span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <button type="button" class="text-blue-600 hover:text-blue-900 mr-3" onclick="openEditFacilityModal(<?php echo htmlspecialchars(json_encode($facility)); ?>)">
+                                                    <button type="button" class="text-blue-600 hover:text-blue-900 mr-3" onclick="openEditEventTypeModal(<?php echo htmlspecialchars(json_encode($event_type)); ?>)">
                                                         Edit
                                                     </button>
-                                                    <button type="button" class="text-red-600 hover:text-red-900" onclick="openDeleteFacilityModal(<?php echo $facility['id']; ?>, '<?php echo $facility['name']; ?>')">
-                                                        Delete
+                                                    <?php if ($event_type['name'] !== 'Other'): ?>
+                                                        <button type="button" class="text-red-600 hover:text-red-900 mr-3" onclick="openDeleteEventTypeModal(<?php echo $event_type['id']; ?>, '<?php echo htmlspecialchars($event_type['name']); ?>')">
+                                                            Delete
+                                                        </button>
+                                                    <?php endif; ?>
+                                                    <button type="button" class="text-<?php echo $event_type['is_active'] ? 'yellow' : 'green'; ?>-600 hover:text-<?php echo $event_type['is_active'] ? 'yellow' : 'green'; ?>-900" onclick="toggleEventTypeStatus(<?php echo $event_type['id']; ?>)">
+                                                        <?php echo $event_type['is_active'] ? 'Deactivate' : 'Activate'; ?>
                                                     </button>
                                                 </td>
                                             </tr>
                                         <?php endwhile; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No facilities found</td>
+                                            <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">No event types found</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
@@ -966,6 +1051,86 @@ $facilities_management_result = $conn->query($facilities_management_query);
     </div>
 </div>
 
+<!-- Add Event Type Modal -->
+<div id="addEventTypeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Add New Event Type</h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeAddEventTypeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form method="POST" action="gym_management.php">
+            <input type="hidden" name="action" value="add_event_type">
+            <div class="mb-4">
+                <label for="add-event-type-name" class="block text-sm font-medium text-gray-700 mb-1">Event Type Name</label>
+                <input type="text" id="add-event-type-name" name="event_type_name" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50" placeholder="e.g., Tennis">
+            </div>
+            <div class="flex justify-end">
+                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeAddEventTypeModal()">
+                    Cancel
+                </button>
+                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Add
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Event Type Modal -->
+<div id="editEventTypeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Edit Event Type</h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeEditEventTypeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form method="POST" action="gym_management.php">
+            <input type="hidden" name="action" value="update_event_type">
+            <input type="hidden" name="event_type_id" id="edit-event-type-id">
+            <div class="mb-4">
+                <label for="edit-event-type-name" class="block text-sm font-medium text-gray-700 mb-1">Event Type Name</label>
+                <input type="text" id="edit-event-type-name" name="event_type_name" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50">
+            </div>
+            <div class="flex justify-end">
+                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeEditEventTypeModal()">
+                    Cancel
+                </button>
+                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Update
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Event Type Modal -->
+<div id="deleteEventTypeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Delete Event Type</h3>
+            <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeDeleteEventTypeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <p class="text-gray-700 mb-4">Are you sure you want to delete "<span id="delete-event-type-name"></span>"?</p>
+        <form method="POST" action="gym_management.php">
+            <input type="hidden" name="action" value="delete_event_type">
+            <input type="hidden" name="event_type_id" id="delete-event-type-id">
+            <div class="flex justify-end">
+                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeDeleteEventTypeModal()">
+                    Cancel
+                </button>
+                <button type="submit" class="bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                    Delete
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
     // Mobile menu toggle
     document.getElementById('menu-button').addEventListener('click', function() {
@@ -1025,7 +1190,14 @@ $facilities_management_result = $conn->query($facilities_management_query);
         
         // Set status with appropriate styling
         const statusElement = document.getElementById('detail-status');
-        statusElement.textContent = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+        let statusText = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+        
+        // Change "Confirmed" to "Approved" for display
+        if (booking.status === 'confirmed') {
+            statusText = 'Approved';
+        }
+        
+        statusElement.textContent = statusText;
         
         // Reset classes
         statusElement.className = 'mt-1 text-sm px-2 inline-flex text-xs leading-5 font-semibold rounded-full';
@@ -1035,6 +1207,7 @@ $facilities_management_result = $conn->query($facilities_management_query);
             case 'pending':
                 statusElement.classList.add('bg-yellow-100', 'text-yellow-800');
                 break;
+            case 'confirmed':
             case 'approved':
                 statusElement.classList.add('bg-green-100', 'text-green-800');
                 break;
@@ -1134,6 +1307,62 @@ $facilities_management_result = $conn->query($facilities_management_query);
     
     function closeDeleteFacilityModal() {
         document.getElementById('deleteFacilityModal').classList.add('hidden');
+    }
+    
+    // Add event type modal functions
+    function openAddEventTypeModal() {
+        document.getElementById('addEventTypeModal').classList.remove('hidden');
+        document.getElementById('add-event-type-name').value = '';
+    }
+    
+    function closeAddEventTypeModal() {
+        document.getElementById('addEventTypeModal').classList.add('hidden');
+    }
+    
+    // Edit event type modal functions
+    function openEditEventTypeModal(eventType) {
+        document.getElementById('edit-event-type-id').value = eventType.id;
+        document.getElementById('edit-event-type-name').value = eventType.name;
+        document.getElementById('editEventTypeModal').classList.remove('hidden');
+    }
+    
+    function closeEditEventTypeModal() {
+        document.getElementById('editEventTypeModal').classList.add('hidden');
+    }
+    
+    // Delete event type modal functions
+    function openDeleteEventTypeModal(eventTypeId, eventTypeName) {
+        document.getElementById('delete-event-type-id').value = eventTypeId;
+        document.getElementById('delete-event-type-name').textContent = eventTypeName;
+        document.getElementById('deleteEventTypeModal').classList.remove('hidden');
+    }
+    
+    function closeDeleteEventTypeModal() {
+        document.getElementById('deleteEventTypeModal').classList.add('hidden');
+    }
+    
+    // Toggle event type status
+    function toggleEventTypeStatus(eventTypeId) {
+        if (confirm('Are you sure you want to change the status of this event type?')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'gym_management.php';
+            
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = 'toggle_event_type_status';
+            form.appendChild(actionInput);
+            
+            const idInput = document.createElement('input');
+            idInput.type = 'hidden';
+            idInput.name = 'event_type_id';
+            idInput.value = eventTypeId;
+            form.appendChild(idInput);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
     }
     
     // Print receipt function

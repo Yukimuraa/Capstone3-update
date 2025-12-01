@@ -332,13 +332,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Error already set from file upload validation
             } elseif (empty($start_date) || empty($end_date)) {
                 $error = 'Start date and end date are required.';
-            } elseif (strtotime($end_date) < strtotime($start_date)) {
-                $error = 'End date cannot be before start date.';
-            } elseif ($no_of_days <= 0) {
-                $error = 'Invalid date range. Number of days must be at least 1.';
-            } elseif (empty($approval_document_path)) {
-                $error = 'President approval document is required.';
             } else {
+                // Validate that start date is at least 3 days in advance
+                $start_date_obj = new DateTime($start_date);
+                $today = new DateTime();
+                $today->setTime(0, 0, 0); // Set time to beginning of day
+                $min_start_date = clone $today;
+                $min_start_date->modify('+3 days'); // Add 3 days to today
+                
+                if ($start_date_obj < $min_start_date) {
+                    $error = "Bus reservations must be made at least 3 days in advance. The earliest available start date is " . $min_start_date->format('F j, Y') . ".";
+                } elseif (strtotime($end_date) < strtotime($start_date)) {
+                    $error = 'End date cannot be before start date.';
+                } elseif ($no_of_days <= 0) {
+                    $error = 'Invalid date range. Number of days must be at least 1.';
+                } elseif (empty($approval_document_path)) {
+                    $error = 'President approval document is required.';
+                }
+            }
+            
+            // Continue with other validations if no error yet
+            if (empty($error)) {
                 // Check if bus is available for the date range
                 $date_check = checkBusAvailabilityForRange($conn, $bus_no, $start_date, $end_date);
                 if (!$date_check['available']) {
@@ -348,129 +362,167 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($from_location === $to_location) {
                     $error = 'From and To locations must be different.';
                 } else {
-                // Start transaction
-                $conn->begin_transaction();
-                
-                try {
-                    // Combine school name and client organization
-                    $full_client = $school_name . ' - ' . $client;
+                    // Start transaction
+                    $conn->begin_transaction();
                     
-                    // Insert bus schedule with approval document
-                    $stmt = $conn->prepare("INSERT INTO bus_schedules (client, destination, purpose, date_covered, vehicle, bus_no, no_of_days, no_of_vehicles, user_id, user_type, status, approval_document) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'pending', ?)");
-                    $stmt->bind_param("sssssssiis", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no, $no_of_days, $no_of_vehicles, $_SESSION['user_id'], $approval_document_path);
-                    
-                    if ($stmt->execute()) {
-                        $schedule_id = $conn->insert_id;
+                    try {
+                        // Combine school name and client organization
+                        $full_client = $school_name . ' - ' . $client;
                         
-                        // Get bus ID and create bus booking record
-                        $bus_id = getBusIdByNumber($conn, $bus_no);
-                        if (!$bus_id) {
-                            throw new Exception('Invalid bus number');
-                        }
+                        // Insert bus schedule with approval document
+                        $stmt = $conn->prepare("INSERT INTO bus_schedules (client, destination, purpose, date_covered, vehicle, bus_no, no_of_days, no_of_vehicles, user_id, user_type, status, approval_document) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'pending', ?)");
+                        $stmt->bind_param("sssssssiis", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no, $no_of_days, $no_of_vehicles, $_SESSION['user_id'], $approval_document_path);
                         
-                        // Insert bus booking records for each day in the date range
-                        $current_date = $start_date;
-                        $end_timestamp = strtotime($end_date);
-                        
-                        while (strtotime($current_date) <= $end_timestamp) {
-                            $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
-                            $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                        if ($stmt->execute()) {
+                            $schedule_id = $conn->insert_id;
                             
-                            if (!$bus_booking_stmt->execute()) {
-                                throw new Exception('Error creating bus booking: ' . $conn->error);
+                            // Get bus ID and create bus booking record
+                            $bus_id = getBusIdByNumber($conn, $bus_no);
+                            if (!$bus_id) {
+                                throw new Exception('Invalid bus number');
                             }
                             
-                            // Move to next day
-                            $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
-                        }
-                        
-                        // Update bus status to booked when booking is created
-                        $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
-                        $update_bus_status->bind_param("i", $bus_id);
-                        $update_bus_status->execute();
-                        
-                        // Calculate billing statement (include continuation if provided)
-                        $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation);
-                        
-                        // Insert billing statement with default payment_status as 'pending'
-                        $billing_stmt = $conn->prepare("INSERT INTO billing_statements 
-                            (schedule_id, client, destination, purpose, date_covered, no_of_days, vehicle, bus_no, no_of_vehicles,
-                             from_location, to_location, distance_km, total_distance_km, fuel_rate, computed_distance, runtime_liters,
-                             fuel_cost, runtime_cost, maintenance_cost, standby_cost, additive_cost, rate_per_bus, subtotal_per_vehicle, total_amount,
-                             prepared_by, recommending_approval, payment_status) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
-                        
-                        $prepared_by = $_SESSION['user_name'] ?? 'Student';
-                        $recommending = 'NEUYER JAN C. BALA-AN, Director, Business Affairs Office';
-                        
-                        $billing_stmt->bind_param("isssisissdddddddddddddddss", 
-                            $schedule_id, 
-                            $full_client, 
-                            $destination, 
-                            $purpose, 
-                            $date_covered, 
-                            $no_of_days, 
-                            $vehicle, 
-                            $bus_no, 
-                            $no_of_vehicles,
-                            $billing['from_location'], 
-                            $billing['to_location'], 
-                            $billing['distance_km'], 
-                            $billing['total_distance_km'], 
-                            $billing['fuel_rate'], 
-                            $billing['computed_distance'], 
-                            $billing['runtime_liters'],
-                            $billing['fuel_cost'], 
-                            $billing['runtime_cost'], 
-                            $billing['maintenance_cost'], 
-                            $billing['standby_cost'], 
-                            $billing['additive_cost'], 
-                            $billing['rate_per_bus'], 
-                            $billing['subtotal_per_vehicle'], 
-                            $billing['total_amount'],
-                            $prepared_by, 
-                            $recommending);
-                        
-                        if ($billing_stmt->execute()) {
-                            $conn->commit();
+                            // Insert bus booking records for each day in the date range
+                            $current_date = $start_date;
+                            $end_timestamp = strtotime($end_date);
                             
-                            // Send notification to user
-                            require_once '../includes/notification_functions.php';
-                            $start_formatted = date('F j, Y', strtotime($start_date));
-                            $end_formatted = date('F j, Y', strtotime($end_date));
-                            $date_range = $no_of_days > 1 ? "{$start_formatted} to {$end_formatted}" : $start_formatted;
-                            create_notification($_SESSION['user_id'], "Bus Schedule Submitted", "Your bus schedule request for {$date_range} (Destination: {$destination}) has been submitted and is pending approval.", "request", "student/bus.php");
+                            while (strtotime($current_date) <= $end_timestamp) {
+                                $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
+                                $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                                
+                                if (!$bus_booking_stmt->execute()) {
+                                    throw new Exception('Error creating bus booking: ' . $conn->error);
+                                }
+                                
+                                // Move to next day
+                                $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
+                            }
                             
-                            // Send notification to all admins
-                            $user_name = $_SESSION['user_sessions']['student']['user_name'] ?? 'Student';
-                            create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_range} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
+                            // Update bus status to booked when booking is created
+                            $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
+                            $update_bus_status->bind_param("i", $bus_id);
+                            $update_bus_status->execute();
                             
-                            $success = 'Bus schedule request submitted successfully! Billing statement generated. You will be notified once it\'s approved.';
+                            // Calculate billing statement (include continuation if provided)
+                            $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation);
+                            
+                            // Insert billing statement with default payment_status as 'pending'
+                            $billing_stmt = $conn->prepare("INSERT INTO billing_statements 
+                                (schedule_id, client, destination, purpose, date_covered, no_of_days, vehicle, bus_no, no_of_vehicles,
+                                 from_location, to_location, distance_km, total_distance_km, fuel_rate, computed_distance, runtime_liters,
+                                 fuel_cost, runtime_cost, maintenance_cost, standby_cost, additive_cost, rate_per_bus, subtotal_per_vehicle, total_amount,
+                                 prepared_by, recommending_approval, payment_status) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                            
+                            $prepared_by = $_SESSION['user_name'] ?? 'Student';
+                            $recommending = 'NEUYER JAN C. BALA-AN, Director, Business Affairs Office';
+                            
+                            $billing_stmt->bind_param("isssisissdddddddddddddddss", 
+                                $schedule_id, 
+                                $full_client, 
+                                $destination, 
+                                $purpose, 
+                                $date_covered, 
+                                $no_of_days, 
+                                $vehicle, 
+                                $bus_no, 
+                                $no_of_vehicles,
+                                $billing['from_location'], 
+                                $billing['to_location'], 
+                                $billing['distance_km'], 
+                                $billing['total_distance_km'], 
+                                $billing['fuel_rate'], 
+                                $billing['computed_distance'], 
+                                $billing['runtime_liters'],
+                                $billing['fuel_cost'], 
+                                $billing['runtime_cost'], 
+                                $billing['maintenance_cost'], 
+                                $billing['standby_cost'], 
+                                $billing['additive_cost'], 
+                                $billing['rate_per_bus'], 
+                                $billing['subtotal_per_vehicle'], 
+                                $billing['total_amount'],
+                                $prepared_by, 
+                                $recommending);
+                            
+                            if ($billing_stmt->execute()) {
+                                $conn->commit();
+                                
+                                // Send notification to user
+                                require_once '../includes/notification_functions.php';
+                                $start_formatted = date('F j, Y', strtotime($start_date));
+                                $end_formatted = date('F j, Y', strtotime($end_date));
+                                $date_range = $no_of_days > 1 ? "{$start_formatted} to {$end_formatted}" : $start_formatted;
+                                create_notification($_SESSION['user_id'], "Bus Schedule Submitted", "Your bus schedule request for {$date_range} (Destination: {$destination}) has been submitted and is pending approval.", "request", "student/bus.php");
+                                
+                                // Send notification to all admins
+                                $user_name = $_SESSION['user_sessions']['student']['user_name'] ?? 'Student';
+                                create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_range} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
+                                
+                                $success = 'Bus schedule request submitted successfully! Billing statement generated. You will be notified once it\'s approved.';
+                            } else {
+                                throw new Exception('Error creating billing statement: ' . $conn->error);
+                            }
                         } else {
-                            throw new Exception('Error creating billing statement: ' . $conn->error);
+                            throw new Exception('Error saving schedule: ' . $conn->error);
                         }
-                    } else {
-                        throw new Exception('Error saving schedule: ' . $conn->error);
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        $error = $e->getMessage();
                     }
-                } catch (Exception $e) {
-                    $conn->rollback();
-                    $error = $e->getMessage();
-                }
-                } // Close the else block at line 309 (all validations passed)
-            } // Close the else block at line 300 (date validation passed)
-        } // Close the elseif block at line 270 (add_schedule action)
-    } // Close the if block at line 239 (isset action)
-} // Close the if block at line 238 (POST request)
+                } // Close the else block (all validations passed)
+            } // Close the if (empty($error)) block
+        } // Close the elseif (add_schedule action)
+    } // Close the if (isset action)
+} // Close the if (POST request)
 
-// Get all bus schedules with billing information and bus plate number
+// Get filter and pagination parameters
+$status_filter = isset($_GET['status']) ? sanitize_input($_GET['status']) : 'all';
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$per_page = 10;
+$offset = ($page - 1) * $per_page;
+
+// Build query with status filter
+$where_clause = "WHERE bs.user_id = ?";
+$status_param = null;
+
+if ($status_filter === 'pending') {
+    $where_clause .= " AND bs.status = ?";
+    $status_param = 'pending';
+} elseif ($status_filter === 'approved') {
+    $where_clause .= " AND bs.status = ?";
+    $status_param = 'approved';
+}
+
+// Get total count for pagination
+$count_query = "SELECT COUNT(*) as total 
+                FROM bus_schedules bs 
+                $where_clause";
+$count_stmt = $conn->prepare($count_query);
+if ($status_param) {
+    $count_stmt->bind_param("is", $_SESSION['user_id'], $status_param);
+} else {
+    $count_stmt->bind_param("i", $_SESSION['user_id']);
+}
+$count_stmt->execute();
+$count_result = $count_stmt->get_result();
+$total_rows = $count_result->fetch_assoc()['total'];
+$total_pages = $total_rows > 0 ? ceil($total_rows / $per_page) : 1;
+
+// Get paginated bus schedules with billing information and bus plate number
 $user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.plate_number
                         FROM bus_schedules bs 
                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
-                        WHERE bs.user_id = ? 
-                        ORDER BY bs.id DESC, bs.created_at DESC LIMIT 20";
+                        $where_clause
+                        ORDER BY bs.id DESC, bs.created_at DESC 
+                        LIMIT $per_page OFFSET $offset";
 $user_schedules_stmt = $conn->prepare($user_schedules_query);
-$user_schedules_stmt->bind_param("i", $_SESSION['user_id']);
+if ($status_param) {
+    $user_schedules_stmt->bind_param("is", $_SESSION['user_id'], $status_param);
+} else {
+    $user_schedules_stmt->bind_param("i", $_SESSION['user_id']);
+}
 $user_schedules_stmt->execute();
 $user_schedules = $user_schedules_stmt->get_result();
 
@@ -667,6 +719,22 @@ while ($bus = $buses_result->fetch_assoc()) {
                     </button>
                 </div>
                 
+                <!-- Status Filter Tabs -->
+                <div class="mb-4 flex space-x-2">
+                    <a href="?status=all" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-list mr-2"></i>All
+                    </a>
+                    <a href="?status=pending" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-clock mr-2"></i>Pending (<?php echo $stats['pending_requests']; ?>)
+                    </a>
+                    <a href="?status=approved" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-check-circle mr-2"></i>Approved (<?php echo $stats['approved_requests']; ?>)
+                    </a>
+                </div>
+                
                 <!-- Schedules Table -->
                 <div class="bg-white shadow overflow-hidden sm:rounded-md">
                     <?php if ($user_schedules->num_rows > 0): ?>
@@ -771,14 +839,123 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <?php else: ?>
                         <div class="text-center py-12">
                             <i class="fas fa-bus text-gray-400 text-6xl mb-4"></i>
-                            <h3 class="text-lg font-medium text-gray-900 mb-2">No bus schedules yet</h3>
-                            <p class="text-gray-500 mb-4">Get started by creating your first bus schedule request.</p>
-                            <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" onclick="openAddModal()">
-                                <i class="fas fa-plus mr-2"></i> Create Request
-                            </button>
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">
+                                <?php if ($status_filter === 'pending'): ?>
+                                    No pending requests
+                                <?php elseif ($status_filter === 'approved'): ?>
+                                    No approved requests
+                                <?php else: ?>
+                                    No bus schedules yet
+                                <?php endif; ?>
+                            </h3>
+                            <p class="text-gray-500 mb-4">
+                                <?php if ($status_filter === 'pending' || $status_filter === 'approved'): ?>
+                                    <a href="?status=all" class="text-blue-600 hover:underline">View all requests</a>
+                                <?php else: ?>
+                                    Get started by creating your first bus schedule request.
+                                <?php endif; ?>
+                            </p>
+                            <?php if ($status_filter === 'all'): ?>
+                                <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" onclick="openAddModal()">
+                                    <i class="fas fa-plus mr-2"></i> Create Request
+                                </button>
+                            <?php endif; ?>
                         </div>
-        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
+                
+                <!-- Pagination -->
+                <?php if ($total_pages > 1): ?>
+                <div class="mt-4 bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                    <div class="flex-1 flex justify-between sm:hidden">
+                        <?php if ($page > 1): ?>
+                            <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $page - 1; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Previous
+                            </a>
+                        <?php else: ?>
+                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                Previous
+                            </span>
+                        <?php endif; ?>
+                        
+                        <?php if ($page < $total_pages): ?>
+                            <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $page + 1; ?>" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                Next
+                            </a>
+                        <?php else: ?>
+                            <span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-300 bg-white cursor-not-allowed">
+                                Next
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm text-gray-700">
+                                Showing
+                                <span class="font-medium"><?php echo $offset + 1; ?></span>
+                                to
+                                <span class="font-medium"><?php echo min($offset + $per_page, $total_rows); ?></span>
+                                of
+                                <span class="font-medium"><?php echo $total_rows; ?></span>
+                                results
+                            </p>
+                        </div>
+                        <div>
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                <?php if ($page > 1): ?>
+                                    <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $page - 1; ?>" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                        <span class="sr-only">Previous</span>
+                                        <i class="fas fa-chevron-left"></i>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                        <span class="sr-only">Previous</span>
+                                        <i class="fas fa-chevron-left"></i>
+                                    </span>
+                                <?php endif; ?>
+                                
+                                <?php
+                                $start_page = max(1, $page - 2);
+                                $end_page = min($total_pages, $page + 2);
+                                
+                                if ($start_page > 1): ?>
+                                    <a href="?status=<?php echo $status_filter; ?>&page=1" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">1</a>
+                                    <?php if ($start_page > 2): ?>
+                                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                
+                                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                                    <?php if ($i == $page): ?>
+                                        <span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600 z-10"><?php echo $i; ?></span>
+                                    <?php else: ?>
+                                        <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $i; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $i; ?></a>
+                                    <?php endif; ?>
+                                <?php endfor; ?>
+                                
+                                <?php if ($end_page < $total_pages): ?>
+                                    <?php if ($end_page < $total_pages - 1): ?>
+                                        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                                    <?php endif; ?>
+                                    <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $total_pages; ?>" class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"><?php echo $total_pages; ?></a>
+                                <?php endif; ?>
+                                
+                                <?php if ($page < $total_pages): ?>
+                                    <a href="?status=<?php echo $status_filter; ?>&page=<?php echo $page + 1; ?>" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                        <span class="sr-only">Next</span>
+                                        <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+                                        <span class="sr-only">Next</span>
+                                        <i class="fas fa-chevron-right"></i>
+                                    </span>
+                                <?php endif; ?>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </main>
     </div>
@@ -955,11 +1132,15 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <input type="date" id="start_date" name="start_date" required 
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
                            value="<?php echo isset($_POST['start_date']) ? htmlspecialchars($_POST['start_date']) : ''; ?>"
-                           min="<?php echo date('Y-m-d'); ?>"
+                           min="<?php 
+                                $min_date = new DateTime();
+                                $min_date->modify('+3 days');
+                                echo $min_date->format('Y-m-d'); 
+                           ?>"
                            onchange="updateDateRange()">
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-calendar-alt mr-1"></i>
-                        Past dates cannot be selected
+                        Reservations must be made at least 3 days in advance
                     </p>
                 </div>
                 
@@ -968,11 +1149,15 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <input type="date" id="end_date" name="end_date" required 
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
                            value="<?php echo isset($_POST['end_date']) ? htmlspecialchars($_POST['end_date']) : ''; ?>"
-                           min="<?php echo date('Y-m-d'); ?>"
+                           min="<?php 
+                                $min_date = new DateTime();
+                                $min_date->modify('+3 days');
+                                echo $min_date->format('Y-m-d'); 
+                           ?>"
                            onchange="updateDateRange()">
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-calendar-alt mr-1"></i>
-                        Must be on or after start date
+                        Must be on or after start date (minimum 3 days in advance)
                     </p>
                 </div>
                 
@@ -1170,9 +1355,14 @@ document.getElementById('menu-button').addEventListener('click', function() {
 // Modal functions
 function openAddModal() {
     document.getElementById('addModal').classList.remove('hidden');
-    // Set initial min date for end_date
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('end_date').min = today;
+    // Set initial min date to 3 days from today
+    const today = new Date();
+    const minDate = new Date(today);
+    minDate.setDate(today.getDate() + 3);
+    const minDateStr = minDate.toISOString().split('T')[0];
+    
+    document.getElementById('start_date').min = minDateStr;
+    document.getElementById('end_date').min = minDateStr;
     // Update distance display with default values
     updateDistance();
 }
@@ -1981,10 +2171,28 @@ function updateDateRange() {
     const endDate = document.getElementById('end_date').value;
     const noOfDaysInput = document.getElementById('no_of_days');
     const endDateInput = document.getElementById('end_date');
+    const startDateInput = document.getElementById('start_date');
     
-    // Set minimum end date to start date
+    // Set minimum date to 3 days from today
+    const today = new Date();
+    const minDate = new Date(today);
+    minDate.setDate(today.getDate() + 3);
+    const minDateStr = minDate.toISOString().split('T')[0];
+    
+    // Ensure start date is at least 3 days from today
+    if (startDate && startDate < minDateStr) {
+        startDateInput.setCustomValidity('Reservations must be made at least 3 days in advance');
+        startDateInput.value = minDateStr;
+        return;
+    } else {
+        startDateInput.setCustomValidity('');
+    }
+    
+    // Set minimum end date to start date (or 3 days from today, whichever is later)
     if (startDate) {
         endDateInput.min = startDate;
+    } else {
+        endDateInput.min = minDateStr;
     }
     
     // Validate end date is not before start date

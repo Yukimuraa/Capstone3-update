@@ -1,5 +1,18 @@
 <?php
 session_start();
+// Set cache-busting headers to ensure fresh dates
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+// Set timezone to ensure correct date/time
+// Force timezone to Asia/Manila for consistent results
+date_default_timezone_set('Asia/Manila');
+
+// Create DateTime object with current time and timezone
+$now_dt = new DateTime('now', new DateTimeZone('Asia/Manila'));
+$current_timestamp = $now_dt->getTimestamp();
+
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
@@ -37,7 +50,7 @@ $title = '';
 switch ($report_type) {
     case 'bus':
         $title = 'Bus Reservation Report';
-        $headers = ['Reservation ID', 'Requester/Dept', 'Destination', 'Date', 'Vehicles', 'Status', 'Total Amount', 'Payment'];
+        $headers = ['Reservation ID', 'Requester/Dept', 'Destination', 'Date', 'Vehicles', 'Status', 'Total Amount'];
         
         $query = "SELECT s.id, s.client, s.destination, s.purpose, s.date_covered, s.vehicle, s.bus_no, s.no_of_days, s.no_of_vehicles, s.status,
                          bs.total_amount, bs.payment_status, bs.payment_date
@@ -60,7 +73,10 @@ switch ($report_type) {
         $stmt->execute();
         $result = $stmt->get_result();
         
+        $total_amount = 0.00;
         while ($row = $result->fetch_assoc()) {
+            $amount = (float)($row['total_amount'] ?? 0);
+            $total_amount += $amount;
             $data[] = [
                 $row['id'],
                 $row['client'],
@@ -68,8 +84,7 @@ switch ($report_type) {
                 date('M d, Y', strtotime($row['date_covered'])),
                 $row['no_of_vehicles'],
                 ucfirst($row['status']),
-                '₱' . number_format((float)($row['total_amount'] ?? 0), 2),
-                isset($row['payment_status']) ? ucfirst($row['payment_status']) : '—'
+                '₱' . number_format($amount, 2)
             ];
         }
         break;
@@ -91,12 +106,42 @@ switch ($report_type) {
         $stmt->execute();
         $result = $stmt->get_result();
         
+        $total_revenue = 0.00;
         while ($row = $result->fetch_assoc()) {
+            $revenue = (float)$row['revenue'];
+            $total_revenue += $revenue;
             $data[] = [
                 $row['item_name'],
                 number_format($row['qty_issued']),
-                '₱' . number_format($row['revenue'], 2)
+                '₱' . number_format($revenue, 2)
             ];
+        }
+        
+        // Get Remaining Stock data
+        $stock_data = [];
+        try {
+            $stock_sql = "SELECT name, stock_quantity AS remaining FROM inventory ORDER BY name ASC";
+            $stock_result = $conn->query($stock_sql);
+            if ($stock_result) {
+                while ($stock_row = $stock_result->fetch_assoc()) {
+                    $stock_data[] = [
+                        $stock_row['name'],
+                        number_format($stock_row['remaining'])
+                    ];
+                }
+            }
+        } catch (mysqli_sql_exception $e) {
+            // Fallback schema without stock_quantity
+            $stock_sql = "SELECT name, quantity AS remaining FROM inventory ORDER BY name ASC";
+            $stock_result = $conn->query($stock_sql);
+            if ($stock_result) {
+                while ($stock_row = $stock_result->fetch_assoc()) {
+                    $stock_data[] = [
+                        $stock_row['name'],
+                        number_format($stock_row['remaining'])
+                    ];
+                }
+            }
         }
         break;
         
@@ -195,9 +240,11 @@ switch ($report_type) {
         }
         
         $count_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-        $count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $count_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $count_orders = (int)$conn->query("SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
         $approved_bookings = (int)$conn->query("SELECT COUNT(*) as c FROM bookings WHERE facility_type='gym' AND (status='confirmed' OR status='approved') AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
-        $approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $approved_bus = (int)$conn->query("SELECT COUNT(*) as c FROM bus_schedules WHERE status='approved' AND DATE(date_covered) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
+        $completed_orders = (int)$conn->query("SELECT COUNT(*) as c FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['c'] ?? 0;
         $col_orders = (float)($conn->query("SELECT SUM(total_price) as s FROM orders WHERE status='completed' AND DATE(updated_at) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         $col_bus = (float)($conn->query("SELECT SUM(total_amount) as s FROM billing_statements WHERE payment_status='paid' AND DATE(payment_date) BETWEEN '".$conn->real_escape_string($start)."' AND '".$conn->real_escape_string($end)."'")->fetch_assoc()['s'] ?? 0);
         
@@ -218,7 +265,12 @@ switch ($report_type) {
         
         $data[] = ['Gym', number_format($count_bookings), number_format($approved_bookings), '₱' . number_format($col_gym, 2)];
         $data[] = ['Bus', number_format($count_bus), number_format($approved_bus), '₱' . number_format($col_bus, 2)];
-        $data[] = ['Item Sales', '—', '—', '₱' . number_format($col_orders, 2)];
+        $data[] = ['Item Sales', number_format($count_orders), number_format($completed_orders), '₱' . number_format($col_orders, 2)];
+        
+        // Calculate totals
+        $total_requests = $count_bookings + $count_bus + $count_orders;
+        $total_approved = $approved_bookings + $approved_bus + $completed_orders;
+        $total_collected = $col_gym + $col_bus + $col_orders;
         break;
         
     case 'gym':
@@ -353,9 +405,10 @@ if ($format === 'pdf') {
         $pdf->SetFont('helvetica', '', 10);
         $pdf->AddPage();
         
-        // Header
+        // Header - use DateTime for accurate timezone-aware dates
+        $now_dt = new DateTime('now', new DateTimeZone('Asia/Manila'));
         $html = '<h1 style="text-align:center; font-size:18px; margin-bottom:10px;">' . htmlspecialchars($title) . '</h1>';
-        $html .= '<p style="text-align:center; font-size:10px; color:#666; margin-bottom:15px;">Generated on: ' . date('F j, Y, g:i a') . '</p>';
+        $html .= '<p style="text-align:center; font-size:10px; color:#666; margin-bottom:15px;">Generated on: ' . $now_dt->format('F j, Y, g:i a') . '</p>';
         
         // Table
         $html .= '<table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse;">';
@@ -373,11 +426,55 @@ if ($format === 'pdf') {
             $html .= '</tr>';
         }
         
+        // Add total row for bus reports
+        if ($report_type === 'bus' && isset($total_amount)) {
+            $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            $html .= '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Amount:</td>';
+            $html .= '<td style="text-align:right;">₱' . number_format($total_amount, 2) . '</td>';
+            $html .= '</tr>';
+        }
+        
+        // Add total row for inventory reports
+        if ($report_type === 'inventory' && isset($total_revenue)) {
+            $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            $html .= '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Revenue:</td>';
+            $html .= '<td style="text-align:right;">₱' . number_format($total_revenue, 2) . '</td>';
+            $html .= '</tr>';
+        }
+        
+        // Add total row for summary reports
+        if ($report_type === 'summary' && isset($total_requests) && isset($total_approved) && isset($total_collected)) {
+            $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            $html .= '<td style="text-align:right;">Total:</td>';
+            $html .= '<td style="text-align:right;">' . number_format($total_requests) . '</td>';
+            $html .= '<td style="text-align:right;">' . number_format($total_approved) . '</td>';
+            $html .= '<td style="text-align:right;">₱' . number_format($total_collected, 2) . '</td>';
+            $html .= '</tr>';
+        }
+        
         $html .= '</tbody></table>';
+        
+        // Add Remaining Stock section for inventory reports
+        if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
+            $html .= '<br><br><h2 style="font-size:14px; margin-bottom:10px;">Remaining Stock</h2>';
+            $html .= '<table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse;">';
+            $html .= '<thead><tr style="background-color:#f3f4f6; font-weight:bold;">';
+            $html .= '<th>Item</th><th>Remaining</th>';
+            $html .= '</tr></thead><tbody>';
+            
+            foreach ($stock_data as $stock_row) {
+                $html .= '<tr>';
+                $html .= '<td>' . htmlspecialchars($stock_row[0]) . '</td>';
+                $html .= '<td style="text-align:right;">' . htmlspecialchars($stock_row[1]) . '</td>';
+                $html .= '</tr>';
+            }
+            
+            $html .= '</tbody></table>';
+        }
         
         $pdf->writeHTML($html, true, false, true, false, '');
         
-        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.pdf';
+        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('Ymd_His') . '.pdf';
         $pdf->Output($filename, 'D');
     } else {
         // Fallback: Generate print-friendly HTML that can be saved as PDF
@@ -388,7 +485,7 @@ if ($format === 'pdf') {
         
         header('Content-Type: text/html; charset=utf-8');
         
-        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His');
+        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('Ymd_His');
         
         // Get base URL for logo
         $logo_path = '../image/CHMSUWebLOGO.png';
@@ -542,7 +639,7 @@ if ($format === 'pdf') {
     
     <div class="header">
         <h2>' . htmlspecialchars($title) . '</h2>
-        <p>Generated on: ' . date('F j, Y, g:i a') . '</p>
+        <p>Generated on: ' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('F j, Y, g:i a') . '</p>
     </div>';
         
         // Add filter info if available
@@ -572,12 +669,63 @@ if ($format === 'pdf') {
             echo '</tr>';
         }
         
+        // Add total row for bus reports
+        if ($report_type === 'bus' && isset($total_amount)) {
+            echo '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            echo '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Amount:</td>';
+            echo '<td style="text-align:right;">₱' . number_format($total_amount, 2) . '</td>';
+            echo '</tr>';
+        }
+        
+        // Add total row for inventory reports
+        if ($report_type === 'inventory' && isset($total_revenue)) {
+            echo '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            echo '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Revenue:</td>';
+            echo '<td style="text-align:right;">₱' . number_format($total_revenue, 2) . '</td>';
+            echo '</tr>';
+        }
+        
+        // Add total row for summary reports
+        if ($report_type === 'summary' && isset($total_requests) && isset($total_approved) && isset($total_collected)) {
+            echo '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            echo '<td style="text-align:right;">Total:</td>';
+            echo '<td style="text-align:right;">' . number_format($total_requests) . '</td>';
+            echo '<td style="text-align:right;">' . number_format($total_approved) . '</td>';
+            echo '<td style="text-align:right;">₱' . number_format($total_collected, 2) . '</td>';
+            echo '</tr>';
+        }
+        
         echo '</tbody>
-    </table>
+    </table>';
+        
+        // Add Remaining Stock section for inventory reports
+        if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
+            echo '<br><br><h2 style="font-size:16px; margin-bottom:15px; border-bottom:2px solid #333; padding-bottom:5px;">Remaining Stock</h2>';
+            echo '<table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Remaining</th>
+                </tr>
+            </thead>
+            <tbody>';
+            
+            foreach ($stock_data as $stock_row) {
+                echo '<tr>';
+                echo '<td>' . htmlspecialchars($stock_row[0]) . '</td>';
+                echo '<td style="text-align:right;">' . htmlspecialchars($stock_row[1]) . '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody>
+        </table>';
+        }
+        
+        echo '
     
     <div class="footer">
         <p><strong>City of Talisay Business Affairs Office</strong></p>
-        <p>This report was generated automatically on ' . date('F j, Y') . ' at ' . date('g:i A') . '</p>
+        <p>This report was generated automatically on ' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('F j, Y') . ' at ' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('g:i A') . '</p>
         <p>For inquiries, please contact the Business Affairs Office</p>
     </div>
     
@@ -637,9 +785,10 @@ if ($format === 'pdf') {
         $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
         $currentRow += 2;
         
-        // Generation date and time
-        $generated_date = date('F j, Y');
-        $generated_time = date('g:i A');
+        // Generation date and time (generate fresh each time using DateTime for accuracy)
+        $now_dt = new DateTime('now', new DateTimeZone('Asia/Manila'));
+        $generated_date = $now_dt->format('F j, Y');
+        $generated_time = $now_dt->format('g:i A');
         $sheet->setCellValue('A' . $currentRow, 'Generated on:');
         $sheet->setCellValue('B' . $currentRow, $generated_date . ' at ' . $generated_time);
         $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
@@ -735,9 +884,164 @@ if ($format === 'pdf') {
             $currentRow++;
         }
         
+        // Add total row for bus reports
+        if ($report_type === 'bus' && isset($total_amount)) {
+            $col = 'A';
+            $lastCol = chr(64 + count($headers) - 1);
+            $amountCol = chr(64 + count($headers));
+            
+            // Merge cells for "Total Amount:" label
+            $sheet->setCellValue($col . $currentRow, 'Total Amount:');
+            $sheet->mergeCells($col . $currentRow . ':' . $lastCol . $currentRow);
+            $sheet->getStyle($col . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($col . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($col . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($col . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Total amount value
+            $sheet->setCellValue($amountCol . $currentRow, '₱' . number_format($total_amount, 2));
+            $sheet->getStyle($amountCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($amountCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($amountCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            $currentRow++;
+        }
+        
+        // Add total row for inventory reports
+        if ($report_type === 'inventory' && isset($total_revenue)) {
+            $col = 'A';
+            $lastCol = chr(64 + count($headers) - 1);
+            $revenueCol = chr(64 + count($headers));
+            
+            // Merge cells for "Total Revenue:" label
+            $sheet->setCellValue($col . $currentRow, 'Total Revenue:');
+            $sheet->mergeCells($col . $currentRow . ':' . $lastCol . $currentRow);
+            $sheet->getStyle($col . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($col . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($col . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($col . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Total revenue value
+            $sheet->setCellValue($revenueCol . $currentRow, '₱' . number_format($total_revenue, 2));
+            $sheet->getStyle($revenueCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($revenueCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($revenueCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            $currentRow++;
+        }
+        
+        // Add Remaining Stock section for inventory reports
+        if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
+            $currentRow += 2; // Add spacing
+            
+            // Section header
+            $sheet->setCellValue('A' . $currentRow, 'Remaining Stock');
+            $sheet->mergeCells('A' . $currentRow . ':' . chr(64 + count($headers)) . $currentRow);
+            $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true)->setSize(14);
+            $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+            $currentRow++;
+            
+            // Stock table headers
+            $sheet->setCellValue('A' . $currentRow, 'Item');
+            $sheet->setCellValue('B' . $currentRow, 'Remaining');
+            $sheet->getStyle('A' . $currentRow . ':B' . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle('A' . $currentRow . ':B' . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle('A' . $currentRow . ':B' . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)
+                ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+            $sheet->getStyle('A' . $currentRow . ':B' . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            $currentRow++;
+            
+            // Stock data rows
+            foreach ($stock_data as $stock_row) {
+                $sheet->setCellValue('A' . $currentRow, $stock_row[0]);
+                $sheet->setCellValue('B' . $currentRow, $stock_row[1]);
+                $sheet->getStyle('A' . $currentRow . ':B' . $currentRow)->getBorders()->getAllBorders()
+                    ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheet->getStyle('B' . $currentRow)->getAlignment()
+                    ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+                $currentRow++;
+            }
+        }
+        
+        // Add total row for summary reports
+        if ($report_type === 'summary' && isset($total_requests) && isset($total_approved) && isset($total_collected)) {
+            $serviceCol = 'A';
+            $requestsCol = 'B';
+            $approvedCol = 'C';
+            $collectedCol = 'D';
+            
+            // Total label
+            $sheet->setCellValue($serviceCol . $currentRow, 'Total:');
+            $sheet->getStyle($serviceCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($serviceCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($serviceCol . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($serviceCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Total requests
+            $sheet->setCellValue($requestsCol . $currentRow, number_format($total_requests));
+            $sheet->getStyle($requestsCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($requestsCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($requestsCol . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($requestsCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Total approved
+            $sheet->setCellValue($approvedCol . $currentRow, number_format($total_approved));
+            $sheet->getStyle($approvedCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($approvedCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($approvedCol . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($approvedCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Total collected
+            $sheet->setCellValue($collectedCol . $currentRow, '₱' . number_format($total_collected, 2));
+            $sheet->getStyle($collectedCol . $currentRow)->getFont()->setBold(true);
+            $sheet->getStyle($collectedCol . $currentRow)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('D3D3D3');
+            $sheet->getStyle($collectedCol . $currentRow)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle($collectedCol . $currentRow)->getBorders()->getAllBorders()
+                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            $currentRow++;
+        }
+        
         // Auto-size columns
         foreach (range('A', chr(64 + count($headers))) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+        // Also auto-size column B for stock section
+        if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
+            $sheet->getColumnDimension('B')->setAutoSize(true);
         }
         
         // Add footer
@@ -760,7 +1064,7 @@ if ($format === 'pdf') {
         $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
         
         // Set filename
-        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.xlsx';
+        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('Ymd_His') . '.xlsx';
         
         // Output file
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -774,7 +1078,7 @@ if ($format === 'pdf') {
     } else {
         // Fallback to CSV format if PhpSpreadsheet is not available
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . strtolower(str_replace(' ', '_', $title)) . '_' . date('Ymd_His') . '.csv"');
+        header('Content-Disposition: attachment; filename="' . strtolower(str_replace(' ', '_', $title)) . '_' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('Ymd_His') . '.csv"');
         
         // Add BOM for UTF-8
         echo "\xEF\xBB\xBF";
@@ -788,9 +1092,10 @@ if ($format === 'pdf') {
         fputcsv($output, ['CHMSU - Carlos Hilado Memorial State University']);
         fputcsv($output, []); // Empty row
         
-        // Generation date and time
-        $generated_date = date('F j, Y');
-        $generated_time = date('g:i A');
+        // Generation date and time (generate fresh each time using DateTime for accuracy)
+        $now_dt = new DateTime('now', new DateTimeZone('Asia/Manila'));
+        $generated_date = $now_dt->format('F j, Y');
+        $generated_time = $now_dt->format('g:i A');
         fputcsv($output, ['Generated on:', $generated_date . ' at ' . $generated_time]);
         fputcsv($output, []); // Empty row
         
@@ -853,6 +1158,37 @@ if ($format === 'pdf') {
         // Write data
         foreach ($data as $row) {
             fputcsv($output, $row);
+        }
+        
+        // Add total row for bus reports
+        if ($report_type === 'bus' && isset($total_amount)) {
+            $total_row = array_fill(0, count($headers) - 1, '');
+            $total_row[count($headers) - 2] = 'Total Amount:';
+            $total_row[count($headers) - 1] = '₱' . number_format($total_amount, 2);
+            fputcsv($output, $total_row);
+        }
+        
+        // Add total row for inventory reports
+        if ($report_type === 'inventory' && isset($total_revenue)) {
+            $total_row = array_fill(0, count($headers) - 1, '');
+            $total_row[count($headers) - 2] = 'Total Revenue:';
+            $total_row[count($headers) - 1] = '₱' . number_format($total_revenue, 2);
+            fputcsv($output, $total_row);
+        }
+        
+        // Add total row for summary reports
+        if ($report_type === 'summary' && isset($total_requests) && isset($total_approved) && isset($total_collected)) {
+            fputcsv($output, ['Total:', number_format($total_requests), number_format($total_approved), '₱' . number_format($total_collected, 2)]);
+        }
+        
+        // Add Remaining Stock section for inventory reports
+        if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
+            fputcsv($output, []); // Empty row
+            fputcsv($output, ['Remaining Stock']);
+            fputcsv($output, ['Item', 'Remaining']);
+            foreach ($stock_data as $stock_row) {
+                fputcsv($output, $stock_row);
+            }
         }
         
         // Footer
