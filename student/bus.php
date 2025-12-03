@@ -173,6 +173,45 @@ function getDistanceBetweenLocations($from, $to) {
     return 50;
 }
 
+// Function to calculate price based on fixed pricing structure
+function calculatePriceFromDistance($distance_km) {
+    // Fixed pricing structure based on round trip distance (km)
+    if ($distance_km >= 20 && $distance_km <= 50) {
+        return 1000;
+    } elseif ($distance_km >= 51 && $distance_km <= 80) {
+        return 2000;
+    } elseif ($distance_km >= 81 && $distance_km <= 110) {
+        return 3000;
+    } elseif ($distance_km >= 111 && $distance_km <= 140) {
+        return 4000;
+    } elseif ($distance_km >= 141 && $distance_km <= 170) {
+        return 5000;
+    } elseif ($distance_km >= 171 && $distance_km <= 200) {
+        return 6000;
+    } elseif ($distance_km >= 201 && $distance_km <= 230) {
+        return 7000;
+    } elseif ($distance_km >= 231 && $distance_km <= 260) {
+        return 8000;
+    } elseif ($distance_km >= 261 && $distance_km <= 290) {
+        return 9000;
+    } elseif ($distance_km >= 291 && $distance_km <= 320) {
+        return 10000;
+    } elseif ($distance_km >= 321 && $distance_km <= 350) {
+        return 11000;
+    } elseif ($distance_km >= 351 && $distance_km <= 380) {
+        return 12000;
+    } elseif ($distance_km >= 381 && $distance_km <= 410) {
+        return 13000;
+    } else {
+        // For distances outside the range, use the closest tier
+        if ($distance_km < 20) {
+            return 1000; // Minimum price
+        } else {
+            return 13000; // Maximum price for distances > 410 km
+        }
+    }
+}
+
 // Function to calculate billing statement
 function calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation = '') {
     global $conn;
@@ -188,44 +227,21 @@ function calculateBillingStatement($from_location, $to_location, $destination, $
     
     $total_distance_km = $distance_km * 2; // Round trip
     
-    // Get current fuel rate from settings (default to 70.00 if not set)
+    // Calculate price using fixed pricing structure (based on round trip distance)
+    $price_per_vehicle = calculatePriceFromDistance($total_distance_km);
+    $total_amount = $price_per_vehicle * $no_of_vehicles;
+    
+    // Keep old fields for backward compatibility (set to 0 or default values)
     $fuel_rate = 70.00;
-    $fuel_rate_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = 'fuel_rate'");
-    if ($fuel_rate_query && $fuel_rate_query->num_rows > 0) {
-        $fuel_rate = floatval($fuel_rate_query->fetch_assoc()['setting_value']);
-    }
-    
-    // Cost calculations per vehicle
-    $computed_distance = $distance_km; // 2Km/L rate
-    
-    // Get cost breakdown settings from database (with defaults)
-    $cost_settings = [
-        'runtime_liters' => 25.00,
-        'maintenance_cost' => 5000.00,
-        'standby_cost' => 1500.00,
-        'additive_cost' => 1500.00,
-        'rate_per_bus' => 1500.00
-    ];
-    
-    // Load cost settings from database
-    foreach ($cost_settings as $key => $default_value) {
-        $setting_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = '$key'");
-        if ($setting_query && $setting_query->num_rows > 0) {
-            $cost_settings[$key] = floatval($setting_query->fetch_assoc()['setting_value']);
-        }
-    }
-    
-    $runtime_liters = $cost_settings['runtime_liters'];
-    $maintenance_cost = $cost_settings['maintenance_cost'];
-    $standby_cost = $cost_settings['standby_cost'];
-    $additive_cost = $cost_settings['additive_cost'];
-    $rate_per_bus = $cost_settings['rate_per_bus'];
-    
-    $fuel_cost = $computed_distance * $fuel_rate;
-    $runtime_cost = $runtime_liters * $fuel_rate;
-    
-    $subtotal_per_vehicle = $fuel_cost + $runtime_cost + $maintenance_cost + $standby_cost + $additive_cost + $rate_per_bus;
-    $total_amount = $subtotal_per_vehicle * $no_of_vehicles;
+    $computed_distance = $distance_km;
+    $runtime_liters = 25.00;
+    $maintenance_cost = 0.00;
+    $standby_cost = 0.00;
+    $additive_cost = 0.00;
+    $rate_per_bus = 0.00;
+    $fuel_cost = 0.00;
+    $runtime_cost = 0.00;
+    $subtotal_per_vehicle = $price_per_vehicle;
     
     return [
         'from_location' => $from_location,
@@ -295,9 +311,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $start_date = $_POST['start_date'];
             $end_date = $_POST['end_date'];
             $vehicle = sanitize_input($_POST['vehicle']);
-            $bus_no = sanitize_input($_POST['bus_no']);
+            
+            // Handle bus selection (can be array from checkboxes)
+            $bus_no_array = isset($_POST['bus_no']) ? $_POST['bus_no'] : [];
+            if (!is_array($bus_no_array)) {
+                $bus_no_array = [$bus_no_array];
+            }
+            
+            // Validate at least one bus is selected
+            if (empty($bus_no_array) || (count($bus_no_array) === 1 && empty($bus_no_array[0]))) {
+                $error = 'Please select at least one bus.';
+            } else {
+                // Use first bus for primary bus_no field (for backward compatibility)
+                $bus_no = sanitize_input($bus_no_array[0]);
+                // Set number of vehicles to match selected buses
+                $no_of_vehicles = count($bus_no_array);
+            }
+            
             $no_of_days = intval($_POST['no_of_days']);
-            $no_of_vehicles = 1; // Fixed to 1 since we removed the field
             
             // Calculate date_covered (use start_date for compatibility)
             $date_covered = $start_date;
@@ -353,10 +384,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Continue with other validations if no error yet
             if (empty($error)) {
-                // Check if bus is available for the date range
-                $date_check = checkBusAvailabilityForRange($conn, $bus_no, $start_date, $end_date);
-                if (!$date_check['available']) {
-                    $error = "Bus {$bus_no} is already booked for one or more dates in the selected range. Please select a different bus or date range.";
+                // Check if all selected buses are available for the date range
+                $unavailable_buses = [];
+                foreach ($bus_no_array as $selected_bus) {
+                    $selected_bus = sanitize_input($selected_bus);
+                    if (!empty($selected_bus)) {
+                        $date_check = checkBusAvailabilityForRange($conn, $selected_bus, $start_date, $end_date);
+                        if (!$date_check['available']) {
+                            $unavailable_buses[] = $selected_bus;
+                        }
+                    }
+                }
+                
+                if (!empty($unavailable_buses)) {
+                    $error = "Bus(es) " . implode(', ', $unavailable_buses) . " are already booked for one or more dates in the selected range. Please select different buses or date range.";
                 } elseif (empty($school_name) || empty($client) || empty($from_location) || empty($to_location) || empty($purpose) || empty($vehicle) || empty($bus_no)) {
                     $error = 'All required fields must be filled.';
                 } elseif ($from_location === $to_location) {
@@ -369,39 +410,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Combine school name and client organization
                         $full_client = $school_name . ' - ' . $client;
                         
+                        // Store all selected bus numbers (comma-separated for backward compatibility)
+                        $bus_no_string = implode(', ', array_map('sanitize_input', $bus_no_array));
+                        
                         // Insert bus schedule with approval document
                         $stmt = $conn->prepare("INSERT INTO bus_schedules (client, destination, purpose, date_covered, vehicle, bus_no, no_of_days, no_of_vehicles, user_id, user_type, status, approval_document) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'student', 'pending', ?)");
-                        $stmt->bind_param("sssssssiis", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no, $no_of_days, $no_of_vehicles, $_SESSION['user_id'], $approval_document_path);
+                        $stmt->bind_param("sssssssiis", $full_client, $destination, $purpose, $date_covered, $vehicle, $bus_no_string, $no_of_days, $no_of_vehicles, $_SESSION['user_id'], $approval_document_path);
                         
                         if ($stmt->execute()) {
                             $schedule_id = $conn->insert_id;
                             
-                            // Get bus ID and create bus booking record
-                            $bus_id = getBusIdByNumber($conn, $bus_no);
-                            if (!$bus_id) {
-                                throw new Exception('Invalid bus number');
-                            }
-                            
-                            // Insert bus booking records for each day in the date range
-                            $current_date = $start_date;
-                            $end_timestamp = strtotime($end_date);
-                            
-                            while (strtotime($current_date) <= $end_timestamp) {
-                                $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
-                                $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                            // Process all selected buses
+                            foreach ($bus_no_array as $selected_bus_no) {
+                                $selected_bus_no = sanitize_input($selected_bus_no);
+                                if (empty($selected_bus_no)) continue;
                                 
-                                if (!$bus_booking_stmt->execute()) {
-                                    throw new Exception('Error creating bus booking: ' . $conn->error);
+                                // Get bus ID and create bus booking record
+                                $bus_id = getBusIdByNumber($conn, $selected_bus_no);
+                                if (!$bus_id) {
+                                    throw new Exception("Invalid bus number: {$selected_bus_no}");
                                 }
                                 
-                                // Move to next day
-                                $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
+                                // Insert bus booking records for each day in the date range
+                                $current_date = $start_date;
+                                $end_timestamp = strtotime($end_date);
+                                
+                                while (strtotime($current_date) <= $end_timestamp) {
+                                    $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
+                                    $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                                    
+                                    if (!$bus_booking_stmt->execute()) {
+                                        throw new Exception('Error creating bus booking: ' . $conn->error);
+                                    }
+                                    
+                                    // Move to next day
+                                    $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
+                                }
+                                
+                                // Update bus status to booked when booking is created
+                                $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
+                                $update_bus_status->bind_param("i", $bus_id);
+                                $update_bus_status->execute();
                             }
-                            
-                            // Update bus status to booked when booking is created
-                            $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
-                            $update_bus_status->bind_param("i", $bus_id);
-                            $update_bus_status->execute();
                             
                             // Calculate billing statement (include continuation if provided)
                             $billing = calculateBillingStatement($from_location, $to_location, $destination, $no_of_vehicles, $no_of_days, $to_location_continuation);
@@ -425,7 +475,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $date_covered, 
                                 $no_of_days, 
                                 $vehicle, 
-                                $bus_no, 
+                                $bus_no_string, 
                                 $no_of_vehicles,
                                 $billing['from_location'], 
                                 $billing['to_location'], 
@@ -1165,22 +1215,33 @@ while ($bus = $buses_result->fetch_assoc()) {
                 <input type="hidden" id="vehicle" name="vehicle" value="Bus">
                 
                 <div>
-                    <label for="bus_no" class="block text-sm font-medium text-gray-700 mb-1">Bus Number *</label>
-                    <select id="bus_no" name="bus_no" required 
-                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
-                            onchange="checkBusAvailability()">
-                        <option value="">Select Bus</option>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Bus(es) *</label>
+                    <div id="bus-checkboxes" class="border border-gray-300 rounded-md p-4 max-h-60 overflow-y-auto bg-gray-50">
+                        <p class="text-xs text-gray-500 mb-3">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Select one or more buses. Price will be calculated based on the number of buses selected.
+                        </p>
                         <?php foreach ($available_buses as $bus): ?>
-                            <option value="<?php echo htmlspecialchars($bus['bus_number']); ?>">
-                                Bus <?php echo htmlspecialchars($bus['bus_number']); ?> 
-                                (<?php echo htmlspecialchars($bus['vehicle_type']); ?> - <?php echo $bus['capacity']; ?> seats)
-                            </option>
+                            <div class="flex items-center mb-2 p-2 hover:bg-gray-100 rounded">
+                                <input type="checkbox" 
+                                       id="bus_<?php echo htmlspecialchars($bus['bus_number']); ?>" 
+                                       name="bus_no[]" 
+                                       value="<?php echo htmlspecialchars($bus['bus_number']); ?>"
+                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                       onchange="updateSelectedBuses(); updateDistance();">
+                                <label for="bus_<?php echo htmlspecialchars($bus['bus_number']); ?>" 
+                                       class="ml-2 text-sm text-gray-700 cursor-pointer flex-1">
+                                    <span class="font-semibold">Bus <?php echo htmlspecialchars($bus['bus_number']); ?></span>
+                                    <span class="text-gray-500"> - <?php echo htmlspecialchars($bus['vehicle_type']); ?> (<?php echo $bus['capacity']; ?> seats)</span>
+                                </label>
+                            </div>
                         <?php endforeach; ?>
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1" id="bus-availability-hint">
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2" id="bus-availability-hint">
                         <i class="fas fa-bus mr-1"></i>
-                        Availability updates when you pick a date
+                        <span id="selected-buses-count">0</span> bus(es) selected. Availability updates when you pick a date.
                     </p>
+                    <input type="hidden" id="bus_no_required" name="bus_no_required" value="">
                 </div>
                 
                 <div>
@@ -2021,6 +2082,45 @@ document.addEventListener('keydown', function(event) {
 
 // NO GEOCODING OR RESOLVING FUNCTIONS NEEDED - All done locally in PHP
 
+// Function to calculate price based on fixed pricing structure
+function calculatePriceFromDistance(distanceKm) {
+    // Fixed pricing structure based on round trip distance (km)
+    if (distanceKm >= 20 && distanceKm <= 50) {
+        return 1000;
+    } else if (distanceKm >= 51 && distanceKm <= 80) {
+        return 2000;
+    } else if (distanceKm >= 81 && distanceKm <= 110) {
+        return 3000;
+    } else if (distanceKm >= 111 && distanceKm <= 140) {
+        return 4000;
+    } else if (distanceKm >= 141 && distanceKm <= 170) {
+        return 5000;
+    } else if (distanceKm >= 171 && distanceKm <= 200) {
+        return 6000;
+    } else if (distanceKm >= 201 && distanceKm <= 230) {
+        return 7000;
+    } else if (distanceKm >= 231 && distanceKm <= 260) {
+        return 8000;
+    } else if (distanceKm >= 261 && distanceKm <= 290) {
+        return 9000;
+    } else if (distanceKm >= 291 && distanceKm <= 320) {
+        return 10000;
+    } else if (distanceKm >= 321 && distanceKm <= 350) {
+        return 11000;
+    } else if (distanceKm >= 351 && distanceKm <= 380) {
+        return 12000;
+    } else if (distanceKm >= 381 && distanceKm <= 410) {
+        return 13000;
+    } else {
+        // For distances outside the range, use the closest tier
+        if (distanceKm < 20) {
+            return 1000; // Minimum price
+        } else {
+            return 13000; // Maximum price for distances > 410 km
+        }
+    }
+}
+
 // Calculate and display distance using LOCAL DATABASE (NO APIs)
 async function updateDistance() {
     const fromLocation = document.getElementById('from_location').value.trim();
@@ -2115,6 +2215,14 @@ async function updateDistance() {
         
         const totalDistanceRoundTrip = totalDistanceOneWay * 2;
         
+        // Calculate price based on round trip distance
+        const pricePerVehicle = calculatePriceFromDistance(totalDistanceRoundTrip);
+        
+        // Get number of selected buses from checkboxes
+        const selectedBuses = document.querySelectorAll('input[name="bus_no[]"]:checked');
+        const noOfVehicles = selectedBuses.length;
+        const totalPrice = noOfVehicles > 0 ? pricePerVehicle * noOfVehicles : 0;
+        
         // Display result
         distanceDisplay.className = 'p-3 rounded-md text-sm bg-green-100 text-green-800 border border-green-300';
         
@@ -2137,6 +2245,21 @@ async function updateDistance() {
                 <span><i class="fas fa-exchange-alt mr-2"></i>Total Distance (round trip):</span>
                 <span class="font-bold text-lg">${totalDistanceRoundTrip.toFixed(1)} km</span>
             </div>
+            <div class="flex items-center justify-between mt-2 pt-2 border-t border-green-200">
+                <span><i class="fas fa-money-bill-wave mr-2"></i>Price per vehicle:</span>
+                <span class="font-bold text-lg text-green-700">₱${pricePerVehicle.toLocaleString()}</span>
+            </div>
+            ${noOfVehicles > 0 ? `
+            <div class="flex items-center justify-between mt-1">
+                <span><i class="fas fa-calculator mr-2"></i>Total Price (${noOfVehicles} vehicle${noOfVehicles !== 1 ? 's' : ''}):</span>
+                <span class="font-bold text-xl text-green-800">₱${totalPrice.toLocaleString()}</span>
+            </div>
+            ` : `
+            <div class="flex items-center justify-between mt-1 pt-1 border-t border-yellow-200">
+                <span><i class="fas fa-exclamation-circle mr-2 text-yellow-600"></i>Please select at least one bus</span>
+                <span class="font-bold text-lg text-yellow-600">₱0</span>
+            </div>
+            `}
             <div class="mt-3 pt-2 border-t border-green-200 text-xs text-gray-700">
                 <div class="mb-2">
                     <i class="fas fa-university mr-1 text-blue-600"></i>
@@ -2225,7 +2348,6 @@ function checkAvailability() {
     const startDate = document.getElementById('start_date').value;
     const endDate = document.getElementById('end_date').value;
     const statusDiv = document.getElementById('availability-status');
-    const busNoSelect = document.getElementById('bus_no');
     const hint = document.getElementById('bus-availability-hint');
     
     if (!startDate || !endDate) {
@@ -2252,13 +2374,14 @@ function checkAvailability() {
             statusDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-2"></i>Limited availability for the selected date range.`;
         }
 
-        // Update Bus Number select options availability
+        // Update bus checkbox availability
         const availabilityByNumber = {};
+        const busCheckboxes = document.querySelectorAll('input[name="bus_no[]"]');
         
         // Initialize all buses as available
-        Array.from(busNoSelect.options).forEach(opt => {
-            if (opt.value) {
-                availabilityByNumber[opt.value] = true;
+        busCheckboxes.forEach(cb => {
+            if (cb.value) {
+                availabilityByNumber[cb.value] = true;
             }
         });
         
@@ -2271,33 +2394,42 @@ function checkAvailability() {
             });
         }
 
-        // Enable/disable options and update text
-        Array.from(busNoSelect.options).forEach(opt => {
-            if (opt.value === "") return; // Skip the "Select Bus" option
+        // Enable/disable checkboxes and update labels
+        busCheckboxes.forEach(cb => {
+            const isAvail = availabilityByNumber[cb.value] !== false;
+            cb.disabled = !isAvail;
             
-            const isAvail = availabilityByNumber[opt.value] !== false;
-            opt.disabled = !isAvail;
-            
-            // Get original bus info from option text
-            const busInfo = opt.getAttribute('data-original-text') || opt.textContent;
-            if (!opt.hasAttribute('data-original-text')) {
-                opt.setAttribute('data-original-text', opt.textContent);
+            // Update label text
+            const label = document.querySelector(`label[for="${cb.id}"]`);
+            if (label) {
+                const originalText = label.getAttribute('data-original-text') || label.textContent.trim();
+                if (!label.hasAttribute('data-original-text')) {
+                    label.setAttribute('data-original-text', originalText);
+                }
+                
+                if (!isAvail) {
+                    label.innerHTML = originalText + ' <span class="text-red-600">(Not available)</span>';
+                } else {
+                    label.innerHTML = originalText;
+                }
             }
-            
-            opt.textContent = busInfo + (!isAvail ? ' (Not available)' : '');
         });
 
-        // If selected option becomes unavailable, switch to first available
-        if (busNoSelect.options[busNoSelect.selectedIndex]?.disabled) {
-            const firstAvail = Array.from(busNoSelect.options).find(o => !o.disabled && o.value);
-            if (firstAvail) busNoSelect.value = firstAvail.value;
-        }
+        // Uncheck unavailable buses
+        busCheckboxes.forEach(cb => {
+            if (cb.disabled && cb.checked) {
+                cb.checked = false;
+                updateSelectedBuses();
+            }
+        });
 
         // Update hint
         const availableList = Object.keys(availabilityByNumber).filter(k => availabilityByNumber[k]);
-        hint.innerHTML = availableList.length
-            ? `<i class=\"fas fa-bus mr-1\"></i>Available: Bus ${availableList.join(', Bus ')}`
-            : `<i class=\"fas fa-bus mr-1\"></i>No buses available for selected date range`;
+        if (hint) {
+            hint.innerHTML = availableList.length
+                ? `<i class="fas fa-bus mr-1"></i><span id="selected-buses-count">0</span> bus(es) selected. Available: Bus ${availableList.join(', Bus ')}`
+                : `<i class="fas fa-bus mr-1"></i>No buses available for selected date range`;
+        }
     })
     .catch(error => {
         console.error('Error:', error);
@@ -2308,47 +2440,40 @@ function checkAvailability() {
 function checkBusAvailability() {
     const startDate = document.getElementById('start_date').value;
     const endDate = document.getElementById('end_date').value;
-    const busNo = document.getElementById('bus_no').value;
     const hint = document.getElementById('bus-availability-hint');
     
     if (!startDate || !endDate) {
-        hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select date range first';
+        if (hint) {
+            hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select date range first';
+        }
         return;
     }
     
-    // Make AJAX request to check specific bus availability
-    fetch('check_bus_availability.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `start_date=${startDate}&end_date=${endDate}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.buses) {
-            const selectedBus = data.buses.find(bus => bus.bus_number === busNo);
-            if (selectedBus) {
-                if (selectedBus.available) {
-                    hint.innerHTML = `<i class="fas fa-check-circle text-green-600 mr-1"></i>Bus ${busNo} is available for the selected date range`;
-                    hint.className = 'text-xs text-green-600 mt-1';
-                } else {
-                    hint.innerHTML = `<i class="fas fa-times-circle text-red-600 mr-1"></i>Bus ${busNo} is NOT available for the selected date range`;
-                    hint.className = 'text-xs text-red-600 mt-1';
-                }
-            }
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        hint.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>Error checking availability';
-        hint.className = 'text-xs text-yellow-600 mt-1';
-    });
+    // Trigger full availability check
+    checkAvailability();
 }
 
 // Print receipt
 function printReceipt(scheduleId) {
     window.open(`print_bus_receipt.php?id=${scheduleId}`, '_blank');
+}
+
+// Update selected buses count
+function updateSelectedBuses() {
+    const checkboxes = document.querySelectorAll('input[name="bus_no[]"]:checked');
+    const count = checkboxes.length;
+    const countElement = document.getElementById('selected-buses-count');
+    if (countElement) {
+        countElement.textContent = count;
+    }
+    
+    // Update hidden field for validation
+    const hiddenField = document.getElementById('bus_no_required');
+    if (hiddenField) {
+        hiddenField.value = count > 0 ? '1' : '';
+    }
+    
+    return count;
 }
 
 // Confirmation Modal Functions
@@ -2363,9 +2488,19 @@ function showConfirmModal() {
         return;
     }
     
-    // Get bus number text (from the selected option)
-    const busSelect = document.getElementById('bus_no');
-    const busText = busSelect.options[busSelect.selectedIndex].text;
+    // Check if at least one bus is selected
+    const selectedBuses = document.querySelectorAll('input[name="bus_no[]"]:checked');
+    if (selectedBuses.length === 0) {
+        alert('Please select at least one bus.');
+        return;
+    }
+    
+    // Get selected bus numbers
+    const busNumbers = Array.from(selectedBuses).map(cb => {
+        const label = document.querySelector(`label[for="${cb.id}"]`);
+        return label ? label.textContent.trim().split(' - ')[0] : `Bus ${cb.value}`;
+    });
+    const busText = busNumbers.join(', ');
     
     // Format date range
     const startDate = formData.get('start_date');
@@ -2473,6 +2608,24 @@ function formatFileSize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
+
+// Initialize selected buses count on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateSelectedBuses();
+    
+    // Add custom validation for bus selection
+    const form = document.getElementById('busRequestForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const selectedBuses = document.querySelectorAll('input[name="bus_no[]"]:checked');
+            if (selectedBuses.length === 0) {
+                e.preventDefault();
+                alert('Please select at least one bus before submitting.');
+                return false;
+            }
+        });
+    }
+});
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>
