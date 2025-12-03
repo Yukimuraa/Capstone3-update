@@ -484,22 +484,6 @@ if (!empty($billing['to_location'])) {
             </div>
         </div>
 
-        <div class="form-section" style="margin-top: 15px; padding: 10px; background-color: #f0f8ff; border: 2px solid #333; border-radius: 5px;">
-            <div class="form-row" style="align-items: center;">
-                <label style="font-weight: bold; font-size: 13px; min-width: 180px;">OR No. (Official Receipt):</label>
-                <span style="flex: 1; padding: 8px; border: 2px solid #333; border-radius: 3px; background-color: white; min-height: 25px; font-weight: bold; font-size: 14px;">
-                    <?php echo !empty($billing['or_number']) ? htmlspecialchars($billing['or_number']) : '_______________________________'; ?>
-                </span>
-            </div>
-            <p style="margin: 5px 0 0 0; font-size: 10px; color: #666; font-style: italic;">
-                <?php if (empty($billing['or_number'])): ?>
-                    * To be filled by the Cashier upon payment
-                <?php else: ?>
-                    Payment confirmed
-                <?php endif; ?>
-            </p>
-        </div>
-
         <div class="notes">
             <p><strong>Important Notes:</strong></p>
             <ul>
@@ -514,7 +498,7 @@ if (!empty($billing['to_location'])) {
             <div class="signature-box">
                 <div class="signature-line"></div>
                 <div><strong>Prepared by:</strong></div>
-                <div><?php echo htmlspecialchars($billing['prepared_by']); ?></div>
+                <div>RENZ CHRISTIAN T. CARISMA</div>
                 <div>Clerk, Business Affairs Office</div>
             </div>
             <div class="signature-box">

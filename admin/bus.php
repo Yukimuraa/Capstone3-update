@@ -376,7 +376,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'schedules';
 
 // Get current fuel rate
 $fuel_rate_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = 'fuel_rate'");
-$current_fuel_rate = 70.00; // Default
+$current_fuel_rate = 45.00; // Default
 if ($fuel_rate_query && $fuel_rate_query->num_rows > 0) {
     $current_fuel_rate = floatval($fuel_rate_query->fetch_assoc()['setting_value']);
 }
@@ -1310,10 +1310,6 @@ include '../includes/header.php';
                     <p id="view-bus-no" class="text-base text-gray-900"></p>
                 </div>
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Plate Number</p>
-                    <p id="view-plate-number" class="text-base text-gray-900"></p>
-                </div>
-                <div>
                     <p class="text-sm font-medium text-gray-500">Number of Days</p>
                     <p id="view-days" class="text-base text-gray-900"></p>
                 </div>
@@ -1325,7 +1321,6 @@ include '../includes/header.php';
                     <p class="text-sm font-medium text-gray-500">Requested By</p>
                     <p id="view-user" class="text-base text-gray-900"></p>
                     <p id="view-user-email" class="text-sm text-gray-500"></p>
-                    <p id="view-user-type" class="text-xs text-gray-400"></p>
                 </div>
                 <div>
                     <p class="text-sm font-medium text-gray-500">Total Amount</p>
@@ -1677,12 +1672,10 @@ function openViewModal(schedule) {
     document.getElementById('view-date').textContent = schedule.date_covered ? new Date(schedule.date_covered).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
     document.getElementById('view-vehicle').textContent = schedule.vehicle || '-';
     document.getElementById('view-bus-no').textContent = schedule.bus_no || '-';
-    document.getElementById('view-plate-number').textContent = schedule.plate_number || 'N/A';
     document.getElementById('view-days').textContent = schedule.no_of_days || '-';
     document.getElementById('view-vehicles').textContent = schedule.no_of_vehicles || '-';
     document.getElementById('view-user').textContent = schedule.user_name || 'N/A';
     document.getElementById('view-user-email').textContent = schedule.user_email || '';
-    document.getElementById('view-user-type').textContent = schedule.user_type ? '(' + schedule.user_type.charAt(0).toUpperCase() + schedule.user_type.slice(1) + ')' : '';
     document.getElementById('view-amount').textContent = schedule.total_amount ? '₱' + parseFloat(schedule.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
     
     // Display OR Number if available
@@ -1695,7 +1688,23 @@ function openViewModal(schedule) {
         orContainer.classList.add('hidden');
     }
     
-    document.getElementById('view-updated').textContent = schedule.updated_at ? new Date(schedule.updated_at).toLocaleString('en-US') : '-';
+    // Format date with time
+    if (schedule.updated_at) {
+        const date = new Date(schedule.updated_at);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'numeric', 
+            day: 'numeric' 
+        });
+        const formattedTime = date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true
+        });
+        document.getElementById('view-updated').textContent = formattedDate + ', ' + formattedTime;
+    } else {
+        document.getElementById('view-updated').textContent = '-';
+    }
     
     // Set status with styling
     const statusElement = document.getElementById('view-status');

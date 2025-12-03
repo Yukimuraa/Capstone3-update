@@ -25,6 +25,14 @@ if ($check_column->num_rows == 0) {
     $conn->query("ALTER TABLE bus_schedules ADD COLUMN approval_document VARCHAR(255) NULL AFTER status");
 }
 
+// Ensure bus_settings table exists
+$conn->query("CREATE TABLE IF NOT EXISTS bus_settings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    setting_key VARCHAR(50) UNIQUE NOT NULL,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)");
+
 // Get user profile picture
 $user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
 $user_stmt->bind_param("i", $_SESSION['user_id']);
@@ -227,21 +235,52 @@ function calculateBillingStatement($from_location, $to_location, $destination, $
     
     $total_distance_km = $distance_km * 2; // Round trip
     
-    // Calculate price using fixed pricing structure (based on round trip distance)
-    $price_per_vehicle = calculatePriceFromDistance($total_distance_km);
-    $total_amount = $price_per_vehicle * $no_of_vehicles;
+    // Get fuel rate from database settings
+    $fuel_rate_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = 'fuel_rate'");
+    $fuel_rate = 45.00; // Default fallback
+    if ($fuel_rate_query && $fuel_rate_query->num_rows > 0) {
+        $fuel_rate = floatval($fuel_rate_query->fetch_assoc()['setting_value']);
+    }
     
-    // Keep old fields for backward compatibility (set to 0 or default values)
-    $fuel_rate = 70.00;
-    $computed_distance = $distance_km;
-    $runtime_liters = 25.00;
-    $maintenance_cost = 0.00;
-    $standby_cost = 0.00;
-    $additive_cost = 0.00;
-    $rate_per_bus = 0.00;
-    $fuel_cost = 0.00;
-    $runtime_cost = 0.00;
-    $subtotal_per_vehicle = $price_per_vehicle;
+    // Get cost settings from database (with defaults)
+    $cost_settings = [
+        'runtime_liters' => 25.00,
+        'maintenance_cost' => 5000.00,
+        'standby_cost' => 1500.00,
+        'additive_cost' => 1500.00
+    ];
+    
+    // Load cost settings from database
+    foreach ($cost_settings as $key => $default_value) {
+        $setting_query = $conn->query("SELECT setting_value FROM bus_settings WHERE setting_key = '$key'");
+        if ($setting_query && $setting_query->num_rows > 0) {
+            $cost_settings[$key] = floatval($setting_query->fetch_assoc()['setting_value']);
+        }
+    }
+    
+    // Calculate costs
+    $computed_distance = $distance_km; // One-way distance
+    $runtime_liters = $cost_settings['runtime_liters'];
+    
+    // Calculate fuel cost: Computed distance × Fuel Rate
+    $fuel_cost = $computed_distance * $fuel_rate;
+    
+    // Runtime cost is fixed at 1,750
+    $runtime_cost = 1750.00;
+    
+    // Other costs from settings
+    $maintenance_cost = $cost_settings['maintenance_cost'];
+    $standby_cost = $cost_settings['standby_cost'];
+    $additive_cost = $cost_settings['additive_cost'];
+    
+    // Calculate Rate per Bus: Sum of all costs
+    $rate_per_bus = $fuel_cost + $runtime_cost + $maintenance_cost + $standby_cost + $additive_cost;
+    
+    // Calculate total amount: Rate per Bus × Number of Vehicles
+    $total_amount = $rate_per_bus * $no_of_vehicles;
+    
+    // Subtotal per vehicle (same as rate_per_bus for compatibility)
+    $subtotal_per_vehicle = $rate_per_bus;
     
     return [
         'from_location' => $from_location,
@@ -390,7 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $selected_bus = sanitize_input($selected_bus);
                     if (!empty($selected_bus)) {
                         $date_check = checkBusAvailabilityForRange($conn, $selected_bus, $start_date, $end_date);
-                        if (!$date_check['available']) {
+                if (!$date_check['available']) {
                             $unavailable_buses[] = $selected_bus;
                         }
                     }
@@ -424,33 +463,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             foreach ($bus_no_array as $selected_bus_no) {
                                 $selected_bus_no = sanitize_input($selected_bus_no);
                                 if (empty($selected_bus_no)) continue;
-                                
-                                // Get bus ID and create bus booking record
+                            
+                            // Get bus ID and create bus booking record
                                 $bus_id = getBusIdByNumber($conn, $selected_bus_no);
-                                if (!$bus_id) {
+                            if (!$bus_id) {
                                     throw new Exception("Invalid bus number: {$selected_bus_no}");
+                            }
+                            
+                            // Insert bus booking records for each day in the date range
+                            $current_date = $start_date;
+                            $end_timestamp = strtotime($end_date);
+                            
+                            while (strtotime($current_date) <= $end_timestamp) {
+                                $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
+                                $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
+                                
+                                if (!$bus_booking_stmt->execute()) {
+                                    throw new Exception('Error creating bus booking: ' . $conn->error);
                                 }
                                 
-                                // Insert bus booking records for each day in the date range
-                                $current_date = $start_date;
-                                $end_timestamp = strtotime($end_date);
-                                
-                                while (strtotime($current_date) <= $end_timestamp) {
-                                    $bus_booking_stmt = $conn->prepare("INSERT INTO bus_bookings (schedule_id, bus_id, booking_date, status) VALUES (?, ?, ?, 'active')");
-                                    $bus_booking_stmt->bind_param("iis", $schedule_id, $bus_id, $current_date);
-                                    
-                                    if (!$bus_booking_stmt->execute()) {
-                                        throw new Exception('Error creating bus booking: ' . $conn->error);
-                                    }
-                                    
-                                    // Move to next day
-                                    $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
-                                }
-                                
-                                // Update bus status to booked when booking is created
-                                $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
-                                $update_bus_status->bind_param("i", $bus_id);
-                                $update_bus_status->execute();
+                                // Move to next day
+                                $current_date = date('Y-m-d', strtotime($current_date . ' +1 day'));
+                            }
+                            
+                            // Update bus status to booked when booking is created
+                            $update_bus_status = $conn->prepare("UPDATE buses SET status = 'booked' WHERE id = ?");
+                            $update_bus_status->bind_param("i", $bus_id);
+                            $update_bus_status->execute();
                             }
                             
                             // Calculate billing statement (include continuation if provided)
@@ -560,10 +599,11 @@ $total_rows = $count_result->fetch_assoc()['total'];
 $total_pages = $total_rows > 0 ? ceil($total_rows / $per_page) : 1;
 
 // Get paginated bus schedules with billing information and bus plate number
-$user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.plate_number
+$user_schedules_query = "SELECT bs.*, bst.total_amount, bst.payment_status, b.plate_number, u.name as user_name, u.email as user_email
                         FROM bus_schedules bs 
                         LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
                         LEFT JOIN buses b ON bs.bus_no = b.bus_number
+                        LEFT JOIN user_accounts u ON bs.user_id = u.id
                         $where_clause
                         ORDER BY bs.id DESC, bs.created_at DESC 
                         LIMIT $per_page OFFSET $offset";
@@ -1128,6 +1168,79 @@ while ($bus = $buses_result->fetch_assoc()) {
                             <span class="font-bold" id="total-distance-km">0 km</span>
                         </div>
                     </div>
+                    
+                    <!-- Pricing Guide -->
+                    <div class="mt-3">
+                        <button type="button" onclick="togglePricingGuide()" class="flex items-center justify-between w-full text-left p-3 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors">
+                            <span class="text-sm font-medium text-gray-700">
+                                <i class="fas fa-info-circle text-blue-600 mr-2"></i>View Pricing Guide
+                            </span>
+                            <i class="fas fa-chevron-down text-gray-400" id="pricingGuideIcon"></i>
+                        </button>
+                        <div id="pricingGuide" class="hidden mt-2 p-4 bg-white border border-gray-200 rounded-md shadow-sm">
+                            <h4 class="text-sm font-semibold text-gray-800 mb-3">
+                                <i class="fas fa-tag text-blue-600 mr-2"></i>Distance-Based Pricing (Round Trip)
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">20-50 km:</span>
+                                    <span class="font-semibold text-green-700">₱1,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">51-80 km:</span>
+                                    <span class="font-semibold text-green-700">₱2,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">81-110 km:</span>
+                                    <span class="font-semibold text-green-700">₱3,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">111-140 km:</span>
+                                    <span class="font-semibold text-green-700">₱4,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">141-170 km:</span>
+                                    <span class="font-semibold text-green-700">₱5,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">171-200 km:</span>
+                                    <span class="font-semibold text-green-700">₱6,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">201-230 km:</span>
+                                    <span class="font-semibold text-green-700">₱7,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">231-260 km:</span>
+                                    <span class="font-semibold text-green-700">₱8,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">261-290 km:</span>
+                                    <span class="font-semibold text-green-700">₱9,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">291-320 km:</span>
+                                    <span class="font-semibold text-green-700">₱10,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">321-350 km:</span>
+                                    <span class="font-semibold text-green-700">₱11,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">351-380 km:</span>
+                                    <span class="font-semibold text-green-700">₱12,000</span>
+                                </div>
+                                <div class="flex justify-between items-center py-1 px-2 bg-gray-50 rounded">
+                                    <span class="text-gray-600">381-410 km:</span>
+                                    <span class="font-semibold text-green-700">₱13,000</span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-200">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                <strong>Note:</strong> Pricing is based on round trip distance. Price per vehicle is multiplied by the number of buses selected.
+                            </p>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="md:col-span-2">
@@ -1481,12 +1594,40 @@ function viewSchedule(schedule) {
                 <p class="text-sm text-gray-900">${schedule.bus_no}</p>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-500">Plate Number</label>
-                <p class="text-sm text-gray-900">${schedule.plate_number || 'N/A'}</p>
-            </div>
-            <div>
                 <label class="block text-sm font-medium text-gray-500">Number of Days</label>
                 <p class="text-sm text-gray-900">${schedule.no_of_days || 1}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Schedule ID</label>
+                <p class="text-sm text-gray-900">${schedule.id || 'N/A'}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Requested By</label>
+                <p class="text-sm text-gray-900">${schedule.user_name || 'N/A'}</p>
+                <p class="text-sm text-gray-500">${schedule.user_email || ''}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-500">Last Updated</label>
+                <p class="text-sm text-gray-900">${(() => {
+                    if (!schedule.updated_at) return 'N/A';
+                    try {
+                        const date = new Date(schedule.updated_at);
+                        if (isNaN(date.getTime())) return 'N/A';
+                        const formattedDate = date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'numeric', 
+                            day: 'numeric' 
+                        });
+                        const formattedTime = date.toLocaleTimeString('en-US', { 
+                            hour: 'numeric', 
+                            minute: '2-digit',
+                            hour12: true
+                        });
+                        return formattedDate + ', ' + formattedTime;
+                    } catch (e) {
+                        return schedule.updated_at || 'N/A';
+                    }
+                })()}</p>
             </div>
             ${schedule.or_number ? `
             <div class="md:col-span-2 bg-green-50 border-l-4 border-green-400 p-4 rounded">
@@ -2405,8 +2546,8 @@ function checkAvailability() {
                 const originalText = label.getAttribute('data-original-text') || label.textContent.trim();
                 if (!label.hasAttribute('data-original-text')) {
                     label.setAttribute('data-original-text', originalText);
-                }
-                
+            }
+            
                 if (!isAvail) {
                     label.innerHTML = originalText + ' <span class="text-red-600">(Not available)</span>';
                 } else {
@@ -2420,13 +2561,13 @@ function checkAvailability() {
             if (cb.disabled && cb.checked) {
                 cb.checked = false;
                 updateSelectedBuses();
-            }
+        }
         });
 
         // Update hint
         const availableList = Object.keys(availabilityByNumber).filter(k => availabilityByNumber[k]);
         if (hint) {
-            hint.innerHTML = availableList.length
+        hint.innerHTML = availableList.length
                 ? `<i class="fas fa-bus mr-1"></i><span id="selected-buses-count">0</span> bus(es) selected. Available: Bus ${availableList.join(', Bus ')}`
                 : `<i class="fas fa-bus mr-1"></i>No buses available for selected date range`;
         }
@@ -2444,7 +2585,7 @@ function checkBusAvailability() {
     
     if (!startDate || !endDate) {
         if (hint) {
-            hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select date range first';
+        hint.innerHTML = '<i class="fas fa-bus mr-1"></i>Please select date range first';
         }
         return;
     }
@@ -2456,6 +2597,18 @@ function checkBusAvailability() {
 // Print receipt
 function printReceipt(scheduleId) {
     window.open(`print_bus_receipt.php?id=${scheduleId}`, '_blank');
+}
+
+// Toggle pricing guide
+function togglePricingGuide() {
+    const guide = document.getElementById('pricingGuide');
+    const icon = document.getElementById('pricingGuideIcon');
+    
+    if (guide && icon) {
+        guide.classList.toggle('hidden');
+        icon.classList.toggle('fa-chevron-down');
+        icon.classList.toggle('fa-chevron-up');
+    }
 }
 
 // Update selected buses count

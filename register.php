@@ -15,9 +15,64 @@ $emailConfig = include 'config/email_config.php';
 $error = '';
 $success = '';
 $showOtpField = false;
+$resendCooldown = 60; // 60 seconds cooldown between resends
 
 
-if (isset($_POST['verify_otp'])) {
+if (isset($_POST['resend_otp'])) {
+    // Check if temp_user exists in session
+    if (!isset($_SESSION['temp_user'])) {
+        $error = "Session expired. Please register again.";
+        $showOtpField = false;
+    } else {
+        // Check rate limiting - prevent resending too frequently
+        $lastResendTime = $_SESSION['last_otp_resend'] ?? 0;
+        $timeSinceLastResend = time() - $lastResendTime;
+        
+        if ($timeSinceLastResend < $resendCooldown) {
+            $remainingTime = $resendCooldown - $timeSinceLastResend;
+            $error = "Please wait {$remainingTime} seconds before requesting a new OTP.";
+            $showOtpField = true;
+        } else {
+            // Generate new OTP
+            $otp = rand(100000, 999999);
+            $otpExpiry = time() + ($emailConfig['otp']['expiry_minutes'] * 60);
+            
+            $_SESSION['otp'] = $otp;
+            $_SESSION['otp_expiry'] = $otpExpiry;
+            $_SESSION['last_otp_resend'] = time();
+            
+            $email = $_SESSION['temp_user']['email'];
+            
+            $mail = new PHPMailer(true);
+            
+            try {
+                $mail->isSMTP();
+                $mail->Host       = $emailConfig['smtp']['host'];
+                $mail->SMTPAuth   = true;
+                $mail->Username   = $emailConfig['smtp']['username'];
+                $mail->Password   = $emailConfig['smtp']['password'];
+                $mail->SMTPSecure = $emailConfig['smtp']['encryption'] === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port       = $emailConfig['smtp']['port'];
+                $mail->SMTPDebug  = $emailConfig['smtp']['debug'];
+                
+                $mail->setFrom($emailConfig['smtp']['from_email'], $emailConfig['smtp']['from_name']);
+                $mail->addAddress($email);
+                
+                $mail->isHTML(true);
+                $mail->Subject = 'Your New OTP for Registration';
+                $mail->Body    = "Your new OTP code is: <b>$otp</b><br>This code will expire in {$emailConfig['otp']['expiry_minutes']} minutes.";
+                $mail->AltBody = "Your new OTP code is: $otp\nThis code will expire in {$emailConfig['otp']['expiry_minutes']} minutes.";
+                
+                $mail->send();
+                $success = "A new OTP has been sent to your email. Please check your inbox.";
+                $showOtpField = true;
+            } catch (Exception $e) {
+                $error = "Failed to send OTP. Mailer Error: {$mail->ErrorInfo}";
+                $showOtpField = true;
+            }
+        }
+    }
+} elseif (isset($_POST['verify_otp'])) {
     $userOtp = $_POST['otp'] ?? '';
     $storedOtp = $_SESSION['otp'] ?? '';
     $otpExpiry = $_SESSION['otp_expiry'] ?? 0;
@@ -27,7 +82,7 @@ if (isset($_POST['verify_otp'])) {
         $showOtpField = true;
     } elseif (time() > $otpExpiry) {
         $error = "OTP has expired. Please request a new one.";
-        unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user']);
+        unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user'], $_SESSION['last_otp_resend']);
     } elseif ($userOtp != $storedOtp) {
         $error = "Invalid OTP. Please try again.";
         $showOtpField = true;
@@ -41,7 +96,7 @@ if (isset($_POST['verify_otp'])) {
 
         if ($stmt->execute()) {
             $success = "Registration successful! Redirecting to login...";
-            unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user']);
+            unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user'], $_SESSION['last_otp_resend']);
             header("refresh:2; url=login.php");
         } else {
             $error = "Registration failed: " . $conn->error;
@@ -75,6 +130,7 @@ if (isset($_POST['verify_otp'])) {
 
             $_SESSION['otp'] = $otp;
             $_SESSION['otp_expiry'] = $otpExpiry;
+            $_SESSION['last_otp_resend'] = time(); // Set initial resend time
             $_SESSION['temp_user'] = [
                 'name' => $name,
                 'email' => $email,
@@ -108,7 +164,7 @@ if (isset($_POST['verify_otp'])) {
                 $showOtpField = true;
             } catch (Exception $e) {
                 $error = "Failed to send OTP. Mailer Error: {$mail->ErrorInfo}";
-                unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user']);
+                unset($_SESSION['otp'], $_SESSION['otp_expiry'], $_SESSION['temp_user'], $_SESSION['last_otp_resend']);
             }
         }
     }
@@ -344,17 +400,27 @@ if (isset($_POST['verify_otp'])) {
             <?php endif; ?>
 
             <?php if ($showOtpField): ?>
-                <form method="POST" class="mt-6">
+                <form method="POST" class="mt-6" id="otpForm">
                     <div class="mb-6">
                         <label for="otp" class="block text-gray-700 font-semibold mb-2">
                             <i class="fas fa-key mr-2"></i>Enter OTP Code
                         </label>
                         <input type="text" id="otp" name="otp" class="w-full px-4 py-3 rounded-lg" placeholder="6-digit OTP" maxlength="6" pattern="[0-9]{6}" required style="text-align: center; font-size: 24px; letter-spacing: 8px; font-weight: bold;">
+                        <p class="text-xs text-gray-500 mt-2 text-center">
+                            <i class="fas fa-info-circle mr-1"></i>Didn't receive the code? Check your spam folder or resend below.
+                        </p>
                     </div>
-                    <button type="submit" name="verify_otp" class="w-full register-btn text-white py-3 px-4 rounded-lg font-semibold">
+                    <button type="submit" name="verify_otp" class="w-full register-btn text-white py-3 px-4 rounded-lg font-semibold mb-3">
                         <i class="fas fa-check-circle mr-2"></i>Verify OTP
                     </button>
                 </form>
+                    <div class="text-center">
+                        <form method="POST" style="display: inline;" id="resendOtpForm" novalidate>
+                            <button type="submit" name="resend_otp" id="resendOtpBtn" class="text-blue-600 hover:text-blue-700 font-semibold text-sm disabled:text-gray-400 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-redo mr-1"></i><span id="resendText">Resend OTP</span> <span id="resendTimer" class="hidden"></span>
+                            </button>
+                        </form>
+                    </div>
             <?php else: ?>
                 <form method="POST" class="mt-6">
                     <div class="mb-4">
@@ -520,6 +586,53 @@ if (isset($_POST['verify_otp'])) {
         if (confirmPasswordInput) {
             confirmPasswordInput.addEventListener('input', checkPasswordMatch);
         }
+
+        // Resend OTP countdown timer
+        <?php if ($showOtpField): ?>
+        (function() {
+            const resendBtn = document.getElementById('resendOtpBtn');
+            const resendForm = document.getElementById('resendOtpForm');
+            const resendText = document.getElementById('resendText');
+            const resendTimer = document.getElementById('resendTimer');
+            const cooldownSeconds = <?php echo $resendCooldown; ?>;
+            const lastResendTime = <?php echo $_SESSION['last_otp_resend'] ?? 0; ?>;
+            const currentTime = <?php echo time(); ?>;
+            const timeSinceLastResend = currentTime - lastResendTime;
+            
+            // Prevent form validation on resend form
+            if (resendForm) {
+                resendForm.addEventListener('submit', function(e) {
+                    // Allow form to submit normally, but prevent validation
+                    e.stopPropagation();
+                });
+            }
+            
+            if (timeSinceLastResend < cooldownSeconds) {
+                let remainingTime = cooldownSeconds - timeSinceLastResend;
+                resendBtn.disabled = true;
+                resendText.classList.add('hidden');
+                resendTimer.classList.remove('hidden');
+                
+                const updateTimer = () => {
+                    if (remainingTime > 0) {
+                        const minutes = Math.floor(remainingTime / 60);
+                        const seconds = remainingTime % 60;
+                        resendTimer.textContent = `(${minutes}:${seconds.toString().padStart(2, '0')})`;
+                        remainingTime--;
+                        setTimeout(updateTimer, 1000);
+                    } else {
+                        resendBtn.disabled = false;
+                        resendText.classList.remove('hidden');
+                        resendTimer.classList.add('hidden');
+                    }
+                };
+                
+                updateTimer();
+            } else {
+                resendBtn.disabled = false;
+            }
+        })();
+        <?php endif; ?>
     </script>
 </body>
 

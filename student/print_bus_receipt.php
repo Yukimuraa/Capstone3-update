@@ -368,9 +368,6 @@ if (!empty($billing['to_location'])) {
     </style>
 </head>
 <body>
-    <a href="../admin/bus.php" class="back-button">
-        <i class="fas fa-arrow-left"></i> Back
-    </a>
     <button class="print-button" onclick="window.print()">
         <i class="fas fa-print"></i> Print Receipt
     </button>
@@ -521,7 +518,7 @@ if (!empty($billing['to_location'])) {
             <div class="signature-box">
                 <div class="signature-line"></div>
                 <div><strong>Prepared by:</strong></div>
-                <div><?php echo htmlspecialchars($billing['prepared_by']); ?></div>
+                <div>RENZ CHRISTIAN T. CARISMA</div>
                 <div>Clerk, Business Affairs Office</div>
             </div>
             <div class="signature-box">
