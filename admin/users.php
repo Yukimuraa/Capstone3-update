@@ -54,8 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Delete user - COMMENTED OUT
-        /*
+        // Delete user
         elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
             $id = intval($_POST['id']);
             
@@ -73,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        */
     }
 }
 
@@ -154,8 +152,7 @@ $result = $stmt->get_result();
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
-                                    <!-- Actions column header - COMMENTED OUT -->
-                                    <!-- <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th> -->
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -177,7 +174,16 @@ $result = $stmt->get_result();
                                                 <?php elseif ($user['user_type'] === 'staff'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Staff</span>
                                                 <?php elseif ($user['user_type'] === 'student'): ?>
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Student/Faculty/Staff</span>
+                                                    <?php 
+                                                    $role = $user['role'] ?? 'student';
+                                                    $roleLabels = [
+                                                        'student' => 'Student',
+                                                        'faculty' => 'Faculty',
+                                                        'staff' => 'Staff'
+                                                    ];
+                                                    $roleLabel = $roleLabels[$role] ?? 'Student';
+                                                    ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800"><?php echo $roleLabel; ?></span>
                                                 <?php else: ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">External User</span>
                                                 <?php endif; ?>
@@ -194,27 +200,25 @@ $result = $stmt->get_result();
                                                 }
                                                 ?>
                                             </td>
-                                            <!-- Actions column cell - COMMENTED OUT -->
-                                            <!--
                                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <?php if ($user['id'] !== $_SESSION['user_id']): ?>
                                                     <button type="button" class="text-red-600 hover:text-red-900 delete-user-btn" 
                                                             data-user-id="<?php echo $user['id']; ?>"
                                                             data-user-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES); ?>"
                                                             data-user-email="<?php echo htmlspecialchars($user['email'], ENT_QUOTES); ?>"
-                                                            data-user-type="<?php echo htmlspecialchars($user['user_type'], ENT_QUOTES); ?>">
+                                                            data-user-type="<?php echo htmlspecialchars($user['user_type'], ENT_QUOTES); ?>"
+                                                            data-user-role="<?php echo htmlspecialchars($user['role'] ?? '', ENT_QUOTES); ?>">
                                                         Delete
                                                     </button>
                                                 <?php else: ?>
                                                     <span class="text-gray-400">Cannot Delete</span>
                                                 <?php endif; ?>
                                             </td>
-                                            -->
                                         </tr>
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
+                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -281,8 +285,7 @@ $result = $stmt->get_result();
     </div>
 </div>
 
-<!-- Delete User Confirmation Modal - COMMENTED OUT -->
-<!--
+<!-- Delete User Confirmation Modal -->
 <div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
         <div class="flex items-center mb-4">
@@ -332,7 +335,6 @@ $result = $stmt->get_result();
         </form>
     </div>
 </div>
--->
 
 <!-- Add User Modal -->
 <div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
@@ -407,8 +409,7 @@ $result = $stmt->get_result();
         organizationField.classList.add('hidden');
     }
     
-    // Delete modal functions - COMMENTED OUT
-    /*
+    // Delete modal functions
     document.addEventListener('DOMContentLoaded', function() {
         // Add event listeners to all delete buttons
         document.querySelectorAll('.delete-user-btn').forEach(button => {
@@ -417,13 +418,14 @@ $result = $stmt->get_result();
                 const userName = this.getAttribute('data-user-name');
                 const userEmail = this.getAttribute('data-user-email');
                 const userType = this.getAttribute('data-user-type');
+                const userRole = this.getAttribute('data-user-role');
                 
-                openDeleteModal(userId, userName, userEmail, userType);
+                openDeleteModal(userId, userName, userEmail, userType, userRole);
             });
         });
     });
     
-    function openDeleteModal(userId, userName, userEmail, userType) {
+    function openDeleteModal(userId, userName, userEmail, userType, userRole) {
         document.getElementById('delete-user-id').value = userId;
         document.getElementById('delete-user-name').textContent = userName;
         document.getElementById('delete-user-email').textContent = userEmail;
@@ -433,10 +435,23 @@ $result = $stmt->get_result();
             'admin': 'BAO Admin',
             'secretary': 'BAO Secretary',
             'staff': 'Staff',
-            'student': 'Student/Faculty/Staff',
+            'student': 'Student',
             'external': 'External User'
         };
-        document.getElementById('delete-user-type').textContent = userTypeMap[userType] || userType;
+        
+        // Format role for display
+        const roleLabels = {
+            'student': 'Student',
+            'faculty': 'Faculty',
+            'staff': 'Staff'
+        };
+        
+        let displayType = userTypeMap[userType] || userType;
+        if (userType === 'student' && userRole && roleLabels[userRole]) {
+            displayType = roleLabels[userRole];
+        }
+        
+        document.getElementById('delete-user-type').textContent = displayType;
         
         document.getElementById('deleteModal').classList.remove('hidden');
     }
@@ -459,21 +474,6 @@ $result = $stmt->get_result();
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             closeDeleteModal();
-            closeAddModal();
-        }
-    });
-    */
-    
-    // Close modals when clicking outside (only for add modal now)
-    document.addEventListener('click', function(event) {
-        if (event.target.id === 'addModal') {
-            closeAddModal();
-        }
-    });
-    
-    // Close modals with Escape key (only for add modal now)
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
             closeAddModal();
         }
     });

@@ -32,7 +32,7 @@ $users_result = $conn->query($users_query);
 $users_count = $users_result->fetch_assoc()['count'];
 
 // Get recent orders
-$recent_orders_query = "SELECT o.*, u.name as user_name, u.user_type, i.name as item_name 
+$recent_orders_query = "SELECT o.*, u.name as user_name, u.user_type, u.role, i.name as item_name 
                          FROM orders o 
                          JOIN user_accounts u ON o.user_id = u.id 
                          JOIN inventory i ON o.inventory_id = i.id 
@@ -154,7 +154,16 @@ $upcoming_bookings_result = $conn->query($upcoming_bookings_query);
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                 <?php echo htmlspecialchars($order['user_name']); ?>
-                                                <span class="text-xs text-gray-400">(<?php echo ucfirst($order['user_type']); ?>)</span>
+                                                <?php 
+                                                // Display role for student type users, otherwise display user_type
+                                                if ($order['user_type'] === 'student' && !empty($order['role'])) {
+                                                    $roleLabels = ['student' => 'Student', 'faculty' => 'Faculty', 'staff' => 'Staff'];
+                                                    $displayRole = $roleLabels[$order['role']] ?? 'Student';
+                                                    echo '<span class="text-xs text-gray-400">(' . $displayRole . ')</span>';
+                                                } else {
+                                                    echo '<span class="text-xs text-gray-400">(' . ucfirst($order['user_type']) . ')</span>';
+                                                }
+                                                ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $order['quantity']; ?></td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₱<?php echo number_format($order['total_price'], 2); ?></td>

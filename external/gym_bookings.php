@@ -144,7 +144,31 @@ $bookings_result = $stmt->get_result();
                     <?php unset($_SESSION['error']); ?>
                 <?php endif; ?>
                 
-                <!-- Filters -->
+                <!-- Quick Status Filter Buttons -->
+                <div class="mb-4 flex flex-wrap gap-2">
+                    <a href="gym_bookings.php" 
+                       class="px-4 py-2 rounded-lg <?php echo empty($status_filter) ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-list mr-2"></i>All
+                    </a>
+                    <a href="?status=pending" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-clock mr-2"></i>Pending
+                    </a>
+                    <a href="?status=confirmed" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'confirmed' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-check-circle mr-2"></i>Approved
+                    </a>
+                    <a href="?status=rejected" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'rejected' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-times-circle mr-2"></i>Rejected
+                    </a>
+                    <a href="?status=cancelled" 
+                       class="px-4 py-2 rounded-lg <?php echo $status_filter === 'cancelled' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'; ?> shadow transition-colors">
+                        <i class="fas fa-ban mr-2"></i>Cancelled
+                    </a>
+                </div>
+                
+                <!-- Advanced Filters -->
                 <div class="bg-white rounded-lg shadow p-4 mb-6">
                     <form action="gym_bookings.php" method="GET" class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>

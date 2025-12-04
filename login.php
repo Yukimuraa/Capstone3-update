@@ -10,63 +10,129 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     $user_type = $_POST['user_type'] ?? '';
+    $selected_role = $_POST['role'] ?? '';
 
     if (empty($email) || empty($password) || empty($user_type)) {
         $error = "All fields are required";
     } else {
-        // Prepare SQL statement to prevent SQL injection
-        $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
-        $stmt->bind_param("ss", $email, $user_type);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows > 0) {
-            $user = $result->fetch_assoc();
-            
-            // Verify password
-            if (password_verify($password, $user['password'])) {
-                // Initialize user_sessions array if it doesn't exist
-                if (!isset($_SESSION['user_sessions'])) {
-                    $_SESSION['user_sessions'] = [];
-                }
-                
-                // Store user data in the session
-                $_SESSION['user_sessions'][$user_type] = [
-                    'user_id' => $user['id'],
-                    'user_name' => $user['name'],
-                    'user_email' => $user['email'],
-                    'user_type' => $user['user_type']
-                ];
-                
-                // Set this user type as active
-                $_SESSION['active_user_type'] = $user_type;
-                
-                // Redirect based on user type
-                switch ($user_type) {
-                    case 'admin':
-                        header("Location: admin/dashboard.php");
-                        break;
-                    case 'secretary':
-                        header("Location: admin/dashboard.php");
-                        break;
-                    case 'staff':
-                        header("Location: staff/dashboard.php");
-                        break;
-                    case 'student':
-                        header("Location: student/dashboard.php");
-                        break;
-                    case 'external':
-                        header("Location: external/dashboard.php");
-                        break;
-                    default:
-                        header("Location: index.php");
-                }
-                exit();
+        // For student type, we need to validate the specific role
+        if ($user_type === 'student') {
+            if (empty($selected_role)) {
+                $error = "Please select Student, Faculty, or Staff";
             } else {
-                $error = "Invalid email or password";
+                // Check if role column exists in database
+                $check_column = $conn->query("SHOW COLUMNS FROM user_accounts LIKE 'role'");
+                $role_column_exists = $check_column && $check_column->num_rows > 0;
+                
+                if ($role_column_exists) {
+                    // Query with role validation
+                    $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ? AND role = ?");
+                    $stmt->bind_param("sss", $email, $user_type, $selected_role);
+                } else {
+                    // Fallback if role column doesn't exist
+                    $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
+                    $stmt->bind_param("ss", $email, $user_type);
+                }
+                
+                $stmt->execute();
+                $result = $stmt->get_result();
+                
+                if ($result->num_rows > 0) {
+                    $user = $result->fetch_assoc();
+                    
+                    // Verify password
+                    if (password_verify($password, $user['password'])) {
+                        // Check if the role matches (if role column exists)
+                        if ($role_column_exists && isset($user['role']) && $user['role'] !== $selected_role) {
+                            $error = "The selected user type does not match your account. Please select the correct option (Student, Faculty, or Staff).";
+                        } else {
+                            // Initialize user_sessions array if it doesn't exist
+                            if (!isset($_SESSION['user_sessions'])) {
+                                $_SESSION['user_sessions'] = [];
+                            }
+                            
+                            // Store user data in the session
+                            $_SESSION['user_sessions'][$user_type] = [
+                                'user_id' => $user['id'],
+                                'user_name' => $user['name'],
+                                'user_email' => $user['email'],
+                                'user_type' => $user['user_type'],
+                                'role' => $user['role'] ?? null
+                            ];
+                            
+                            // Set this user type as active
+                            $_SESSION['active_user_type'] = $user_type;
+                            
+                            // Redirect to student dashboard (all student/faculty/staff go to same dashboard)
+                            header("Location: student/dashboard.php");
+                            exit();
+                        }
+                    } else {
+                        $error = "Incorrect password. Please try again.";
+                    }
+                } else {
+                    // Check if email exists but role doesn't match
+                    $check_email = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
+                    $check_email->bind_param("s", $email);
+                    $check_email->execute();
+                    $email_result = $check_email->get_result();
+                    
+                    if ($email_result->num_rows > 0) {
+                        $error = "The selected user type does not match your account. Please select the correct option (Student, Faculty, or Staff).";
+                    } else {
+                        $error = "Email address not found. Please check your email and try again.";
+                    }
+                }
             }
         } else {
-            $error = "Invalid email or password";
+            // For other user types (admin, secretary, external, etc.)
+            $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ? AND user_type = ?");
+            $stmt->bind_param("ss", $email, $user_type);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                $user = $result->fetch_assoc();
+                
+                // Verify password
+                if (password_verify($password, $user['password'])) {
+                    // Initialize user_sessions array if it doesn't exist
+                    if (!isset($_SESSION['user_sessions'])) {
+                        $_SESSION['user_sessions'] = [];
+                    }
+                    
+                    // Store user data in the session
+                    $_SESSION['user_sessions'][$user_type] = [
+                        'user_id' => $user['id'],
+                        'user_name' => $user['name'],
+                        'user_email' => $user['email'],
+                        'user_type' => $user['user_type']
+                    ];
+                    
+                    // Set this user type as active
+                    $_SESSION['active_user_type'] = $user_type;
+                    
+                    // Redirect based on user type
+                    switch ($user_type) {
+                        case 'admin':
+                            header("Location: admin/dashboard.php");
+                            break;
+                        case 'secretary':
+                            header("Location: admin/dashboard.php");
+                            break;
+                        case 'external':
+                            header("Location: external/dashboard.php");
+                            break;
+                        default:
+                            header("Location: index.php");
+                    }
+                    exit();
+                } else {
+                    $error = "Incorrect password. Please try again.";
+                }
+            } else {
+                $error = "Email address not found. Please check your email and try again.";
+            }
         }
     }
 }
@@ -190,10 +256,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <span class="icon">
                          <i class="fas fa-user-tag"></i>
                      </span>
-                     <select id="user_type" name="user_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                         <option value="student">Student / Faculty / Staff</option>
-                         <option value="external">External User</option>
+                     <select id="user_type" name="user_type" onchange="updateLoginRole()" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                         <option value="student" data-role="student">Student</option>
+                         <option value="student" data-role="faculty">Faculty</option>
+                         <option value="student" data-role="staff">Staff</option>
+                         <option value="external" data-role="">External User</option>
                      </select>
+                     <input type="hidden" id="role" name="role" value="student">
                  </div>
              </div>
 
@@ -257,6 +326,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              toggleIcon.classList.add('fa-eye');
          }
      }
+     
+     // Update the hidden role field based on selected dropdown option
+     function updateLoginRole() {
+         const userTypeSelect = document.getElementById('user_type');
+         const roleField = document.getElementById('role');
+         
+         if (userTypeSelect && roleField) {
+             const selectedOption = userTypeSelect.options[userTypeSelect.selectedIndex];
+             const role = selectedOption.getAttribute('data-role') || '';
+             roleField.value = role;
+             
+             console.log('Selected option:', selectedOption.text, 'Role set to:', role);
+         }
+     }
+     
+     // Initialize role on page load
+     document.addEventListener('DOMContentLoaded', function() {
+         updateLoginRole();
+     });
+     
+     // Update role before form submission
+     document.querySelector('form').addEventListener('submit', function() {
+         updateLoginRole();
+     });
  </script>
 </body>
 </html>

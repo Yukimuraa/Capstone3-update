@@ -130,6 +130,35 @@ if (in_array('user_accounts', $existing_tables)) {
         echo "<p class='text-gray-400'>• profile_pic column exists</p>";
     }
     
+    // Add role column if missing
+    if (!in_array('role', $existing_columns)) {
+        echo "<p class='text-yellow-400'>Adding role column...</p>";
+        if ($conn->query("ALTER TABLE user_accounts ADD COLUMN role ENUM('student', 'faculty', 'staff') NULL AFTER user_type")) {
+            echo "<p class='text-green-400'>✓ role column added!</p>";
+            
+            // Set default role for existing users
+            $update_student = "UPDATE user_accounts SET role = 'student' WHERE user_type = 'student' AND role IS NULL";
+            if ($conn->query($update_student)) {
+                $affected = $conn->affected_rows;
+                if ($affected > 0) {
+                    echo "<p class='text-green-400'>✓ Updated $affected existing student users with default role='student'</p>";
+                }
+            }
+            
+            $update_staff = "UPDATE user_accounts SET role = 'staff' WHERE user_type = 'staff' AND role IS NULL";
+            if ($conn->query($update_staff)) {
+                $affected = $conn->affected_rows;
+                if ($affected > 0) {
+                    echo "<p class='text-green-400'>✓ Updated $affected existing staff users with role='staff'</p>";
+                }
+            }
+        } else {
+            echo "<p class='text-red-400'>✗ Error: " . $conn->error . "</p>";
+        }
+    } else {
+        echo "<p class='text-gray-400'>• role column exists</p>";
+    }
+    
     echo "</div>";
 }
 

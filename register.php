@@ -91,8 +91,19 @@ if (isset($_POST['resend_otp'])) {
         $tempUser = $_SESSION['temp_user'];
         $hashed_password = password_hash($tempUser['password'], PASSWORD_DEFAULT);
 
+        // Check if role column exists
+        $check_role = $conn->query("SHOW COLUMNS FROM user_accounts LIKE 'role'");
+        $role_exists = $check_role->num_rows > 0;
+        
+        if ($role_exists) {
+            // Insert with role field
+            $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type, role, organization) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssss", $tempUser['name'], $tempUser['email'], $hashed_password, $tempUser['user_type'], $tempUser['role'], $tempUser['organization']);
+        } else {
+            // Insert without role field (backward compatibility)
         $stmt = $conn->prepare("INSERT INTO user_accounts (name, email, password, user_type, organization) VALUES (?, ?, ?, ?, ?)");
         $stmt->bind_param("sssss", $tempUser['name'], $tempUser['email'], $hashed_password, $tempUser['user_type'], $tempUser['organization']);
+        }
 
         if ($stmt->execute()) {
             $success = "Registration successful! Redirecting to login...";
@@ -108,7 +119,33 @@ if (isset($_POST['resend_otp'])) {
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     $user_type = $_POST['user_type'] ?? '';
+    $role = $_POST['role'] ?? '';
+    $role_index = $_POST['role_index'] ?? '';
+    $user_type_index = $_POST['user_type_index'] ?? '';
     $organization = $_POST['organization'] ?? '';
+    
+    // Determine role from selected index (most reliable method)
+    // selectedIndex: 1 = Student, 2 = Faculty, 3 = Staff, 4 = External
+    // Note: selectedIndex is 0-based, but we subtract 1 because option 0 is "-- Select --"
+    if ($user_type === 'student' && $user_type_index !== '' && $user_type_index !== null) {
+        // Convert to string and map: 1=Student, 2=Faculty, 3=Staff
+        $index_role_map = ['1' => 'student', '2' => 'faculty', '3' => 'staff', 1 => 'student', 2 => 'faculty', 3 => 'staff'];
+        $determined_role = $index_role_map[$user_type_index] ?? null;
+        if ($determined_role) {
+            $role = $determined_role;
+        }
+    }
+    
+    // Fallback: If role is empty but role_index is set, determine role from role_index
+    if ($user_type === 'student' && empty($role) && !empty($role_index)) {
+        $role_map = ['1' => 'student', '2' => 'faculty', '3' => 'staff'];
+        $role = $role_map[$role_index] ?? 'student';
+    }
+    
+    // Final fallback: default to student
+    if ($user_type === 'student' && empty($role)) {
+        $role = 'student';
+    }
 
     if (empty($name) || empty($email) || empty($password) || empty($confirm_password) || empty($user_type)) {
         $error = "All fields are required";
@@ -118,6 +155,8 @@ if (isset($_POST['resend_otp'])) {
         $error = "Passwords do not match";
     } elseif ($user_type === 'external' && empty($organization)) {
         $error = "Organization name is required for external users";
+    } elseif ($user_type === 'student' && empty($role)) {
+        $error = "Please select Student, Faculty, or Staff";
     } else {
         $stmt = $conn->prepare("SELECT * FROM user_accounts WHERE email = ?");
         $stmt->bind_param("s", $email);
@@ -133,11 +172,37 @@ if (isset($_POST['resend_otp'])) {
             $_SESSION['otp'] = $otp;
             $_SESSION['otp_expiry'] = $otpExpiry;
             $_SESSION['last_otp_resend'] = time(); // Set initial resend time
+            
+            // Ensure role is set for student type users
+            if ($user_type === 'student' && empty($role)) {
+                // Try user_type_index first (most reliable)
+                if ($user_type_index !== '' && $user_type_index !== null) {
+                    $index_role_map = ['1' => 'student', '2' => 'faculty', '3' => 'staff', 1 => 'student', 2 => 'faculty', 3 => 'staff'];
+                    $role = $index_role_map[$user_type_index] ?? 'student';
+                }
+                // Try role_index as fallback
+                elseif (!empty($role_index)) {
+                    $role_map = ['1' => 'student', '2' => 'faculty', '3' => 'staff'];
+                    $role = $role_map[$role_index] ?? 'student';
+                } else {
+                    $role = 'student'; // Default fallback
+                }
+            }
+            
+            // Debug: Log registration data (remove in production)
+            error_log("Registration Data - Name: $name, Email: $email, User Type: $user_type, Role: $role, Role Index: $role_index, User Type Index: $user_type_index");
+            
+            // Temporary debug output (remove after testing)
+            if (!empty($_POST)) {
+                error_log("POST Data: " . print_r($_POST, true));
+            }
+            
             $_SESSION['temp_user'] = [
                 'name' => $name,
                 'email' => $email,
                 'password' => $password,
                 'user_type' => $user_type,
+                'role' => $role,
                 'organization' => $organization
             ];
 
@@ -361,6 +426,86 @@ if (isset($_POST['resend_otp'])) {
             const orgField = document.getElementById("organization_field");
             orgField.classList.toggle("hidden", userType !== "external");
         }
+        
+        // Update role field based on selected option
+        function updateRoleField() {
+            const userTypeSelect = document.getElementById("user_type");
+            if (!userTypeSelect) return;
+            
+            const selectedIndex = userTypeSelect.selectedIndex;
+            if (selectedIndex < 0) return;
+            
+            const selectedOption = userTypeSelect.options[selectedIndex];
+            const roleField = document.getElementById("role");
+            
+            if (!roleField) return;
+            
+            // Get the role from data-role attribute
+            let role = selectedOption.getAttribute("data-role") || "";
+            const roleIndex = selectedOption.getAttribute("data-index") || "";
+            
+            // Fallback: determine role from option text if data-role is empty
+            if (!role && selectedOption.text) {
+                const optionText = selectedOption.text.trim().toLowerCase();
+                if (optionText === "student") role = "student";
+                else if (optionText === "faculty") role = "faculty";
+                else if (optionText === "staff") role = "staff";
+            }
+            
+            roleField.value = role;
+            
+            // Also set role_index as backup
+            const roleIndexField = document.getElementById("role_index");
+            if (roleIndexField) {
+                roleIndexField.value = roleIndex;
+            }
+            
+            // Debug
+            console.log("Selected option:", selectedOption.text, "Role set to:", role, "Index:", roleIndex);
+        }
+        
+        // Set the selected index as a separate field (most reliable)
+        function setRoleIndex() {
+            const userTypeSelect = document.getElementById("user_type");
+            const indexField = document.getElementById("user_type_index");
+            if (userTypeSelect && indexField) {
+                const selectedIndex = userTypeSelect.selectedIndex;
+                const selectedOption = userTypeSelect.options[selectedIndex];
+                
+                // Use data-index attribute if available, otherwise use selectedIndex
+                const dataIndex = selectedOption ? selectedOption.getAttribute("data-index") : null;
+                const indexToUse = dataIndex || selectedIndex.toString();
+                
+                indexField.value = indexToUse;
+                console.log("Selected index (selectedIndex):", selectedIndex, "data-index:", dataIndex, "Setting to:", indexToUse);
+            }
+        }
+        
+        // Ensure role is set when page loads if dropdown has a value
+        document.addEventListener('DOMContentLoaded', function() {
+            updateRoleField();
+            setRoleIndex();
+        });
+        
+        // Force update before form submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form[method="POST"]');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    // Update both fields immediately before submission
+                    updateRoleField();
+                    setRoleIndex();
+                    
+                    // Double-check role is set
+                    const roleField = document.getElementById("role");
+                    const userType = document.getElementById("user_type").value;
+                    if (userType === "student" && (!roleField || !roleField.value)) {
+                        console.warn("Role still empty! Using index fallback...");
+                        setRoleIndex();
+                    }
+                }, false); // Use capture phase to run before validation
+            }
+        });
     </script>
 </head>
 
@@ -424,13 +569,19 @@ if (isset($_POST['resend_otp'])) {
                         </form>
                     </div>
             <?php else: ?>
-                <form method="POST" class="mt-6">
+                <form method="POST" class="mt-6" onsubmit="updateRoleField(); return true;">
                     <div class="mb-4">
                         <label for="user_type" class="block text-gray-700 font-semibold mb-2">User Type</label>
-                        <select id="user_type" name="user_type" onchange="toggleOrganizationField()" class="w-full px-4 py-3 rounded-lg">
-                            <option value="student">Student/Faculty/Staff</option>
-                            <option value="external">External User</option>
+                        <select id="user_type" name="user_type" onchange="toggleOrganizationField(); updateRoleField(); setRoleIndex();" class="w-full px-4 py-3 rounded-lg" required>
+                            <option value="">-- Select User Type --</option>
+                            <option value="student" data-role="student" data-index="1">Student</option>
+                            <option value="student" data-role="faculty" data-index="2">Faculty</option>
+                            <option value="student" data-role="staff" data-index="3">Staff</option>
+                            <option value="external" data-role="" data-index="4">External User</option>
                         </select>
+                        <input type="hidden" id="role" name="role" value="">
+                        <input type="hidden" id="role_index" name="role_index" value="">
+                        <input type="hidden" id="user_type_index" name="user_type_index" value="">
                     </div>
                     <div class="mb-4">
                         <label for="name" class="block text-gray-700 font-semibold mb-2">Full Name</label>

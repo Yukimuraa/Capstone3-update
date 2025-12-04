@@ -9,8 +9,34 @@ require_student();
 // Get user data for the student
 $user_id = $_SESSION['user_sessions']['student']['user_id'];
 $user_name = $_SESSION['user_sessions']['student']['user_name'];
+$user_role = $_SESSION['user_sessions']['student']['role'] ?? null;
 
-$page_title = "Student Dashboard - CHMSU BAO";
+// If role is not in session, fetch it from database
+if (empty($user_role)) {
+    $role_stmt = $conn->prepare("SELECT role FROM user_accounts WHERE id = ?");
+    $role_stmt->bind_param("i", $user_id);
+    $role_stmt->execute();
+    $role_result = $role_stmt->get_result();
+    if ($role_result->num_rows > 0) {
+        $user_data = $role_result->fetch_assoc();
+        $user_role = $user_data['role'] ?? 'student';
+        // Update session with role
+        $_SESSION['user_sessions']['student']['role'] = $user_role;
+    } else {
+        $user_role = 'student'; // Default fallback
+    }
+}
+
+// Determine dashboard title based on role
+$role_labels = [
+    'student' => 'Student',
+    'faculty' => 'Faculty',
+    'staff' => 'Staff'
+];
+$role_label = $role_labels[$user_role] ?? 'Student';
+$dashboard_title = $role_label . " Dashboard";
+
+$page_title = $dashboard_title . " - CHMSU BAO";
 $base_url = "..";
 
 // Get pending orders count
@@ -71,7 +97,7 @@ $profile_pic = $user_data['profile_pic'] ?? '';
         <!-- Top header -->
         <header class="bg-white shadow-sm z-10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                <h1 class="text-2xl font-semibold text-gray-900">Student Dashboard</h1>
+                <h1 class="text-2xl font-semibold text-gray-900"><?php echo $dashboard_title; ?></h1>
                 <div class="flex items-center gap-3">
                     <?php require_once '../includes/notification_bell.php'; ?>
                     <a href="profile.php" class="flex items-center">

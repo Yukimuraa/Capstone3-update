@@ -1076,37 +1076,134 @@ if ($format === 'pdf') {
         exit;
         
     } else {
-        // Fallback to CSV format if PhpSpreadsheet is not available
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . strtolower(str_replace(' ', '_', $title)) . '_' . (new DateTime('now', new DateTimeZone('Asia/Manila')))->format('Ymd_His') . '.csv"');
-        
-        // Add BOM for UTF-8
-        echo "\xEF\xBB\xBF";
-        
-        $output = fopen('php://output', 'w');
-        
-        // Professional Report Header (like the image)
-        fputcsv($output, []); // Empty row
-        fputcsv($output, ['BUSINESS AFFAIRS OFFICE REPORTS']);
-        fputcsv($output, ['CITY OF TALISAY, Province of Negros Occidental']);
-        fputcsv($output, ['CHMSU - Carlos Hilado Memorial State University']);
-        fputcsv($output, []); // Empty row
-        
-        // Generation date and time (generate fresh each time using DateTime for accuracy)
+        // Generate Excel XML format (SpreadsheetML) with styling - NO COMPOSER REQUIRED
         $now_dt = new DateTime('now', new DateTimeZone('Asia/Manila'));
         $generated_date = $now_dt->format('F j, Y');
         $generated_time = $now_dt->format('g:i A');
-        fputcsv($output, ['Generated on:', $generated_date . ' at ' . $generated_time]);
-        fputcsv($output, []); // Empty row
+        
+        $filename = strtolower(str_replace(' ', '_', $title)) . '_' . $now_dt->format('Ymd_His') . '.xls';
+        
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        
+        // Start XML output
+        echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
+        echo '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
+        echo ' xmlns:o="urn:schemas-microsoft-com:office:office"' . "\n";
+        echo ' xmlns:x="urn:schemas-microsoft-com:office:excel"' . "\n";
+        echo ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
+        echo ' xmlns:html="http://www.w3.org/TR/REC-html40">' . "\n";
+        
+        // Styles
+        echo '<Styles>' . "\n";
+        // Style 1: Header (Blue background, white text, bold, centered)
+        echo '<Style ss:ID="Header">' . "\n";
+        echo '<Font ss:Bold="1" ss:Size="12" ss:Color="#FFFFFF"/>' . "\n";
+        echo '<Interior ss:Color="#1e3a8a" ss:Pattern="Solid"/>' . "\n";
+        echo '<Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>' . "\n";
+        echo '<Borders>' . "\n";
+        echo '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '</Borders>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 2: Table Header (Gray background, bold, centered)
+        echo '<Style ss:ID="TableHeader">' . "\n";
+        echo '<Font ss:Bold="1" ss:Size="11"/>' . "\n";
+        echo '<Interior ss:Color="#D3D3D3" ss:Pattern="Solid"/>' . "\n";
+        echo '<Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>' . "\n";
+        echo '<Borders>' . "\n";
+        echo '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '</Borders>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 3: Title (Bold, large, centered)
+        echo '<Style ss:ID="Title">' . "\n";
+        echo '<Font ss:Bold="1" ss:Size="14"/>' . "\n";
+        echo '<Alignment ss:Horizontal="Center" ss:Vertical="Center"/>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 4: Subtitle (Bold, medium)
+        echo '<Style ss:ID="Subtitle">' . "\n";
+        echo '<Font ss:Bold="1" ss:Size="12"/>' . "\n";
+        echo '<Alignment ss:Horizontal="Center" ss:Vertical="Center"/>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 5: Data cells (with borders)
+        echo '<Style ss:ID="Data">' . "\n";
+        echo '<Borders>' . "\n";
+        echo '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '</Borders>' . "\n";
+        echo '<Alignment ss:Vertical="Center" ss:WrapText="1"/>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 6: Total row (Gray background, bold)
+        echo '<Style ss:ID="Total">' . "\n";
+        echo '<Font ss:Bold="1"/>' . "\n";
+        echo '<Interior ss:Color="#D3D3D3" ss:Pattern="Solid"/>' . "\n";
+        echo '<Borders>' . "\n";
+        echo '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>' . "\n";
+        echo '</Borders>' . "\n";
+        echo '<Alignment ss:Vertical="Center"/>' . "\n";
+        echo '</Style>' . "\n";
+        
+        // Style 7: Info (Bold label)
+        echo '<Style ss:ID="Info">' . "\n";
+        echo '<Font ss:Bold="1"/>' . "\n";
+        echo '</Style>' . "\n";
+        
+        echo '</Styles>' . "\n";
+        
+        // Worksheet
+        echo '<Worksheet ss:Name="Report">' . "\n";
+        echo '<Table>' . "\n";
+        
+        $rowNum = 1;
+        
+        // Header Section
+        echo '<Row ss:Height="25">' . "\n";
+        echo '<Cell ss:StyleID="Header" ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('BUSINESS AFFAIRS OFFICE REPORTS', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum++;
+        
+        echo '<Row ss:Height="20">' . "\n";
+        echo '<Cell ss:StyleID="Subtitle" ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('CITY OF TALISAY, Province of Negros Occidental', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum++;
+        
+        echo '<Row ss:Height="20">' . "\n";
+        echo '<Cell ss:StyleID="Subtitle" ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('CHMSU - Carlos Hilado Memorial State University', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum += 2;
+        
+        // Generation info
+        echo '<Row ss:Height="20">' . "\n";
+        echo '<Cell ss:StyleID="Info"><Data ss:Type="String">' . htmlspecialchars('Generated on:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '<Cell><Data ss:Type="String">' . htmlspecialchars($generated_date . ' at ' . $generated_time, ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum += 2;
         
         // Report title
-        fputcsv($output, [$title]);
-        fputcsv($output, []); // Empty row
+        echo '<Row ss:Height="25">' . "\n";
+        echo '<Cell ss:StyleID="Title" ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars($title, ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum += 2;
         
-        // Covered period/filters
+        // Period/Filters info
         $period_info = [];
-        
-        // Handle mode-based filters (for summary reports)
         if (isset($mode)) {
             if ($mode === 'daily') {
                 $period_info[] = 'Date: ' . date('F j, Y', strtotime($date));
@@ -1116,8 +1213,6 @@ if ($format === 'pdf') {
                 $period_info[] = 'Year: ' . $year;
             }
         }
-        
-        // Handle date range filters
         if (!empty($start_date) && !empty($end_date)) {
             if ($start_date === $end_date) {
                 $period_info[] = 'Date: ' . date('F j, Y', strtotime($start_date));
@@ -1129,8 +1224,6 @@ if ($format === 'pdf') {
         } elseif (!empty($end_date)) {
             $period_info[] = 'To: ' . date('F j, Y', strtotime($end_date));
         }
-        
-        // Handle other filters
         if (!empty($status)) {
             $period_info[] = 'Status: ' . ucfirst($status);
         }
@@ -1138,7 +1231,7 @@ if ($format === 'pdf') {
             $period_info[] = 'Role: ' . ucfirst($role);
         }
         if (!empty($department)) {
-            $period_info[] = 'Department: ' . htmlspecialchars($department);
+            $period_info[] = 'Department: ' . $department;
         }
         if (!empty($service)) {
             $period_info[] = 'Service: ' . ucfirst($service);
@@ -1148,56 +1241,244 @@ if ($format === 'pdf') {
         }
         
         if (!empty($period_info)) {
-            fputcsv($output, $period_info);
-            fputcsv($output, []); // Empty row
+            foreach ($period_info as $info) {
+                echo '<Row ss:Height="20">' . "\n";
+                echo '<Cell><Data ss:Type="String">' . htmlspecialchars($info, ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+                echo '</Row>' . "\n";
+                $rowNum++;
+            }
+            $rowNum++;
         }
         
         // Table headers
-        fputcsv($output, $headers);
+        echo '<Row ss:Height="22">' . "\n";
+        foreach ($headers as $header) {
+            echo '<Cell ss:StyleID="TableHeader"><Data ss:Type="String">' . htmlspecialchars($header, ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        }
+        echo '</Row>' . "\n";
+        $rowNum++;
         
-        // Write data
+        // Data rows
         foreach ($data as $row) {
-            fputcsv($output, $row);
+            echo '<Row ss:Height="18">' . "\n";
+            foreach ($row as $cellValue) {
+                $escaped = htmlspecialchars($cellValue, ENT_XML1, 'UTF-8');
+                // Check if it's a number (for proper Excel formatting)
+                $cleanValue = str_replace(['₱', ',', ' '], '', $cellValue);
+                if (is_numeric($cleanValue) && strpos($cellValue, '₱') === false) {
+                    echo '<Cell ss:StyleID="Data"><Data ss:Type="Number">' . $cleanValue . '</Data></Cell>' . "\n";
+                } else {
+                    echo '<Cell ss:StyleID="Data"><Data ss:Type="String">' . $escaped . '</Data></Cell>' . "\n";
+                }
+            }
+            echo '</Row>' . "\n";
+            $rowNum++;
         }
         
-        // Add total row for bus reports
+        // Total rows
         if ($report_type === 'bus' && isset($total_amount)) {
-            $total_row = array_fill(0, count($headers) - 1, '');
-            $total_row[count($headers) - 2] = 'Total Amount:';
-            $total_row[count($headers) - 1] = '₱' . number_format($total_amount, 2);
-            fputcsv($output, $total_row);
+            echo '<Row ss:Height="20">' . "\n";
+            for ($i = 0; $i < count($headers) - 1; $i++) {
+                if ($i === count($headers) - 2) {
+                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('Total Amount:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+                } else {
+                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+                }
+            }
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($total_amount, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
         }
         
-        // Add total row for inventory reports
         if ($report_type === 'inventory' && isset($total_revenue)) {
-            $total_row = array_fill(0, count($headers) - 1, '');
-            $total_row[count($headers) - 2] = 'Total Revenue:';
-            $total_row[count($headers) - 1] = '₱' . number_format($total_revenue, 2);
-            fputcsv($output, $total_row);
+            echo '<Row ss:Height="20">' . "\n";
+            for ($i = 0; $i < count($headers) - 1; $i++) {
+                if ($i === count($headers) - 2) {
+                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('Total Revenue:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+                } else {
+                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+                }
+            }
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($total_revenue, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
         }
         
-        // Add total row for summary reports
         if ($report_type === 'summary' && isset($total_requests) && isset($total_approved) && isset($total_collected)) {
-            fputcsv($output, ['Total:', number_format($total_requests), number_format($total_approved), '₱' . number_format($total_collected, 2)]);
+            echo '<Row ss:Height="20">' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('Total:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="Number">' . number_format($total_requests) . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="Number">' . number_format($total_approved) . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($total_collected, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
         }
         
-        // Add Remaining Stock section for inventory reports
+        // Remaining Stock section for inventory
         if ($report_type === 'inventory' && isset($stock_data) && !empty($stock_data)) {
-            fputcsv($output, []); // Empty row
-            fputcsv($output, ['Remaining Stock']);
-            fputcsv($output, ['Item', 'Remaining']);
+            $rowNum += 2;
+            echo '<Row ss:Height="25">' . "\n";
+            echo '<Cell ss:StyleID="Title" ss:MergeAcross="1"><Data ss:Type="String">' . htmlspecialchars('Remaining Stock', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
+            
+            echo '<Row ss:Height="22">' . "\n";
+            echo '<Cell ss:StyleID="TableHeader"><Data ss:Type="String">' . htmlspecialchars('Item', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="TableHeader"><Data ss:Type="String">' . htmlspecialchars('Remaining', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
+            
             foreach ($stock_data as $stock_row) {
-                fputcsv($output, $stock_row);
+                echo '<Row ss:Height="18">' . "\n";
+                echo '<Cell ss:StyleID="Data"><Data ss:Type="String">' . htmlspecialchars($stock_row[0], ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+                echo '<Cell ss:StyleID="Data"><Data ss:Type="Number">' . htmlspecialchars($stock_row[1], ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+                echo '</Row>' . "\n";
+                $rowNum++;
             }
         }
         
         // Footer
-        fputcsv($output, []); // Empty row
-        fputcsv($output, ['City of Talisay Business Affairs Office']);
-        fputcsv($output, ['This report was generated automatically on ' . $generated_date . ' at ' . $generated_time]);
-        fputcsv($output, ['For inquiries, please contact the Business Affairs Office']);
+        $rowNum += 2;
+        echo '<Row ss:Height="20">' . "\n";
+        echo '<Cell ss:StyleID="Info" ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('City of Talisay Business Affairs Office', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum++;
         
-        fclose($output);
+        echo '<Row ss:Height="18">' . "\n";
+        echo '<Cell ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('This report was generated automatically on ' . $generated_date . ' at ' . $generated_time, ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        $rowNum++;
+        
+        echo '<Row ss:Height="18">' . "\n";
+        echo '<Cell ss:MergeAcross="' . (count($headers) - 1) . '"><Data ss:Type="String">' . htmlspecialchars('For inquiries, please contact the Business Affairs Office', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+        echo '</Row>' . "\n";
+        
+        echo '</Table>' . "\n";
+        
+        // Column widths - Calculate based on header length and report type
+        $columnWidths = [];
+        
+        // Define minimum and maximum widths
+        $minWidth = 100;
+        $maxWidth = 350;
+        $defaultWidth = 180;
+        
+        // Calculate width for each column based on header length
+        foreach ($headers as $index => $header) {
+            $headerLength = strlen($header);
+            // Base width on header length (approximately 10 pixels per character)
+            $calculatedWidth = max($minWidth, min($maxWidth, $headerLength * 10 + 40));
+            
+            // Adjust for specific report types
+            if ($report_type === 'gym') {
+                // Gym reports have many columns, need much wider columns
+                switch (strtolower($header)) {
+                    case 'booking id':
+                        $calculatedWidth = 180;
+                        break;
+                    case 'status':
+                        $calculatedWidth = 140;
+                        break;
+                    case 'facility':
+                        $calculatedWidth = 200;
+                        break;
+                    case 'date':
+                        $calculatedWidth = 160;
+                        break;
+                    case 'time':
+                        $calculatedWidth = 250;
+                        break;
+                    case 'purpose':
+                        $calculatedWidth = 200;
+                        break;
+                    case 'attendees':
+                    case 'attendee':
+                        $calculatedWidth = 140;
+                        break;
+                    case 'requested on':
+                    case 'request (date)':
+                        $calculatedWidth = 250;
+                        break;
+                    case 'requester name':
+                    case 'requestor name':
+                        $calculatedWidth = 200;
+                        break;
+                    case 'department/organization':
+                        $calculatedWidth = 280;
+                        break;
+                    case 'equipment/services':
+                    case 'equipment/service':
+                        $calculatedWidth = 280;
+                        break;
+                    default:
+                        $calculatedWidth = max($calculatedWidth, 200);
+                }
+            } elseif ($report_type === 'bus') {
+                // Bus reports
+                switch (strtolower($header)) {
+                    case 'reservation id':
+                        $calculatedWidth = 200;
+                        break;
+                    case 'requester/dept':
+                        $calculatedWidth = 220;
+                        break;
+                    case 'destination':
+                        $calculatedWidth = 250;
+                        break;
+                    case 'date':
+                        $calculatedWidth = 160;
+                        break;
+                    case 'vehicles':
+                        $calculatedWidth = 140;
+                        break;
+                    case 'status':
+                        $calculatedWidth = 140;
+                        break;
+                    case 'total amount':
+                        $calculatedWidth = 180;
+                        break;
+                    default:
+                        $calculatedWidth = max($calculatedWidth, 180);
+                }
+            } elseif ($report_type === 'billing') {
+                // Billing reports
+                switch (strtolower($header)) {
+                    case 'billing id':
+                        $calculatedWidth = 180;
+                        break;
+                    case 'service':
+                        $calculatedWidth = 140;
+                        break;
+                    case 'requester / details':
+                        $calculatedWidth = 280;
+                        break;
+                    case 'amount':
+                        $calculatedWidth = 180;
+                        break;
+                    case 'payment status':
+                        $calculatedWidth = 180;
+                        break;
+                    case 'created':
+                        $calculatedWidth = 180;
+                        break;
+                    default:
+                        $calculatedWidth = max($calculatedWidth, 180);
+                }
+            } else {
+                // Default for other report types
+                $calculatedWidth = max($calculatedWidth, $defaultWidth);
+            }
+            
+            $columnWidths[] = $calculatedWidth;
+        }
+        
+        // Output column widths
+        foreach ($columnWidths as $width) {
+            echo '<Column ss:Width="' . $width . '"/>' . "\n";
+        }
+        
+        echo '</Worksheet>' . "\n";
+        echo '</Workbook>';
         exit;
     }
 }
