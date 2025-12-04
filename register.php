@@ -112,6 +112,8 @@ if (isset($_POST['resend_otp'])) {
 
     if (empty($name) || empty($email) || empty($password) || empty($confirm_password) || empty($user_type)) {
         $error = "All fields are required";
+    } elseif (!preg_match("/^[a-zA-Z\s]+$/", $name)) {
+        $error = "Full name must contain only letters and spaces (no numbers or symbols)";
     } elseif ($password !== $confirm_password) {
         $error = "Passwords do not match";
     } elseif ($user_type === 'external' && empty($organization)) {
@@ -432,7 +434,10 @@ if (isset($_POST['resend_otp'])) {
                     </div>
                     <div class="mb-4">
                         <label for="name" class="block text-gray-700 font-semibold mb-2">Full Name</label>
-                        <input type="text" name="name" class="w-full px-4 py-3 rounded-lg" required>
+                        <input type="text" name="name" id="name" class="w-full px-4 py-3 rounded-lg" required 
+                               pattern="[a-zA-Z\s]+" 
+                               title="Full name must contain only letters and spaces (no numbers or symbols)"
+                               oninput="this.value = this.value.replace(/[^a-zA-Z\s]/g, '')">
                     </div>
                     <div id="organization_field" class="mb-4 hidden">
                         <label for="organization" class="block text-gray-700 font-semibold mb-2">Organization</label>

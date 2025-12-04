@@ -560,6 +560,9 @@ $event_types_result = $conn->query($event_types_query);
                                             if ($request['purpose'] === 'Other' && isset($additional_info['other_event_type']) && !empty($additional_info['other_event_type'])) {
                                                 $other_event_type = $additional_info['other_event_type'];
                                             }
+                                            
+                                            // Get letter path if exists
+                                            $letter_path = $additional_info['letter_path'] ?? null;
                                             ?>
                                             <tr>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?php echo $request['booking_id']; ?></td>
@@ -604,7 +607,8 @@ $event_types_result = $conn->query($event_types_query);
                                                             'other_event_type' => $other_event_type,
                                                             'participants' => $request['attendees'],
                                                             'status' => $request['status'],
-                                                            'admin_remarks' => $admin_remarks
+                                                            'admin_remarks' => $admin_remarks,
+                                                            'letter_path' => $letter_path
                                                         ])); ?>)">
                                                             <i class="fas fa-eye mr-1.5"></i>View
                                                         </button>
@@ -795,15 +799,15 @@ $event_types_result = $conn->query($event_types_query);
 </div>
 
 <!-- Booking Details Modal -->
-<div id="bookingDetailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-        <div class="flex justify-between items-center mb-4">
+<div id="bookingDetailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
             <h3 class="text-lg font-medium text-gray-900">Booking Details</h3>
             <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeBookingDetailsModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <div class="space-y-4">
+        <div class="space-y-4 p-6 overflow-y-auto flex-1">
             <div>
                 <h4 class="text-sm font-medium text-gray-500">Booking ID</h4>
                 <p id="detail-booking-id" class="mt-1 text-sm text-gray-900"></p>
@@ -833,12 +837,24 @@ $event_types_result = $conn->query($event_types_query);
                 <h4 class="text-sm font-medium text-gray-500">Status</h4>
                 <p id="detail-status" class="mt-1 text-sm"></p>
             </div>
+            <div id="detail-letter-container" class="hidden">
+                <h4 class="text-sm font-medium text-gray-500 mb-2">Letter from President</h4>
+                <div class="border border-gray-300 rounded-lg p-3 bg-gray-50">
+                    <a id="detail-letter-link" href="#" target="_blank" class="flex items-center text-blue-600 hover:text-blue-800 mb-2">
+                        <i class="fas fa-file-pdf mr-2"></i>
+                        <span id="detail-letter-text">View Letter</span>
+                    </a>
+                    <div id="detail-letter-image" class="mt-3 hidden">
+                        <img id="detail-letter-img" src="" alt="Letter" class="max-w-full h-auto rounded border border-gray-300" style="max-height: 250px; object-fit: contain;">
+                    </div>
+                </div>
+            </div>
             <div id="detail-remarks-container">
                 <h4 class="text-sm font-medium text-gray-500">Admin Remarks</h4>
                 <p id="detail-remarks" class="mt-1 text-sm text-gray-900"></p>
             </div>
         </div>
-        <div class="mt-6 flex justify-end gap-2">
+        <div class="mt-6 flex justify-end gap-2 p-6 pt-4 border-t border-gray-200 flex-shrink-0">
             <button type="button" onclick="printGymReceipt()" class="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                 <i class="fas fa-print mr-2"></i>Print Receipt
             </button>
@@ -1217,6 +1233,32 @@ $event_types_result = $conn->query($event_types_query);
             case 'cancelled':
                 statusElement.classList.add('bg-gray-100', 'text-gray-800');
                 break;
+        }
+        
+        // Display letter if available
+        const letterContainer = document.getElementById('detail-letter-container');
+        const letterLink = document.getElementById('detail-letter-link');
+        const letterText = document.getElementById('detail-letter-text');
+        const letterImage = document.getElementById('detail-letter-image');
+        const letterImg = document.getElementById('detail-letter-img');
+        
+        if (booking.letter_path) {
+            const letterPath = '../' + booking.letter_path;
+            letterLink.href = letterPath;
+            letterText.textContent = 'View Letter';
+            
+            // Check if it's an image to show preview
+            const isImage = /\.(jpg|jpeg|png|gif)$/i.test(booking.letter_path);
+            if (isImage) {
+                letterImg.src = letterPath;
+                letterImage.classList.remove('hidden');
+            } else {
+                letterImage.classList.add('hidden');
+            }
+            
+            letterContainer.classList.remove('hidden');
+        } else {
+            letterContainer.classList.add('hidden');
         }
         
         // Show/hide remarks

@@ -82,10 +82,20 @@ $receipt_no = '';
             width: 100%;
             max-width: 210mm;
             height: 287mm;
+            min-height: 287mm;
+            max-height: 287mm;
             padding: 5mm;
             margin: 0 auto;
+            margin-bottom: 0;
             background: white;
             position: relative;
+            page-break-after: always;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .page:last-child {
+            page-break-after: auto;
+            margin-bottom: 0;
         }
         .copies-container {
             display: flex;
@@ -93,6 +103,7 @@ $receipt_no = '';
             gap: 0;
             height: 100%;
             width: 100%;
+            box-sizing: border-box;
         }
         .copy {
             border-top: 1px solid #ddd;
@@ -102,9 +113,17 @@ $receipt_no = '';
             width: 100%;
             display: flex;
             flex-direction: column;
-            height: calc((100% - 4px) / 3);
             box-sizing: border-box;
             flex-shrink: 0;
+            page-break-inside: avoid;
+        }
+        .page-1 .copy {
+            height: calc((100% - 4px) / 2);
+            min-height: 0;
+        }
+        .page-2 .copy {
+            height: calc(100% - 4px);
+            min-height: 0;
         }
         .copy:first-child {
             border-top: 2px solid #000;
@@ -114,6 +133,9 @@ $receipt_no = '';
         }
         .copy:not(:first-child):not(:last-child) {
             border-top: 1px dashed #999;
+            border-bottom: 1px dashed #999;
+        }
+        .page-1 .copy:not(:last-child) {
             border-bottom: 1px dashed #999;
         }
         
@@ -368,34 +390,18 @@ $receipt_no = '';
         
         @media print {
             .no-print { display: none !important; }
-            body { 
+            script { display: none !important; }
+            * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            html, body { 
                 padding: 0; 
                 margin: 0;
                 width: 100%;
-            }
-            .page { 
-                margin: 0; 
-                padding: 10mm;
-                border: none;
-                width: 100%;
-                max-width: 100%;
-            }
-            .copies-container {
-                gap: 0;
-            }
-            .copy {
-                border-top: 1px solid #000;
-                border-bottom: 1px solid #000;
-            }
-            .copy:first-child {
-                border-top: 2px solid #000;
-            }
-            .copy:last-child {
-                border-bottom: 2px solid #000;
-            }
-            .copy:not(:first-child):not(:last-child) {
-                border-top: 1px dashed #000;
-                border-bottom: 1px dashed #000;
+                height: 574mm;
+                max-height: 574mm;
+                overflow: hidden;
             }
             @page {
                 size: A4 portrait;
@@ -408,7 +414,70 @@ $receipt_no = '';
                 border: none;
                 width: 100%;
                 height: 287mm;
+                min-height: 287mm;
+                max-height: 287mm;
                 max-width: 100%;
+                page-break-after: always;
+                break-after: page;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                overflow: hidden;
+                box-sizing: border-box;
+            }
+            .page.page-2 {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+            .page:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+            body > .page:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+            body::after {
+                content: "";
+                display: none;
+                page-break-after: avoid;
+            }
+            html::after {
+                content: "";
+                display: none;
+            }
+            .copies-container {
+                gap: 0;
+                height: 100%;
+                box-sizing: border-box;
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            .copy {
+                border-top: 1px solid #000;
+                border-bottom: 1px solid #000;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                page-break-after: avoid;
+                break-after: avoid;
+                page-break-before: avoid;
+                break-before: avoid;
+            }
+            .copy:first-child {
+                border-top: 2px solid #000;
+                page-break-before: avoid;
+                break-before: avoid;
+            }
+            .copy:last-child {
+                border-bottom: 2px solid #000;
+                page-break-after: avoid;
+                break-after: avoid;
+            }
+            .copy:not(:first-child):not(:last-child) {
+                border-top: 1px dashed #000;
+                border-bottom: 1px dashed #000;
+            }
+            .page-1 .copy:not(:last-child) {
+                border-bottom: 1px dashed #000;
             }
         }
     </style>
@@ -423,16 +492,16 @@ $receipt_no = '';
         </button>
     </div>
 
-    <div class="page">
+    <!-- Page 1: Business Affairs Office's Copy and Cashier's Copy -->
+    <div class="page page-1">
         <div class="copies-container">
             <?php 
-            $copies = [
+            $page1_copies = [
                 ['name' => "Business Affairs Office's Copy", 'class' => ''],
-                ['name' => "Cashier's Copy", 'class' => ''],
-                ['name' => "Customer's Copy", 'class' => '']
+                ['name' => "Cashier's Copy", 'class' => '']
             ];
             
-            foreach ($copies as $copy): 
+            foreach ($page1_copies as $copy): 
             ?>
             <div class="copy">
                 <!-- Header Section - All in one row -->
@@ -445,13 +514,136 @@ $receipt_no = '';
                         <div class="document-info-box">
                             <div>Document Code: F.04-BAO-CHMSU</div>
                             <div>Revision No.: 0</div>
-                            <div>Effective Date: April 7, 2025</div>
-                            <div>Page: 1 of 1</div>
+                            <div>Page: 1 of 2</div>
                         </div>
                         <div class="copy-label-top"><?php echo $copy['name']; ?></div>
                         <div class="status-box">
                             <div style="font-weight: bold; margin-bottom: 2px;">STATUS</div>
-                            <div class="status-stamp">CONFIRMED</div>
+                            <div class="status-stamp">PENDING</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Fields Section -->
+                <div class="form-section">
+                        <div class="form-left">
+                        <div class="form-field">
+                            <span class="form-label">Control No.:</span>
+                            <span class="form-value"><?php echo htmlspecialchars($control_no); ?></span>
+                        </div>
+                        <div class="form-field">
+                            <span class="form-label">Date:</span>
+                            <span class="form-value"><?php echo $order_date_formatted; ?></span>
+                        </div>
+                    </div>
+                    <div class="form-middle">
+                        <div class="form-field">
+                            <span class="form-label">Payor:</span>
+                            <span class="form-value"><?php echo htmlspecialchars($customer_name); ?></span>
+                        </div>
+                        <div style="margin-top: 4px;">
+                            <div style="font-weight: bold; font-size: 7pt; margin-bottom: 2px;">NATURE OF PAYMENT</div>
+                            <div class="form-value-large">
+                                <?php 
+                                $payment_nature = [];
+                                foreach ($orders as $order) {
+                        $item_desc = htmlspecialchars($order['item_name']);
+                        if (!empty($order['size'])) {
+                            $item_desc .= ' (Size: ' . htmlspecialchars($order['size']) . ')';
+                        }
+                                    $payment_nature[] = $order['quantity'] . 'x ' . $item_desc;
+                        }
+                                echo implode("\n", $payment_nature);
+                    ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-right">
+                        <div style="font-weight: bold; font-size: 7pt; margin-bottom: 2px; text-align: center;">AMOUNT</div>
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <?php foreach ($orders as $order): ?>
+                            <div style="border-bottom: 1px solid #000; padding: 2px 3px; text-align: right; min-height: 14px; font-size: 6.5pt;">
+                            ₱<?php echo number_format($order['total_price'], 2); ?>
+                            </div>
+                            <?php endforeach; ?>
+                            <!-- Fill remaining space -->
+                            <?php for ($i = count($orders); $i < 3; $i++): ?>
+                            <div style="border-bottom: 1px solid #000; padding: 2px 3px; min-height: 14px;"></div>
+                            <?php endfor; ?>
+                        </div>
+                    </div>
+                </div>
+                    
+                <!-- Total -->
+                    <div class="total-box">
+                        TOTAL: ₱<?php echo number_format($total_amount, 2); ?>
+                </div>
+
+                <!-- Receipt Info Section -->
+                <div class="receipt-section" style="margin-bottom: 6px;">
+                    <div class="receipt-field">
+                        <span class="receipt-label">Official Receipt No.:</span>
+                        <span class="receipt-value"><?php echo $receipt_no; ?></span>
+                    </div>
+                    <div class="receipt-field">
+                        <span class="receipt-label">Date:</span>
+                        <span class="receipt-value"><?php echo $order_date_formatted; ?></span>
+                    </div>
+                    <div class="receipt-field">
+                        <span class="receipt-label">Amount:</span>
+                        <span class="receipt-value">₱<?php echo number_format($total_amount, 2); ?></span>
+                    </div>
+                </div>
+
+                <!-- Bottom Section - Signatures Aligned -->
+                <div class="bottom-section">
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Issued by:</div>
+                        <div class="signature-role">Business Affairs Clerk</div>
+                    </div>
+                    </div>
+                    <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Payment Received by:</div>
+                        <div class="signature-role">Cashier Clerk</div>
+                    </div>
+                </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <!-- Page 2: Customer's Copy -->
+    <div class="page page-2">
+        <div class="copies-container">
+            <?php 
+            $page2_copies = [
+                ['name' => "Customer's Copy", 'class' => '']
+            ];
+            
+            foreach ($page2_copies as $copy): 
+            ?>
+            <div class="copy">
+                <!-- Header Section - All in one row -->
+                <div class="header-top">
+                    <div class="logo">
+                        <img src="../image/CHMSUWebLOGO.png" alt="CHMSU Logo">
+                    </div>
+                    <div class="title">ORDER OF PAYMENT</div>
+                    <div class="header-right">
+                        <div class="document-info-box">
+                            <div>Document Code: F.04-BAO-CHMSU</div>
+                            <div>Revision No.: 0</div>
+                            <div>Page: 2 of 2</div>
+                        </div>
+                        <div class="copy-label-top"><?php echo $copy['name']; ?></div>
+                        <div class="status-box">
+                            <div style="font-weight: bold; margin-bottom: 2px;">STATUS</div>
+                            <div class="status-stamp">PENDING</div>
                         </div>
                     </div>
                 </div>
@@ -555,5 +747,29 @@ $receipt_no = '';
             // window.print();
         }
     </script>
+    <style>
+        @media print {
+            html {
+                height: 574mm !important;
+                max-height: 574mm !important;
+                overflow: hidden !important;
+            }
+            body {
+                height: 574mm !important;
+                max-height: 574mm !important;
+                overflow: hidden !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .page.page-2 {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+            .page:last-of-type {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+        }
+    </style>
 </body>
 </html>

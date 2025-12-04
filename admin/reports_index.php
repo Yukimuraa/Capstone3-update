@@ -137,17 +137,6 @@ $current_time = date('g:i A');
 							</div>
 						</div>
 					</a>
-					<a href="user_reports.php" class="report-card bg-white rounded-lg shadow-md p-6">
-						<div class="flex items-start gap-4">
-							<div class="report-icon bg-yellow-100 text-yellow-600 flex-shrink-0">
-								<i class="fas fa-users text-xl"></i>
-							</div>
-							<div class="flex-1">
-								<h2 class="text-lg font-bold text-gray-900 mb-2">User Accounts</h2>
-								<p class="text-sm text-gray-600 leading-relaxed">View user statistics by role, account status, and registration information.</p>
-							</div>
-						</div>
-					</a>
 					<a href="summary_reports.php" class="report-card bg-white rounded-lg shadow-md p-6">
 						<div class="flex items-start gap-4">
 							<div class="report-icon bg-red-100 text-red-600 flex-shrink-0">

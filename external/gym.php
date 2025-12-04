@@ -12,6 +12,12 @@ $base_url = "..";
 // Get user ID
 $user_id = $_SESSION['user_id'];
 
+// Create uploads directory for letters if it doesn't exist
+$letter_upload_dir = "../uploads/gym_letters/";
+if (!file_exists($letter_upload_dir)) {
+    mkdir($letter_upload_dir, 0777, true);
+}
+
 // Get user profile picture
 $user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
 $user_stmt->bind_param("i", $user_id);
@@ -37,14 +43,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $chair_pairs = isset($_POST['chair_pairs']) ? intval($_POST['chair_pairs']) : 0;
             $other_event_type = isset($_POST['other_event_type']) && !empty($_POST['other_event_type']) ? sanitize_input($_POST['other_event_type']) : null;
             
-            // Validate input formats
-            if (!preg_match('/^[A-Za-z\s]+$/', $organization)) {
-                $error_message = "Organization name must contain only letters and spaces.";
-            } elseif (!preg_match('/^[A-Za-z\s]+$/', $contact_person)) {
-                $error_message = "Contact person name must contain only letters and spaces.";
-            } elseif (!preg_match('/^[0-9]+$/', $contact_number)) {
-                $error_message = "Contact number must contain only numbers.";
-            } else {
+            // Handle letter upload
+            $letter_path = null;
+            if (isset($_FILES['letter']) && $_FILES['letter']['error'] === UPLOAD_ERR_OK) {
+                $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
+                $max_size = 5 * 1024 * 1024; // 5MB
+                
+                $file_type = $_FILES['letter']['type'];
+                $file_size = $_FILES['letter']['size'];
+                
+                if (!in_array($file_type, $allowed_types)) {
+                    $error_message = "Only JPG, PNG, GIF images and PDF files are allowed for the letter.";
+                } elseif ($file_size > $max_size) {
+                    $error_message = "Letter file size should not exceed 5MB.";
+                } else {
+                    // Generate unique filename
+                    $file_extension = pathinfo($_FILES['letter']['name'], PATHINFO_EXTENSION);
+                    $filename = 'letter_' . $user_id . '_' . time() . '.' . $file_extension;
+                    $target_file = $letter_upload_dir . $filename;
+                    
+                    if (move_uploaded_file($_FILES['letter']['tmp_name'], $target_file)) {
+                        $letter_path = 'uploads/gym_letters/' . $filename;
+                    } else {
+                        $error_message = "Failed to upload letter. Please try again.";
+                    }
+                }
+            } elseif (isset($_FILES['letter']) && $_FILES['letter']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $error_message = "Error uploading letter. Please try again.";
+            }
+            
+            // Validate that letter is uploaded
+            if (empty($error_message) && empty($letter_path)) {
+                $error_message = "Please upload a letter from the president before making a reservation.";
+            }
+            
+            // Validate input formats (only if no previous errors)
+            if (empty($error_message)) {
+                if (!preg_match('/^[A-Za-z\s]+$/', $organization)) {
+                    $error_message = "Organization name must contain only letters and spaces.";
+                } elseif (!preg_match('/^[A-Za-z\s]+$/', $contact_person)) {
+                    $error_message = "Contact person name must contain only letters and spaces.";
+                } elseif (!preg_match('/^[0-9]+$/', $contact_number)) {
+                    $error_message = "Contact number must contain only numbers.";
+                }
+            }
+            
+            // Continue with other validations only if no errors
+            if (empty($error_message)) {
                 // Normalize times to HH:MM:SS format for proper comparison
                 $start_time = trim($start_time);
                 $end_time = trim($end_time);
@@ -150,6 +195,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					// Add other_event_type if "Other" event type was selected
 					if ($other_event_type !== null) {
 						$additional_info_array['other_event_type'] = $other_event_type;
+					}
+					// Add letter path if uploaded
+					if ($letter_path !== null) {
+						$additional_info_array['letter_path'] = $letter_path;
 					}
 					$additional_info = json_encode($additional_info_array);
 					
@@ -286,9 +335,20 @@ $bookings_result = $bookings_stmt->get_result();
 $event_types_query = "SELECT name FROM gym_event_types WHERE is_active = 1 ORDER BY name ASC";
 $event_types_result = $conn->query($event_types_query);
 $event_types = [];
+$other_index = -1;
 if ($event_types_result) {
+    $index = 0;
     while ($row = $event_types_result->fetch_assoc()) {
-        $event_types[] = $row['name'];
+        if ($row['name'] === 'Other') {
+            $other_index = $index;
+        } else {
+            $event_types[] = $row['name'];
+        }
+        $index++;
+    }
+    // Add "Other" at the bottom if it exists
+    if ($other_index !== -1) {
+        $event_types[] = 'Other';
     }
 }
 // If no event types found, use default list
@@ -603,9 +663,9 @@ if (empty($event_types)) {
 </div>
 
 <!-- Reminder Modal -->
-<div id="reminderModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-        <div class="flex justify-between items-center mb-4">
+<div id="reminderModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
             <h3 class="text-lg font-medium text-gray-900">
                 <i class="fas fa-exclamation-circle text-amber-500 mr-2"></i>Important Reminder
             </h3>
@@ -613,15 +673,18 @@ if (empty($event_types)) {
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <div class="mb-6">
+        <div class="p-6 overflow-y-auto flex-1">
             <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded">
                 <p class="text-gray-700 font-medium">
                     <i class="fas fa-info-circle text-amber-500 mr-2"></i>
-                    Please ensure that the letter from the president is completed before making a booking.
+                    Please ensure that you have a letter from the president ready to upload before making a booking.
+                </p>
+                <p class="text-gray-600 text-sm mt-2">
+                    You will be required to upload the letter in the booking form. Accepted formats: JPG, PNG, GIF, PDF (Max: 5MB)
                 </p>
             </div>
         </div>
-        <div class="flex justify-end">
+        <div class="flex justify-end p-6 pt-4 border-t border-gray-200 flex-shrink-0">
             <button type="button" class="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="proceedToBooking()">
                 I Understand, Continue
             </button>
@@ -630,16 +693,49 @@ if (empty($event_types)) {
 </div>
 
 <!-- Booking Modal -->
-<div id="bookingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4">
+<div id="bookingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
             <h3 class="text-lg font-medium text-gray-900">Reservation Gymnasium</h3>
             <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeBookingModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
-        <form method="POST" action="gym.php">
+        <form method="POST" action="gym.php" enctype="multipart/form-data" id="bookingForm" onsubmit="return validateBookingForm()" class="flex flex-col flex-1 min-h-0">
+            <div class="p-6 overflow-y-auto flex-1">
             <input type="hidden" name="action" value="book">
+            <div class="mb-4">
+                <label for="letter" class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fas fa-file-upload mr-1"></i>Upload Letter from President <span class="text-red-500">*</span>
+                </label>
+                <input type="file" id="letter" name="letter" accept="image/*,.pdf" required 
+                       class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50"
+                       onchange="previewLetter(this)">
+                <p class="mt-1 text-xs text-gray-500">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Please upload a letter from the president. Accepted formats: JPG, PNG, GIF, PDF (Max: 5MB)
+                </p>
+                <!-- Letter Preview -->
+                <div id="letterPreview" class="mt-3 hidden">
+                    <div class="border border-gray-300 rounded-lg p-3 bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-pdf text-red-500 mr-2" id="letterIcon"></i>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900" id="letterFileName"></p>
+                                    <p class="text-xs text-gray-500" id="letterFileSize"></p>
+                                </div>
+                            </div>
+                            <button type="button" onclick="removeLetterPreview()" class="text-red-500 hover:text-red-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div id="letterImagePreview" class="mt-3 hidden">
+                            <img id="letterPreviewImg" src="" alt="Letter Preview" class="max-w-full h-auto rounded border border-gray-300" style="max-height: 200px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="mb-4">
                 <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
                 <input type="date" id="date" name="date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
@@ -730,8 +826,9 @@ if (empty($event_types)) {
                     <p class="mt-1 text-xs text-gray-500">Numbers only</p>
                 </div>
             </div>
-            <div class="flex justify-end">
-                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md mr-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeBookingModal()">
+            </div>
+            <div class="flex justify-end gap-2 p-6 pt-4 border-t border-gray-200 flex-shrink-0">
+                <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeBookingModal()">
                     Cancel
                 </button>
                 <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2">
@@ -743,9 +840,9 @@ if (empty($event_types)) {
 </div>
 
 <!-- Receipt Modal -->
-<div id="receiptModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4">
+<div id="receiptModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
             <h3 class="text-xl font-bold text-gray-900">
                 <i class="fas fa-receipt text-green-500 mr-2"></i>Booking Receipt
             </h3>
@@ -758,6 +855,7 @@ if (empty($event_types)) {
             $receipt = $_SESSION['booking_receipt'];
             $costs = $receipt['cost_breakdown'];
         ?>
+        <div class="p-6 overflow-y-auto flex-1">
         <div class="space-y-4">
             <!-- Booking Information -->
             <div class="bg-gray-50 p-4 rounded-lg">
@@ -871,8 +969,9 @@ if (empty($event_types)) {
                 </p>
             </div>
         </div>
+        </div>
         
-        <div class="mt-6 flex justify-end gap-2">
+        <div class="mt-6 flex justify-end gap-2 p-6 pt-4 border-t border-gray-200 flex-shrink-0">
             <button type="button" class="bg-gray-200 text-gray-700 py-2 px-6 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="printReceipt()">
                 <i class="fas fa-print mr-2"></i>Print Receipt
             </button>
@@ -885,14 +984,15 @@ if (empty($event_types)) {
 </div>
 
 <!-- Booking Details Modal -->
-<div id="detailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-        <div class="flex justify-between items-center mb-4">
+<div id="detailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
             <h3 class="text-lg font-medium text-gray-900">Reservation Details</h3>
             <button type="button" class="text-gray-400 hover:text-gray-500" onclick="closeDetailsModal()">
                 <i class="fas fa-times"></i>
             </button>
         </div>
+        <div class="p-6 overflow-y-auto flex-1">
         <div class="space-y-4">
             <div>
                 <h4 class="text-sm font-medium text-gray-500">Reservation ID</h4>
@@ -926,6 +1026,18 @@ if (empty($event_types)) {
                 <h4 class="text-sm font-medium text-gray-500">Equipment/Services</h4>
                 <p id="detail-equipment" class="mt-1 text-sm text-gray-900"></p>
             </div>
+            <div id="detail-letter-container" class="hidden">
+                <h4 class="text-sm font-medium text-gray-500 mb-2">Letter from President</h4>
+                <div class="border border-gray-300 rounded-lg p-3 bg-gray-50">
+                    <a id="detail-letter-link" href="#" target="_blank" class="flex items-center text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-file-pdf mr-2"></i>
+                        <span id="detail-letter-text">View Letter</span>
+                    </a>
+                    <div id="detail-letter-image" class="mt-3 hidden">
+                        <img id="detail-letter-img" src="" alt="Letter" class="max-w-full h-auto rounded border border-gray-300" style="max-height: 250px; object-fit: contain;">
+                    </div>
+                </div>
+            </div>
             <div>
                 <h4 class="text-sm font-medium text-gray-500">Status</h4>
                 <p id="detail-status" class="mt-1 text-sm"></p>
@@ -935,7 +1047,8 @@ if (empty($event_types)) {
                 <p id="detail-rejection-reason" class="mt-1 text-sm text-gray-900"></p>
             </div>
         </div>
-        <div class="mt-6 flex justify-end">
+        </div>
+        <div class="mt-6 flex justify-end p-6 pt-4 border-t border-gray-200 flex-shrink-0">
             <button type="button" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" onclick="closeDetailsModal()">
                 Close
             </button>
@@ -1030,6 +1143,94 @@ if (empty($event_types)) {
         chairPairsField.style.display = 'block';
     }
     
+    // Validate booking form before submission
+    function validateBookingForm() {
+        const letterInput = document.getElementById('letter');
+        
+        // Check if letter file is uploaded
+        if (!letterInput.files || letterInput.files.length === 0) {
+            alert('Please upload a letter from the president before submitting.');
+            letterInput.focus();
+            return false;
+        }
+        
+        // Check file size (5MB max)
+        const file = letterInput.files[0];
+        const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+        
+        if (file.size > maxSize) {
+            alert('Letter file size must not exceed 5MB. Please choose a smaller file.');
+            letterInput.focus();
+            return false;
+        }
+        
+        // Check file type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Only JPG, PNG, GIF images and PDF files are allowed for the letter.');
+            letterInput.focus();
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Letter preview functions
+    function previewLetter(input) {
+        const preview = document.getElementById('letterPreview');
+        const fileName = document.getElementById('letterFileName');
+        const fileSize = document.getElementById('letterFileSize');
+        const fileIcon = document.getElementById('letterIcon');
+        const imagePreview = document.getElementById('letterImagePreview');
+        const previewImg = document.getElementById('letterPreviewImg');
+        
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            const fileSizeKB = (file.size / 1024).toFixed(2);
+            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            
+            fileName.textContent = file.name;
+            fileSize.textContent = fileSizeMB > 1 ? fileSizeMB + ' MB' : fileSizeKB + ' KB';
+            
+            // Set icon based on file type
+            if (file.type === 'application/pdf') {
+                fileIcon.className = 'fas fa-file-pdf text-red-500 mr-2';
+            } else if (file.type.startsWith('image/')) {
+                fileIcon.className = 'fas fa-file-image text-blue-500 mr-2';
+            } else {
+                fileIcon.className = 'fas fa-file text-gray-500 mr-2';
+            }
+            
+            // Show image preview if it's an image
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    imagePreview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.classList.add('hidden');
+            }
+            
+            preview.classList.remove('hidden');
+        } else {
+            preview.classList.add('hidden');
+        }
+    }
+    
+    function removeLetterPreview() {
+        const preview = document.getElementById('letterPreview');
+        const letterInput = document.getElementById('letter');
+        const imagePreview = document.getElementById('letterImagePreview');
+        
+        preview.classList.add('hidden');
+        imagePreview.classList.add('hidden');
+        if (letterInput) {
+            letterInput.value = '';
+        }
+    }
+    
     // Reminder modal functions
     let pendingBookingAction = null;
     let isNavigationReminder = false; // Track if reminder is for navigation or booking
@@ -1085,6 +1286,12 @@ if (empty($event_types)) {
         document.getElementById('bookingModal').classList.add('hidden');
         pendingBookingAction = null;
         // Reset form fields
+        const form = document.querySelector('#bookingModal form');
+        if (form) {
+            form.reset();
+        }
+        // Reset letter preview
+        removeLetterPreview();
         document.getElementById('purpose').value = '';
         document.getElementById('equipment').value = '';
         document.getElementById('equipmentDropdown').style.display = 'none';
@@ -1125,6 +1332,32 @@ if (empty($event_types)) {
         } else {
             equipmentElement.textContent = 'None selected';
             equipmentContainer.style.display = 'block';
+        }
+        
+        // Display letter if available
+        const letterContainer = document.getElementById('detail-letter-container');
+        const letterLink = document.getElementById('detail-letter-link');
+        const letterText = document.getElementById('detail-letter-text');
+        const letterImage = document.getElementById('detail-letter-image');
+        const letterImg = document.getElementById('detail-letter-img');
+        
+        if (additionalInfo.letter_path) {
+            const letterPath = '../' + additionalInfo.letter_path;
+            letterLink.href = letterPath;
+            letterText.textContent = 'View Letter';
+            
+            // Check if it's an image to show preview
+            const isImage = /\.(jpg|jpeg|png|gif)$/i.test(additionalInfo.letter_path);
+            if (isImage) {
+                letterImg.src = letterPath;
+                letterImage.classList.remove('hidden');
+            } else {
+                letterImage.classList.add('hidden');
+            }
+            
+            letterContainer.classList.remove('hidden');
+        } else {
+            letterContainer.classList.add('hidden');
         }
         
         // Set status with appropriate styling

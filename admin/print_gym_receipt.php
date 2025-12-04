@@ -243,10 +243,12 @@ $hours = $start->diff($end)->h + ($start->diff($end)->i / 60);
         .form-value-large {
             flex: 1;
             border-bottom: 1px solid #000;
-            min-height: 50px;
+            min-height: 14px;
             padding: 2px 3px;
             font-size: 6.5pt;
-            white-space: pre-line;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         
         /* Payment Section */
@@ -497,13 +499,13 @@ $hours = $start->diff($end)->h + ($start->diff($end)->i / 60);
                                 $payment_nature[] = "Duration: " . number_format($hours, 2) . " hours";
                                 $payment_nature[] = "Purpose: " . htmlspecialchars($booking['purpose']);
                                 $payment_nature[] = "Attendees: " . $booking['attendees'];
-                                if (!empty($additional_info['equipment'])) {
-                                    $payment_nature[] = "Equipment: " . htmlspecialchars($additional_info['equipment']);
-                                }
                                 if (!empty($additional_info['organization'])) {
                                     $payment_nature[] = "Organization: " . htmlspecialchars($additional_info['organization']);
                                 }
-                                echo implode("\n", $payment_nature);
+                                if (!empty($additional_info['equipment'])) {
+                                    $payment_nature[] = "Equipment: " . htmlspecialchars($additional_info['equipment']);
+                                }
+                                echo implode(", ", $payment_nature);
                                 ?>
                             </div>
                         </div>

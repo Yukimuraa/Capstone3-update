@@ -1086,7 +1086,7 @@ while ($bus = $buses_result->fetch_assoc()) {
                     <label for="school_name" class="block text-sm font-medium text-gray-700 mb-1">School Name *</label>
                     <input type="text" id="school_name" name="school_name" required 
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50"
-                           placeholder="e.g., CHMSU - Carlos Hilado Memorial State University, Talisay City."
+                               placeholder="e.g., CHMSU - Carlos Hilado Memorial State University, Talisay City."
                            value="<?php echo isset($_POST['school_name']) ? htmlspecialchars($_POST['school_name']) : 'CHMSU - Carlos Hilado Memorial State University, Talisay City.'; ?>">
                 </div>
                 

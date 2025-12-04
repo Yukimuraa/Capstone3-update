@@ -54,7 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Delete user
+        // Delete user - COMMENTED OUT
+        /*
         elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
             $id = intval($_POST['id']);
             
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+        */
     }
 }
 
@@ -129,12 +131,14 @@ $result = $stmt->get_result();
                     </div>
                 <?php endif; ?>
                 
-                <!-- Add new user button -->
+                <!-- Add new user button - COMMENTED OUT -->
+                <!--
                 <div class="mb-6">
     <button type="button" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" onclick="openAddModal()">
         <i class="fas fa-plus mr-1"></i> Add New User
     </button>
 </div>
+                -->
                 
                 <!-- Users table -->
                 <div class="bg-white rounded-lg shadow">
@@ -150,7 +154,8 @@ $result = $stmt->get_result();
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                    <!-- Actions column header - COMMENTED OUT -->
+                                    <!-- <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th> -->
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -189,6 +194,8 @@ $result = $stmt->get_result();
                                                 }
                                                 ?>
                                             </td>
+                                            <!-- Actions column cell - COMMENTED OUT -->
+                                            <!--
                                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <?php if ($user['id'] !== $_SESSION['user_id']): ?>
                                                     <button type="button" class="text-red-600 hover:text-red-900 delete-user-btn" 
@@ -202,11 +209,12 @@ $result = $stmt->get_result();
                                                     <span class="text-gray-400">Cannot Delete</span>
                                                 <?php endif; ?>
                                             </td>
+                                            -->
                                         </tr>
                                     <?php endwhile; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
+                                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -273,7 +281,8 @@ $result = $stmt->get_result();
     </div>
 </div>
 
-<!-- Delete User Confirmation Modal -->
+<!-- Delete User Confirmation Modal - COMMENTED OUT -->
+<!--
 <div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
         <div class="flex items-center mb-4">
@@ -323,6 +332,7 @@ $result = $stmt->get_result();
         </form>
     </div>
 </div>
+-->
 
 <!-- Add User Modal -->
 <div id="addModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
@@ -397,7 +407,8 @@ $result = $stmt->get_result();
         organizationField.classList.add('hidden');
     }
     
-    // Delete modal functions
+    // Delete modal functions - COMMENTED OUT
+    /*
     document.addEventListener('DOMContentLoaded', function() {
         // Add event listeners to all delete buttons
         document.querySelectorAll('.delete-user-btn').forEach(button => {
@@ -448,6 +459,21 @@ $result = $stmt->get_result();
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             closeDeleteModal();
+            closeAddModal();
+        }
+    });
+    */
+    
+    // Close modals when clicking outside (only for add modal now)
+    document.addEventListener('click', function(event) {
+        if (event.target.id === 'addModal') {
+            closeAddModal();
+        }
+    });
+    
+    // Close modals with Escape key (only for add modal now)
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
             closeAddModal();
         }
     });
