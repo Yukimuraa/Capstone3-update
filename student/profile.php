@@ -322,6 +322,124 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     document.getElementById('menu-button').addEventListener('click', function() {
         document.getElementById('sidebar').classList.toggle('-translate-x-full');
     });
+
+    // Full Name validation - letters only, capitalize first letter
+    const nameField = document.getElementById('name');
+    nameField.addEventListener('input', function(e) {
+        // Remove any non-letter characters (except spaces)
+        let value = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+        
+        // Capitalize first letter of each word
+        value = value.toLowerCase().replace(/\b\w/g, function(char) {
+            return char.toUpperCase();
+        });
+        
+        e.target.value = value;
+    });
+
+    // Handle paste for name field
+    nameField.addEventListener('paste', function(e) {
+        e.preventDefault();
+        let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        // Remove non-letter characters and capitalize
+        pastedText = pastedText.replace(/[^a-zA-Z\s]/g, '');
+        pastedText = pastedText.toLowerCase().replace(/\b\w/g, function(char) {
+            return char.toUpperCase();
+        });
+        let start = e.target.selectionStart;
+        let end = e.target.selectionEnd;
+        let text = e.target.value;
+        e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+        e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
+    });
+
+    // Organization validation - letters only, capitalize first letter
+    const orgField = document.getElementById('organization');
+    orgField.addEventListener('input', function(e) {
+        // Remove any non-letter characters (except spaces)
+        let value = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+        
+        // Capitalize first letter of each word
+        value = value.toLowerCase().replace(/\b\w/g, function(char) {
+            return char.toUpperCase();
+        });
+        
+        e.target.value = value;
+    });
+
+    // Handle paste for organization field
+    orgField.addEventListener('paste', function(e) {
+        e.preventDefault();
+        let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        // Remove non-letter characters and capitalize
+        pastedText = pastedText.replace(/[^a-zA-Z\s]/g, '');
+        pastedText = pastedText.toLowerCase().replace(/\b\w/g, function(char) {
+            return char.toUpperCase();
+        });
+        let start = e.target.selectionStart;
+        let end = e.target.selectionEnd;
+        let text = e.target.value;
+        e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+        e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
+    });
+
+    // Phone Number validation - numbers only, max 11 digits
+    const phoneField = document.getElementById('phone');
+    phoneField.addEventListener('input', function(e) {
+        // Remove any non-numeric characters
+        let value = e.target.value.replace(/[^0-9]/g, '');
+        // Limit to 11 digits
+        if (value.length > 11) {
+            value = value.substring(0, 11);
+        }
+        e.target.value = value;
+    });
+
+    // Handle paste for phone field
+    phoneField.addEventListener('paste', function(e) {
+        e.preventDefault();
+        let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        // Remove non-numeric characters
+        pastedText = pastedText.replace(/[^0-9]/g, '');
+        // Limit to 11 digits
+        if (pastedText.length > 11) {
+            pastedText = pastedText.substring(0, 11);
+        }
+        let start = e.target.selectionStart;
+        let end = e.target.selectionEnd;
+        let text = e.target.value;
+        let newValue = text.substring(0, start) + pastedText + text.substring(end);
+        // Ensure total length doesn't exceed 11
+        newValue = newValue.replace(/[^0-9]/g, '');
+        if (newValue.length > 11) {
+            newValue = newValue.substring(0, 11);
+        }
+        e.target.value = newValue;
+        e.target.selectionStart = e.target.selectionEnd = Math.min(start + pastedText.length, 11);
+    });
+
+    // Address validation - block @, !, *, $ characters
+    document.getElementById('address').addEventListener('keypress', function(e) {
+        // Block @, !, *, $ characters
+        if (e.key === '@' || e.key === '!' || e.key === '*' || e.key === '$') {
+            e.preventDefault();
+        }
+    });
+
+    // Also handle paste for address field
+    document.getElementById('address').addEventListener('paste', function(e) {
+        e.preventDefault();
+        let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        // Remove blocked characters from pasted text
+        pastedText = pastedText.replace(/[@!*$]/g, '');
+        // Insert the cleaned text
+        let textarea = e.target;
+        let start = textarea.selectionStart;
+        let end = textarea.selectionEnd;
+        let text = textarea.value;
+        textarea.value = text.substring(0, start) + pastedText + text.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = start + pastedText.length;
+    });
 </script>
 
     <script src="<?php echo $base_url ?? ''; ?>/assets/js/main.js"></script>

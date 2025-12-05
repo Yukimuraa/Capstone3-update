@@ -292,22 +292,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $check_stmt->bind_param("si", $booking_id, $user_id);
             $check_stmt->execute();
             $check_result = $check_stmt->get_result();
+            $check_stmt->close();
             
             if ($check_result->num_rows === 0) {
-                $error_message = "Invalid booking or booking cannot be cancelled.";
+                $_SESSION['error'] = "Invalid booking or booking cannot be cancelled.";
+                header("Location: gym.php");
+                exit();
             } else {
-                // Update booking status
-                $stmt = $conn->prepare("UPDATE bookings SET status = 'cancelled' WHERE booking_id = ?");
-                $stmt->bind_param("s", $booking_id);
+                // Update booking status to cancelled
+                $update_stmt = $conn->prepare("UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE booking_id = ? AND user_id = ?");
+                $update_stmt->bind_param("si", $booking_id, $user_id);
                 
-                if ($stmt->execute()) {
-                    $success_message = "Booking cancelled successfully.";
+                if ($update_stmt->execute()) {
+                    $affected_rows = $update_stmt->affected_rows;
+                    $update_stmt->close();
+                    
+                    if ($affected_rows > 0) {
+                        $_SESSION['success'] = "Booking cancelled successfully.";
+                    } else {
+                        $_SESSION['error'] = "Failed to cancel booking. Please try again.";
+                    }
                 } else {
-                    $error_message = "Error cancelling booking: " . $conn->error;
+                    $_SESSION['error'] = "Error cancelling booking: " . $conn->error;
+                    $update_stmt->close();
                 }
+                
+                // Redirect to refresh the page and show updated status
+                header("Location: gym.php");
+                exit();
             }
         }
     }
+}
+
+// Check for session messages
+if (isset($_SESSION['success'])) {
+    $success_message = $_SESSION['success'];
+    unset($_SESSION['success']);
+}
+if (isset($_SESSION['error'])) {
+    $error_message = $_SESSION['error'];
+    unset($_SESSION['error']);
 }
 
 // Get user's bookings with pagination - order by most recent first
@@ -324,8 +349,13 @@ $count_result = $count_stmt->get_result();
 $total_rows = $count_result->fetch_assoc()['total'];
 $total_pages = $total_rows > 0 ? ceil($total_rows / $per_page) : 1;
 
-// Get paginated bookings
-$bookings_query = "SELECT * FROM bookings WHERE user_id = ? AND facility_type = 'gym' ORDER BY created_at DESC, date DESC LIMIT ?, ?";
+// Get paginated bookings - ensure status is always returned, defaulting to 'pending' if NULL
+$bookings_query = "SELECT booking_id, user_id, facility_type, date, start_time, end_time, purpose, attendees, 
+                    COALESCE(status, 'pending') as status, additional_info, created_at, updated_at 
+                    FROM bookings 
+                    WHERE user_id = ? AND facility_type = 'gym' 
+                    ORDER BY created_at DESC, date DESC 
+                    LIMIT ?, ?";
 $bookings_stmt = $conn->prepare($bookings_query);
 $bookings_stmt->bind_param("iii", $user_id, $offset, $per_page);
 $bookings_stmt->execute();
@@ -495,21 +525,35 @@ if (empty($event_types)) {
                                     <?php while ($booking = $bookings_result->fetch_assoc()): ?>
                                         <?php 
                                         $additional_info = json_decode($booking['additional_info'], true);
-                                        $status_class = '';
-                                        $status_text = ucfirst($booking['status']);
                                         
-                                        switch ($booking['status']) {
+                                        // Get status from booking (query ensures it's never NULL)
+                                        $status_value = isset($booking['status']) ? trim(strtolower($booking['status'])) : 'pending';
+                                        $status_class = 'bg-gray-100 text-gray-800';
+                                        $status_text = 'Pending';
+                                        
+                                        switch ($status_value) {
                                             case 'pending':
                                                 $status_class = 'bg-yellow-100 text-yellow-800';
+                                                $status_text = 'Pending';
                                                 break;
                                             case 'confirmed':
+                                            case 'approved':
                                                 $status_class = 'bg-green-100 text-green-800';
+                                                $status_text = 'Confirmed';
                                                 break;
                                             case 'rejected':
                                                 $status_class = 'bg-red-100 text-red-800';
+                                                $status_text = 'Rejected';
                                                 break;
                                             case 'cancelled':
+                                            case 'canceled':
                                                 $status_class = 'bg-gray-100 text-gray-800';
+                                                $status_text = 'Cancelled';
+                                                break;
+                                            default:
+                                                // For any unknown status, default to Cancelled
+                                                $status_class = 'bg-gray-100 text-gray-800';
+                                                $status_text = 'Cancelled';
                                                 break;
                                         }
                                         
@@ -537,9 +581,15 @@ if (empty($event_types)) {
                                                 <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                    <?php echo $status_text; ?>
-                                                </span>
+                                                <?php if (!empty($status_text)): ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
+                                                        <?php echo htmlspecialchars($status_text); ?>
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                                        Unknown
+                                                    </span>
+                                                <?php endif; ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 <div class="flex items-center gap-2">
@@ -547,7 +597,7 @@ if (empty($event_types)) {
                                                         <i class="fas fa-eye mr-1.5"></i> View
                                                 </button>
                                                 
-                                                <?php if ($booking['status'] === 'pending'): ?>
+                                                <?php if (strtolower($status_value) === 'pending'): ?>
                                                         <button type="button" onclick="openCancelModal('<?php echo $booking['booking_id']; ?>', '<?php echo htmlspecialchars($booking['booking_id']); ?>', '<?php echo date('F j, Y', strtotime($booking['date'])); ?>')" class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                                                             <i class="fas fa-times mr-1.5"></i> Cancel
                                                         </button>
@@ -736,15 +786,8 @@ if (empty($event_types)) {
                     </div>
                 </div>
             </div>
-            <div class="mb-4">
-                <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" id="date" name="date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                <p class="mt-1 text-xs text-gray-500">Select an available date (minimum 3 days in advance)</p>
-                <p class="mt-1 text-xs text-amber-600">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Reservations must be made at least 3 days in advance.
-                </p>
-            </div>
+            <!-- Date field is hidden - selected from calendar -->
+            <input type="hidden" id="date" name="date" required>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label for="start_time" class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
@@ -1436,7 +1479,7 @@ if (empty($event_types)) {
         const bookingId = '<?php echo $_SESSION['booking_receipt']['booking_id']; ?>';
         if (bookingId) {
             // Open print receipt page in new window
-            window.open('../external/print_gym_receipt.php?booking_id=' + bookingId, '_blank');
+            window.open('print_gym_receipt.php?booking_id=' + bookingId, '_blank');
         } else {
             alert('Receipt data not available');
         }
@@ -1740,16 +1783,7 @@ if (empty($event_types)) {
             }
         });
         
-        // Initialize date picker in booking form
-        // Calculate minimum date (3 days from today)
-        const todayForm = new Date();
-        const minDateForm = new Date(todayForm);
-        minDateForm.setDate(todayForm.getDate() + 3);
-        
-        flatpickr("#date", {
-            minDate: minDateForm,
-            dateFormat: "Y-m-d"
-        });
+        // Date is set from the calendar picker, no need to initialize flatpickr for hidden field
     });
 </script>
 

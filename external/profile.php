@@ -374,6 +374,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                 reader.readAsDataURL(file);
             }
         });
+
+        // Full Name validation - letters only, capitalize first letter
+        const nameField = document.getElementById('name');
+        if (nameField) {
+            nameField.addEventListener('input', function(e) {
+                // Remove any non-letter characters (except spaces)
+                let value = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                
+                // Capitalize first letter of each word
+                value = value.toLowerCase().replace(/\b\w/g, function(char) {
+                    return char.toUpperCase();
+                });
+                
+                e.target.value = value;
+            });
+
+            // Handle paste for name field
+            nameField.addEventListener('paste', function(e) {
+                e.preventDefault();
+                let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                // Remove non-letter characters and capitalize
+                pastedText = pastedText.replace(/[^a-zA-Z\s]/g, '');
+                pastedText = pastedText.toLowerCase().replace(/\b\w/g, function(char) {
+                    return char.toUpperCase();
+                });
+                let start = e.target.selectionStart;
+                let end = e.target.selectionEnd;
+                let text = e.target.value;
+                e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+                e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
+            });
+        }
+
+        // Organization validation - letters only (no numbers)
+        const orgField = document.getElementById('organization');
+        if (orgField) {
+            orgField.addEventListener('input', function(e) {
+                // Remove any numbers
+                e.target.value = e.target.value.replace(/[0-9]/g, '');
+            });
+
+            // Handle paste for organization field
+            orgField.addEventListener('paste', function(e) {
+                e.preventDefault();
+                let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                // Remove numbers from pasted text
+                pastedText = pastedText.replace(/[0-9]/g, '');
+                let start = e.target.selectionStart;
+                let end = e.target.selectionEnd;
+                let text = e.target.value;
+                e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+                e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
+            });
+        }
+
+        // Phone Number validation - numbers only (no letters)
+        const phoneField = document.getElementById('phone');
+        if (phoneField) {
+            phoneField.addEventListener('input', function(e) {
+                // Remove any non-numeric characters
+                e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            });
+
+            // Handle paste for phone field
+            phoneField.addEventListener('paste', function(e) {
+                e.preventDefault();
+                let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                // Remove non-numeric characters
+                pastedText = pastedText.replace(/[^0-9]/g, '');
+                let start = e.target.selectionStart;
+                let end = e.target.selectionEnd;
+                let text = e.target.value;
+                e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+                e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
+            });
+        }
+
+        // Address validation - block @, !, *, $ characters
+        const addressField = document.getElementById('address');
+        if (addressField) {
+            addressField.addEventListener('keypress', function(e) {
+                // Block @, !, *, $ characters
+                if (e.key === '@' || e.key === '!' || e.key === '*' || e.key === '$') {
+                    e.preventDefault();
+                }
+            });
+
+            // Also handle paste for address field
+            addressField.addEventListener('paste', function(e) {
+                e.preventDefault();
+                let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                // Remove blocked characters from pasted text
+                pastedText = pastedText.replace(/[@!*$]/g, '');
+                // Insert the cleaned text
+                let textarea = e.target;
+                let start = textarea.selectionStart;
+                let end = textarea.selectionEnd;
+                let text = textarea.value;
+                textarea.value = text.substring(0, start) + pastedText + text.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + pastedText.length;
+            });
+        }
     </script>
 </body>
 </html>

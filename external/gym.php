@@ -83,8 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error_message = "Organization name must contain only letters and spaces.";
                 } elseif (!preg_match('/^[A-Za-z\s]+$/', $contact_person)) {
                     $error_message = "Contact person name must contain only letters and spaces.";
-                } elseif (!preg_match('/^[0-9]+$/', $contact_number)) {
-                    $error_message = "Contact number must contain only numbers.";
+                } elseif (!preg_match('/^[0-9]{11}$/', $contact_number)) {
+                    $error_message = "Contact number must be exactly 11 digits.";
                 }
             }
             
@@ -736,15 +736,8 @@ if (empty($event_types)) {
                     </div>
                 </div>
             </div>
-            <div class="mb-4">
-                <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" id="date" name="date" required class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                <p class="mt-1 text-xs text-gray-500">Select an available date (minimum 3 days in advance)</p>
-                <p class="mt-1 text-xs text-amber-600">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Reservations must be made at least 3 days in advance.
-                </p>
-            </div>
+            <!-- Date field is hidden - selected from calendar -->
+            <input type="hidden" id="date" name="date" required>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label for="start_time" class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
@@ -817,13 +810,14 @@ if (empty($event_types)) {
                 <div>
                     <label for="contact_number" class="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
                     <input type="text" id="contact_number" name="contact_number" required 
-                           pattern="[0-9]+" 
-                           title="Contact number must contain only numbers"
+                           pattern="[0-9]{11}" 
+                           title="Contact number must be exactly 11 digits"
                            inputmode="numeric"
+                           maxlength="11"
                            onkeypress="return (event.charCode >= 48 && event.charCode <= 57)" 
-                           oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 11)"
                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring focus:ring-amber-500 focus:ring-opacity-50">
-                    <p class="mt-1 text-xs text-gray-500">Numbers only</p>
+                    <p class="mt-1 text-xs text-gray-500">11 digits only</p>
                 </div>
             </div>
             </div>
@@ -1740,16 +1734,7 @@ if (empty($event_types)) {
             }
         });
         
-        // Initialize date picker in booking form
-        // Calculate minimum date (3 days from today)
-        const todayForm = new Date();
-        const minDateForm = new Date(todayForm);
-        minDateForm.setDate(todayForm.getDate() + 3);
-        
-        flatpickr("#date", {
-            minDate: minDateForm,
-            dateFormat: "Y-m-d"
-        });
+        // Date is set from the calendar picker, no need to initialize flatpickr for hidden field
     });
 </script>
 

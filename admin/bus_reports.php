@@ -50,28 +50,9 @@ $count_stmt->execute();
 $total_rows = $count_stmt->get_result()->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $rows_per_page);
 
-// Calculate total amount from ALL filtered records (not just paginated)
-$total_amount_query = "SELECT COALESCE(SUM(bs.total_amount), 0) as total_amount
-          FROM bus_schedules s
-          LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
-          WHERE 1=1";
-
-$total_amount_params = [];
-$total_amount_types = "";
-
-if (!empty($start_date)) { $total_amount_query .= " AND s.date_covered >= ?"; $total_amount_params[] = $start_date; $total_amount_types .= "s"; }
-if (!empty($end_date))   { $total_amount_query .= " AND s.date_covered <= ?"; $total_amount_params[] = $end_date;   $total_amount_types .= "s"; }
-if (!empty($status))     { $total_amount_query .= " AND s.status = ?";         $total_amount_params[] = $status;     $total_amount_types .= "s"; }
-if (!empty($department)) { $total_amount_query .= " AND s.client LIKE ?";      $total_amount_params[] = "%$department%"; $total_amount_types .= "s"; }
-
-$total_amount_stmt = $conn->prepare($total_amount_query);
-if (!empty($total_amount_params)) { $total_amount_stmt->bind_param($total_amount_types, ...$total_amount_params); }
-$total_amount_stmt->execute();
-$total_amount = (float)($total_amount_stmt->get_result()->fetch_assoc()['total_amount'] ?? 0);
-
 // Build schedule query
 $query = "SELECT s.id, s.client, s.destination, s.purpose, s.date_covered, s.vehicle, s.bus_no, s.no_of_days, s.no_of_vehicles, s.status,
-                 bs.total_amount, bs.payment_status, bs.payment_date
+                 bs.payment_status, bs.payment_date
           FROM bus_schedules s
           LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
           WHERE 1=1";
@@ -184,11 +165,10 @@ while ($row = $result->fetch_assoc()) {
 				</div>
 
 				<!-- KPIs -->
-				<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Requests</p><h3 class="text-2xl font-bold"><?php echo number_format($total_rows); ?></h3></div>
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Approved</p><h3 class="text-2xl font-bold text-green-600"><?php echo number_format($approved); ?></h3></div>
 					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Pending</p><h3 class="text-2xl font-bold text-yellow-600"><?php echo number_format($pending); ?></h3></div>
-					<div class="bg-white rounded-lg shadow p-4"><p class="text-gray-500 text-sm">Total Amount</p><h3 class="text-2xl font-bold text-emerald-600">₱<?php echo number_format($total_amount,2); ?></h3></div>
 				</div>
 
 				<!-- Table -->
@@ -214,7 +194,6 @@ while ($row = $result->fetch_assoc()) {
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicles</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-									<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Amount</th>
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
@@ -234,10 +213,9 @@ while ($row = $result->fetch_assoc()) {
 											?>
 											<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $cls; ?>"><?php echo ucfirst($r['status']); ?></span>
 										</td>
-										<td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-emerald-600">₱<?php echo number_format((float)($r['total_amount'] ?? 0), 2); ?></td>
 									</tr>
 								<?php endforeach; else: ?>
-									<tr><td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">No reservations found</td></tr>
+									<tr><td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No reservations found</td></tr>
 								<?php endif; ?>
 							</tbody>
 						</table>

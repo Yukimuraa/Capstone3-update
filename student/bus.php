@@ -13,6 +13,11 @@ $base_url = "..";
 $error = '';
 $success = '';
 
+// Check for cancel success message
+if (isset($_GET['cancel_success']) && $_GET['cancel_success'] == 1) {
+    $success = 'Bus request cancelled successfully!';
+}
+
 // Create uploads directory if it doesn't exist
 $upload_dir = "../uploads/bus_approvals/";
 if (!file_exists($upload_dir)) {
@@ -323,11 +328,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Only pending requests can be cancelled.';
                 } else {
                     // Update status to cancelled
-                    $cancel_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'cancelled' WHERE id = ?");
+                    $cancel_stmt = $conn->prepare("UPDATE bus_schedules SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
                     $cancel_stmt->bind_param("i", $schedule_id);
                     
                     if ($cancel_stmt->execute()) {
-                        $success = 'Bus request cancelled successfully!';
+                        // Redirect to refresh the page and show updated status
+                        header("Location: bus.php?cancel_success=1");
+                        exit();
                     } else {
                         $error = 'Error cancelling request: ' . $conn->error;
                     }
@@ -548,7 +555,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $user_name = $_SESSION['user_sessions']['student']['user_name'] ?? 'Student';
                                 create_notification_for_admins("New Bus Schedule Request", "{$user_name} has submitted a new bus schedule request for {$date_range} (Destination: {$destination}). Please review and approve.", "request", "admin/bus.php");
                                 
-                                $success = 'Bus schedule request submitted successfully! Billing statement generated. You will be notified once it\'s approved.';
+                                // Redirect to show success modal
+                                header("Location: bus.php?submitted=1");
+                                exit();
                             } else {
                                 throw new Exception('Error creating billing statement: ' . $conn->error);
                             }
@@ -841,11 +850,12 @@ while ($bus = $buses_result->fetch_assoc()) {
                                                     <p class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($schedule['destination']); ?></p>
                                                     <?php
                                                     // Display status badge based on actual status
+                                                    $status_value = isset($schedule['status']) ? trim(strtolower($schedule['status'])) : 'pending';
                                                     $status_class = '';
                                                     $status_text = '';
                                                     $status_icon = '';
                                                     
-                                                    switch($schedule['status']) {
+                                                    switch ($status_value) {
                                                         case 'pending':
                                                             $status_class = 'bg-yellow-100 text-yellow-800';
                                                             $status_text = 'Pending';
@@ -862,6 +872,7 @@ while ($bus = $buses_result->fetch_assoc()) {
                                                             $status_icon = 'fa-times-circle';
                                                             break;
                                                         case 'cancelled':
+                                                        case 'canceled':
                                                             $status_class = 'bg-gray-100 text-gray-800';
                                                             $status_text = 'Cancelled';
                                                             $status_icon = 'fa-ban';
@@ -872,9 +883,10 @@ while ($bus = $buses_result->fetch_assoc()) {
                                                             $status_icon = 'fa-flag-checkered';
                                                             break;
                                                         default:
+                                                            // For any unknown status, default to Cancelled
                                                             $status_class = 'bg-gray-100 text-gray-800';
-                                                            $status_text = ucfirst($schedule['status']);
-                                                            $status_icon = 'fa-info-circle';
+                                                            $status_text = 'Cancelled';
+                                                            $status_icon = 'fa-ban';
                                                     }
                                                     ?>
                                                     <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?php echo $status_class; ?>">
@@ -903,22 +915,12 @@ while ($bus = $buses_result->fetch_assoc()) {
                                             <span class="text-sm text-gray-500">
                                                 <?php echo $schedule['no_of_days']; ?> day<?php echo $schedule['no_of_days'] > 1 ? 's' : ''; ?>
                                             </span>
-                                            <?php if (isset($schedule['total_amount']) && $schedule['total_amount'] > 0): ?>
-                                                <span class="text-sm font-semibold text-green-600">
-                                                    ₱<?php echo number_format($schedule['total_amount'], 2); ?>
-                                                </span>
-                                            <?php endif; ?>
                                             <button type="button" class="text-blue-600 hover:text-blue-900" title="View Details" onclick="viewSchedule(<?php echo htmlspecialchars(json_encode($schedule)); ?>)">
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                             <?php if ($schedule['status'] === 'pending'): ?>
                                                 <button type="button" class="text-red-600 hover:text-red-900" title="Cancel Request" onclick="openCancelModal(<?php echo $schedule['id']; ?>, '<?php echo htmlspecialchars($schedule['destination'], ENT_QUOTES); ?>')">
                                                     <i class="fas fa-times-circle"></i>
-                                                </button>
-                                            <?php endif; ?>
-                                            <?php if (isset($schedule['total_amount']) && $schedule['total_amount'] > 0): ?>
-                                                <button type="button" class="text-green-600 hover:text-green-900" title="Print Receipt" onclick="printReceipt(<?php echo $schedule['id']; ?>)">
-                                                    <i class="fas fa-print"></i>
                                                 </button>
                                             <?php endif; ?>
                                         </div>
@@ -1143,10 +1145,9 @@ while ($bus = $buses_result->fetch_assoc()) {
                                placeholder="e.g., CHMSU Fortune Towne Campus, CHMSU Binalbagan Campus"
                                value=""
                                autocomplete="off"
-                               oninput="handleLocationInputContinuation(event); updateDistance();"
+                               oninput="handleLocationInputContinuation(event)"
                                onfocus="showLocationSuggestionsContinuation()"
-                               onblur="hideLocationSuggestionsContinuation()"
-                               onchange="updateDistance()">
+                               onblur="hideLocationSuggestionsContinuation()">
                         <div id="location-suggestions-continuation" class="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg hidden max-h-60 overflow-y-auto">
                             <!-- Suggestions will be populated here -->
                         </div>
@@ -1158,16 +1159,8 @@ while ($bus = $buses_result->fetch_assoc()) {
                 </div>
                 
                 <div class="md:col-span-2">
-                    <div id="distance-display" class="hidden p-3 rounded-md text-sm bg-blue-100 text-blue-800">
-                        <div class="flex items-center justify-between">
-                            <span><i class="fas fa-route mr-2"></i>Distance (one-way):</span>
-                            <span class="font-bold" id="distance-km">0 km</span>
-                        </div>
-                        <div class="flex items-center justify-between mt-1">
-                            <span><i class="fas fa-exchange-alt mr-2"></i>Total Distance (round trip):</span>
-                            <span class="font-bold" id="total-distance-km">0 km</span>
-                        </div>
-                    </div>
+                    <!-- Distance display removed - calculation not shown to students -->
+                    <div id="distance-display" class="hidden"></div>
                     
                     <!-- Pricing Guide -->
                     <div class="mt-3">
@@ -1341,7 +1334,7 @@ while ($bus = $buses_result->fetch_assoc()) {
                                        name="bus_no[]" 
                                        value="<?php echo htmlspecialchars($bus['bus_number']); ?>"
                                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                       onchange="updateSelectedBuses(); updateDistance();">
+                                       onchange="updateSelectedBuses()">
                                 <label for="bus_<?php echo htmlspecialchars($bus['bus_number']); ?>" 
                                        class="ml-2 text-sm text-gray-700 cursor-pointer flex-1">
                                     <span class="font-semibold">Bus <?php echo htmlspecialchars($bus['bus_number']); ?></span>
@@ -1520,7 +1513,45 @@ while ($bus = $buses_result->fetch_assoc()) {
     </div>
 </div>
 
+<!-- Success Modal -->
+<div id="successModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">
+                <i class="fas fa-check-circle text-green-600 mr-2"></i>Request Submitted Successfully
+            </h3>
+            <button onclick="closeSuccessModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="mb-6">
+            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                <p class="text-sm text-gray-700">
+                    <i class="fas fa-info-circle text-green-600 mr-2"></i>
+                    Once your bus request has been approved by the BAO Admin or Secretary, you may proceed to the BAO Office to claim your billing statement.
+                </p>
+            </div>
+        </div>
+        
+        <div class="flex justify-end">
+            <button onclick="closeSuccessModal()" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                OK
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
+// Show success modal if request was just submitted
+<?php if (isset($_GET['submitted']) && $_GET['submitted'] == 1): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        document.getElementById('successModal').classList.remove('hidden');
+    }, 300);
+});
+<?php endif; ?>
+
 // Mobile menu toggle
 document.getElementById('menu-button').addEventListener('click', function() {
     document.getElementById('sidebar').classList.toggle('-translate-x-full');
@@ -1537,8 +1568,7 @@ function openAddModal() {
     
     document.getElementById('start_date').min = minDateStr;
     document.getElementById('end_date').min = minDateStr;
-    // Update distance display with default values
-    updateDistance();
+    // Distance calculation removed - not shown to students
 }
 
 function closeAddModal() {
@@ -1657,6 +1687,16 @@ function openCancelModal(scheduleId, destination) {
 
 function closeCancelModal() {
     document.getElementById('cancelModal').classList.add('hidden');
+}
+
+function closeSuccessModal() {
+    document.getElementById('successModal').classList.add('hidden');
+    // Remove the submitted parameter from URL
+    if (window.location.search.includes('submitted=1')) {
+        const url = new URL(window.location);
+        url.searchParams.delete('submitted');
+        window.history.replaceState({}, '', url);
+    }
 }
 
 // CHMSU Talisay as the fixed origin point (LOCAL ONLY - NO APIs)
@@ -2163,7 +2203,7 @@ function showSuggestionsContinuation(query) {
 function selectSuggestionContinuation(suggestion) {
     document.getElementById('to_location_continuation').value = suggestion;
     document.getElementById('location-suggestions-continuation').classList.add('hidden');
-    updateDistance(); // Recalculate distance when continuation is selected
+    // Distance calculation removed - not shown to students
 }
 
 function showSuggestions(query) {
@@ -2197,7 +2237,7 @@ function showSuggestions(query) {
 function selectSuggestion(suggestion) {
     document.getElementById('to_location').value = suggestion;
     document.getElementById('location-suggestions').classList.add('hidden');
-    updateDistance();
+    // Distance calculation removed - not shown to students
 }
 
 // Keyboard navigation for dropdown
@@ -2293,6 +2333,15 @@ function calculatePriceFromDistance(distanceKm) {
 
 // Calculate and display distance using LOCAL DATABASE (NO APIs)
 async function updateDistance() {
+    // DISABLED: Calculation display removed - students only see reservation form
+    // Backend calculation still happens when form is submitted for billing purposes
+    const distanceDisplay = document.getElementById('distance-display');
+    if (distanceDisplay) {
+        distanceDisplay.classList.add('hidden');
+    }
+    return;
+    
+    /* DISABLED CODE - Calculation removed from student view
     const fromLocation = document.getElementById('from_location').value.trim();
     const toLocation = document.getElementById('to_location').value.trim();
     const toLocationContinuation = document.getElementById('to_location_continuation').value.trim();
@@ -2456,6 +2505,7 @@ async function updateDistance() {
             </div>
         `;
     }
+    */
 }
 
 // Update date range and calculate number of days
@@ -2733,6 +2783,7 @@ document.addEventListener('click', function(event) {
         closeViewModal();
         closeCancelModal();
         closeConfirmModal();
+        closeSuccessModal();
     }
     
     // Close location suggestions when clicking outside
@@ -2805,6 +2856,38 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Please select at least one bus before submitting.');
                 return false;
             }
+        });
+    }
+    
+    // Client/Organization field validation - letters only, capitalize first letter
+    const clientField = document.getElementById('client');
+    if (clientField) {
+        clientField.addEventListener('input', function(e) {
+            // Remove any non-letter characters (except spaces)
+            let value = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+            
+            // Capitalize first letter of each word
+            value = value.toLowerCase().replace(/\b\w/g, function(char) {
+                return char.toUpperCase();
+            });
+            
+            e.target.value = value;
+        });
+        
+        // Handle paste for client field
+        clientField.addEventListener('paste', function(e) {
+            e.preventDefault();
+            let pastedText = (e.clipboardData || window.clipboardData).getData('text');
+            // Remove non-letter characters and capitalize
+            pastedText = pastedText.replace(/[^a-zA-Z\s]/g, '');
+            pastedText = pastedText.toLowerCase().replace(/\b\w/g, function(char) {
+                return char.toUpperCase();
+            });
+            let start = e.target.selectionStart;
+            let end = e.target.selectionEnd;
+            let text = e.target.value;
+            e.target.value = text.substring(0, start) + pastedText + text.substring(end);
+            e.target.selectionStart = e.target.selectionEnd = start + pastedText.length;
         });
     }
 });

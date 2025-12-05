@@ -18,30 +18,26 @@ $rows_per_page = 20;
 $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $offset = ($current_page - 1) * $rows_per_page;
 
-// Collect rows from sources: Bus billing_statements, Inventory orders (as sales)
+// Collect rows from sources: Inventory orders (as sales)
 $rows = [];
 
-// Bus billing
-if ($service === '' || $service === 'bus') {
-	$sql = "SELECT 'Bus' as service, bs.id as billing_id, s.client as requester, s.destination as details, bs.total_amount as amount,
-				bs.payment_status as pay_status, bs.payment_date as paid_at, bs.created_at as created_at
-		FROM billing_statements bs JOIN bus_schedules s ON s.id = bs.schedule_id WHERE 1=1";
-	$params = []; $types = "";
-	if (!empty($status)) { $sql .= " AND bs.payment_status = ?"; $params[] = $status; $types .= "s"; }
-	if (!empty($start_date)) { $sql .= " AND DATE(bs.created_at) >= ?"; $params[] = $start_date; $types .= "s"; }
-	if (!empty($end_date))   { $sql .= " AND DATE(bs.created_at) <= ?"; $params[] = $end_date;   $types .= "s"; }
-	$stmt = $conn->prepare($sql);
-	if (!empty($params)) { $stmt->bind_param($types, ...$params); }
-	$stmt->execute();
-	$res = $stmt->get_result();
-	while ($r = $res->fetch_assoc()) { $rows[] = $r; }
-}
-
-// Inventory orders as Item Sales
+// Inventory orders as Item Sales - Group by batch_id
 if ($service === '' || $service === 'items') {
-	$sql2 = "SELECT 'Items' as service, o.id as billing_id, u.name as requester, i.name as details, o.total_price as amount,
-				CASE WHEN o.status IN ('completed') THEN 'paid' ELSE 'pending' END as pay_status, o.updated_at as paid_at, o.created_at as created_at
-		FROM orders o JOIN user_accounts u ON u.id = o.user_id JOIN inventory i ON i.id = o.inventory_id WHERE 1=1";
+	$sql2 = "SELECT 'Items' as service, 
+				COALESCE(o.batch_id, CONCAT('ORDER-', o.id)) as billing_id,
+				u.name as requester, 
+				GROUP_CONCAT(DISTINCT i.name SEPARATOR ', ') as details,
+				SUM(o.total_price) as amount,
+				CASE WHEN COUNT(CASE WHEN o.status IN ('completed') THEN 1 END) = COUNT(*) THEN 'paid'
+					 WHEN COUNT(CASE WHEN o.status = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+					 ELSE 'pending' END as pay_status,
+				MAX(o.updated_at) as paid_at,
+				MIN(o.created_at) as created_at,
+				MAX(o.or_number) as or_number
+		FROM orders o 
+		JOIN user_accounts u ON u.id = o.user_id 
+		JOIN inventory i ON i.id = o.inventory_id 
+		WHERE 1=1";
 	$params2 = []; $types2 = "";
 	if (!empty($status)) { 
 		if ($status === 'paid') { $sql2 .= " AND o.status = 'completed'"; }
@@ -50,6 +46,7 @@ if ($service === '' || $service === 'items') {
 	}
 	if (!empty($start_date)) { $sql2 .= " AND DATE(o.created_at) >= ?"; $params2[] = $start_date; $types2 .= "s"; }
 	if (!empty($end_date))   { $sql2 .= " AND DATE(o.created_at) <= ?"; $params2[] = $end_date;   $types2 .= "s"; }
+	$sql2 .= " GROUP BY o.batch_id, u.id";
 	$stmt2 = $conn->prepare($sql2);
 	if (!empty($params2)) { $stmt2->bind_param($types2, ...$params2); }
 	$stmt2->execute();
@@ -102,7 +99,6 @@ foreach ($rows as $r) {
 							<label class="block text-sm text-gray-700 mb-1">Service</label>
 							<select name="service" class="w-full rounded-md border-gray-300">
 								<option value="">All</option>
-								<option value="bus" <?php echo $service==='bus'?'selected':''; ?>>Bus</option>
 								<option value="items" <?php echo $service==='items'?'selected':''; ?>>Items</option>
 							</select>
 						</div>
@@ -155,8 +151,9 @@ foreach ($rows as $r) {
 								<tr>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Billing ID</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
-									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requester / Details</th>
+									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer / Details</th>
 									<th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OR No.</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
 									<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
 								</tr>
@@ -168,14 +165,27 @@ foreach ($rows as $r) {
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo $r['service']; ?></td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo htmlspecialchars($r['requester']); ?> — <?php echo htmlspecialchars($r['details']); ?></td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-emerald-600">₱<?php echo number_format((float)$r['amount'],2); ?></td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+										<?php if ($r['service'] === 'Items' && !empty($r['or_number'])): ?>
+											<?php echo htmlspecialchars($r['or_number']); ?>
+										<?php else: ?>
+											<span class="text-gray-400">-</span>
+										<?php endif; ?>
+									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm">
 										<?php $cls='bg-gray-100 text-gray-800'; if ($r['pay_status']==='paid') $cls='bg-green-100 text-green-800'; elseif ($r['pay_status']==='pending') $cls='bg-yellow-100 text-yellow-800'; elseif ($r['pay_status']==='cancelled') $cls='bg-red-100 text-red-800'; ?>
 										<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $cls; ?>"><?php echo ucfirst($r['pay_status']); ?></span>
 									</td>
 									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><?php echo format_date($r['created_at']); ?></td>
 								</tr>
-								<?php endforeach; else: ?>
-								<tr><td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No billing records found</td></tr>
+								<?php endforeach; ?>
+								<tr class="bg-gray-50 font-bold">
+									<td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">Total:</td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-emerald-600">₱<?php echo number_format($total_amount, 2); ?></td>
+									<td colspan="3" class="px-6 py-4"></td>
+								</tr>
+								<?php else: ?>
+								<tr><td colspan="7" class="px-6 py-4 text-center text-sm text-gray-500">No billing records found</td></tr>
 								<?php endif; ?>
 							</tbody>
 						</table>

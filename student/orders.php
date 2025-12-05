@@ -120,7 +120,14 @@ while ($order = $result->fetch_assoc()) {
 
 // Determine display status for each batch
 foreach ($all_batches as $key => &$batch) {
-    $batch['display_status'] = count($batch['statuses']) == 1 ? $batch['statuses'][0] : 'mixed';
+    // Normalize status values to lowercase for comparison
+    $normalized_statuses = array_map('strtolower', $batch['statuses']);
+    
+    if (count($normalized_statuses) == 1) {
+        $batch['display_status'] = strtolower($batch['statuses'][0]);
+    } else {
+        $batch['display_status'] = 'mixed';
+    }
     $batch['item_count'] = count($batch['orders']);
 }
 unset($batch);
@@ -208,6 +215,9 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                     <a href="orders.php?status=completed" class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter == 'completed' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'; ?>">
                         Completed
                     </a>
+                    <a href="orders.php?status=cancelled" class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter == 'cancelled' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'; ?>">
+                        Cancelled
+                    </a>
                 </div>
                 
                 <!-- Orders Table -->
@@ -245,25 +255,35 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                                                 ₱<?php echo number_format($batch['total_amount'], 2); ?>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <?php if ($batch['display_status'] == 'pending'): ?>
+                                                <?php 
+                                                $display_status = strtolower($batch['display_status']);
+                                                if ($display_status == 'pending'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
                                                         Pending
                                                     </span>
-                                                <?php elseif ($batch['display_status'] == 'approved'): ?>
+                                                <?php elseif ($display_status == 'approved'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                                         Approved
                                                     </span>
-                                                <?php elseif ($batch['display_status'] == 'completed'): ?>
+                                                <?php elseif ($display_status == 'completed'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                                                         Completed
                                                     </span>
-                                                <?php elseif ($batch['display_status'] == 'mixed'): ?>
+                                                <?php elseif ($display_status == 'cancelled' || $display_status == 'canceled'): ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                                        Cancelled
+                                                    </span>
+                                                <?php elseif ($display_status == 'mixed'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
                                                         Mixed
                                                     </span>
-                                                <?php else: ?>
+                                                <?php elseif ($display_status == 'rejected'): ?>
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
                                                         Rejected
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                                        Cancelled
                                                     </span>
                                                 <?php endif; ?>
                                             </td>

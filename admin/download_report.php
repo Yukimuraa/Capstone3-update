@@ -50,10 +50,10 @@ $title = '';
 switch ($report_type) {
     case 'bus':
         $title = 'Bus Reservation Report';
-        $headers = ['Reservation ID', 'Requester/Dept', 'Destination', 'Date', 'Vehicles', 'Status', 'Total Amount'];
+        $headers = ['Reservation ID', 'Requester/Dept', 'Destination', 'Date', 'Vehicles', 'Status'];
         
         $query = "SELECT s.id, s.client, s.destination, s.purpose, s.date_covered, s.vehicle, s.bus_no, s.no_of_days, s.no_of_vehicles, s.status,
-                         bs.total_amount, bs.payment_status, bs.payment_date
+                         bs.payment_status, bs.payment_date
                   FROM bus_schedules s
                   LEFT JOIN billing_statements bs ON bs.schedule_id = s.id
                   WHERE 1=1";
@@ -73,18 +73,14 @@ switch ($report_type) {
         $stmt->execute();
         $result = $stmt->get_result();
         
-        $total_amount = 0.00;
         while ($row = $result->fetch_assoc()) {
-            $amount = (float)($row['total_amount'] ?? 0);
-            $total_amount += $amount;
             $data[] = [
                 $row['id'],
                 $row['client'],
                 $row['destination'],
                 date('M d, Y', strtotime($row['date_covered'])),
                 $row['no_of_vehicles'],
-                ucfirst($row['status']),
-                '₱' . number_format($amount, 2)
+                ucfirst($row['status'])
             ];
         }
         break;
@@ -147,29 +143,26 @@ switch ($report_type) {
         
     case 'billing':
         $title = 'Billing Summary Report';
-        $headers = ['Billing ID', 'Service', 'Requester / Details', 'Amount', 'Payment Status', 'Created'];
+        $headers = ['Billing ID', 'Service', 'Customer / Details', 'Amount', 'OR No.', 'Payment Status', 'Created'];
         
         $rows = [];
         
-        if ($service === '' || $service === 'bus') {
-            $sql = "SELECT 'Bus' as service, bs.id as billing_id, s.client as requester, s.destination as details, bs.total_amount as amount,
-                        bs.payment_status as pay_status, bs.payment_date as paid_at, bs.created_at as created_at
-                    FROM billing_statements bs JOIN bus_schedules s ON s.id = bs.schedule_id WHERE 1=1";
-            $params = []; $types = "";
-            if (!empty($status)) { $sql .= " AND bs.payment_status = ?"; $params[] = $status; $types .= "s"; }
-            if (!empty($start_date)) { $sql .= " AND DATE(bs.created_at) >= ?"; $params[] = $start_date; $types .= "s"; }
-            if (!empty($end_date))   { $sql .= " AND DATE(bs.created_at) <= ?"; $params[] = $end_date;   $types .= "s"; }
-            $stmt = $conn->prepare($sql);
-            if (!empty($params)) { $stmt->bind_param($types, ...$params); }
-            $stmt->execute();
-            $res = $stmt->get_result();
-            while ($r = $res->fetch_assoc()) { $rows[] = $r; }
-        }
-        
         if ($service === '' || $service === 'items') {
-            $sql2 = "SELECT 'Items' as service, o.id as billing_id, u.name as requester, i.name as details, o.total_price as amount,
-                        CASE WHEN o.status IN ('completed') THEN 'paid' ELSE 'pending' END as pay_status, o.updated_at as paid_at, o.created_at as created_at
-                    FROM orders o JOIN user_accounts u ON u.id = o.user_id JOIN inventory i ON i.id = o.inventory_id WHERE 1=1";
+            $sql2 = "SELECT 'Items' as service, 
+                        COALESCE(o.batch_id, CONCAT('ORDER-', o.id)) as billing_id,
+                        u.name as requester, 
+                        GROUP_CONCAT(DISTINCT i.name SEPARATOR ', ') as details,
+                        SUM(o.total_price) as amount,
+                        CASE WHEN COUNT(CASE WHEN o.status IN ('completed') THEN 1 END) = COUNT(*) THEN 'paid'
+                             WHEN COUNT(CASE WHEN o.status = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
+                             ELSE 'pending' END as pay_status,
+                        MAX(o.updated_at) as paid_at,
+                        MIN(o.created_at) as created_at,
+                        MAX(o.or_number) as or_number
+                    FROM orders o 
+                    JOIN user_accounts u ON u.id = o.user_id 
+                    JOIN inventory i ON i.id = o.inventory_id 
+                    WHERE 1=1";
             $params2 = []; $types2 = "";
             if (!empty($status)) { 
                 if ($status === 'paid') { $sql2 .= " AND o.status = 'completed'"; }
@@ -178,6 +171,7 @@ switch ($report_type) {
             }
             if (!empty($start_date)) { $sql2 .= " AND DATE(o.created_at) >= ?"; $params2[] = $start_date; $types2 .= "s"; }
             if (!empty($end_date))   { $sql2 .= " AND DATE(o.created_at) <= ?"; $params2[] = $end_date;   $types2 .= "s"; }
+            $sql2 .= " GROUP BY o.batch_id, u.id";
             $stmt2 = $conn->prepare($sql2);
             if (!empty($params2)) { $stmt2->bind_param($types2, ...$params2); }
             $stmt2->execute();
@@ -186,11 +180,19 @@ switch ($report_type) {
         }
         
         foreach ($rows as $r) {
+            $or_number = '';
+            if ($r['service'] === 'Items' && !empty($r['or_number'])) {
+                $or_number = $r['or_number'];
+            } else {
+                $or_number = '-';
+            }
+            
             $data[] = [
                 $r['billing_id'],
                 $r['service'],
                 $r['requester'] . ' — ' . $r['details'],
                 '₱' . number_format((float)$r['amount'], 2),
+                $or_number,
                 ucfirst($r['pay_status']),
                 date('M d, Y', strtotime($r['created_at']))
             ];
@@ -426,19 +428,24 @@ if ($format === 'pdf') {
             $html .= '</tr>';
         }
         
-        // Add total row for bus reports
-        if ($report_type === 'bus' && isset($total_amount)) {
-            $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
-            $html .= '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Amount:</td>';
-            $html .= '<td style="text-align:right;">₱' . number_format($total_amount, 2) . '</td>';
-            $html .= '</tr>';
-        }
-        
         // Add total row for inventory reports
         if ($report_type === 'inventory' && isset($total_revenue)) {
             $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
             $html .= '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Revenue:</td>';
             $html .= '<td style="text-align:right;">₱' . number_format($total_revenue, 2) . '</td>';
+            $html .= '</tr>';
+        }
+        
+        // Add total row for billing reports
+        if ($report_type === 'billing' && !empty($rows)) {
+            $billing_total = 0.0;
+            foreach ($rows as $r) {
+                $billing_total += (float)$r['amount'];
+            }
+            $html .= '<tr style="background-color:#f3f4f6; font-weight:bold;">';
+            $html .= '<td colspan="3" style="text-align:right;">Total:</td>';
+            $html .= '<td style="text-align:right;">₱' . number_format($billing_total, 2) . '</td>';
+            $html .= '<td colspan="3"></td>';
             $html .= '</tr>';
         }
         
@@ -669,11 +676,16 @@ if ($format === 'pdf') {
             echo '</tr>';
         }
         
-        // Add total row for bus reports
-        if ($report_type === 'bus' && isset($total_amount)) {
+        // Add total row for billing reports
+        if ($report_type === 'billing' && !empty($rows)) {
+            $billing_total = 0.0;
+            foreach ($rows as $r) {
+                $billing_total += (float)$r['amount'];
+            }
             echo '<tr style="background-color:#f3f4f6; font-weight:bold;">';
-            echo '<td colspan="' . (count($headers) - 1) . '" style="text-align:right;">Total Amount:</td>';
-            echo '<td style="text-align:right;">₱' . number_format($total_amount, 2) . '</td>';
+            echo '<td colspan="3" style="text-align:right;">Total:</td>';
+            echo '<td style="text-align:right;">₱' . number_format($billing_total, 2) . '</td>';
+            echo '<td colspan="3"></td>';
             echo '</tr>';
         }
         
@@ -881,36 +893,6 @@ if ($format === 'pdf') {
                     ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
                 $col++;
             }
-            $currentRow++;
-        }
-        
-        // Add total row for bus reports
-        if ($report_type === 'bus' && isset($total_amount)) {
-            $col = 'A';
-            $lastCol = chr(64 + count($headers) - 1);
-            $amountCol = chr(64 + count($headers));
-            
-            // Merge cells for "Total Amount:" label
-            $sheet->setCellValue($col . $currentRow, 'Total Amount:');
-            $sheet->mergeCells($col . $currentRow . ':' . $lastCol . $currentRow);
-            $sheet->getStyle($col . $currentRow)->getFont()->setBold(true);
-            $sheet->getStyle($col . $currentRow)->getFill()
-                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                ->getStartColor()->setRGB('D3D3D3');
-            $sheet->getStyle($col . $currentRow)->getAlignment()
-                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
-            $sheet->getStyle($col . $currentRow)->getBorders()->getAllBorders()
-                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-            
-            // Total amount value
-            $sheet->setCellValue($amountCol . $currentRow, '₱' . number_format($total_amount, 2));
-            $sheet->getStyle($amountCol . $currentRow)->getFont()->setBold(true);
-            $sheet->getStyle($amountCol . $currentRow)->getFill()
-                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                ->getStartColor()->setRGB('D3D3D3');
-            $sheet->getStyle($amountCol . $currentRow)->getBorders()->getAllBorders()
-                ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-            
             $currentRow++;
         }
         
@@ -1276,19 +1258,24 @@ if ($format === 'pdf') {
         }
         
         // Total rows
-        if ($report_type === 'bus' && isset($total_amount)) {
-            echo '<Row ss:Height="20">' . "\n";
-            for ($i = 0; $i < count($headers) - 1; $i++) {
-                if ($i === count($headers) - 2) {
-                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('Total Amount:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
-                } else {
-                    echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
-                }
+        if ($report_type === 'billing' && !empty($rows)) {
+            $billing_total = 0.0;
+            foreach ($rows as $r) {
+                $billing_total += (float)$r['amount'];
             }
-            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($total_amount, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '<Row ss:Height="20">' . "\n";
+            // First 3 columns merged for "Total:"
+            echo '<Cell ss:StyleID="Total" ss:MergeAcross="2"><Data ss:Type="String">' . htmlspecialchars('Total:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            // Amount column
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($billing_total, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            // Remaining 3 columns empty
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
             echo '</Row>' . "\n";
             $rowNum++;
         }
+        
         
         if ($report_type === 'inventory' && isset($total_revenue)) {
             echo '<Row ss:Height="20">' . "\n";
@@ -1300,6 +1287,21 @@ if ($format === 'pdf') {
                 }
             }
             echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($total_revenue, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '</Row>' . "\n";
+            $rowNum++;
+        }
+        
+        if ($report_type === 'billing' && !empty($rows)) {
+            $billing_total = 0.0;
+            foreach ($rows as $r) {
+                $billing_total += (float)$r['amount'];
+            }
+            echo '<Row ss:Height="20">' . "\n";
+            echo '<Cell ss:StyleID="Total" ss:MergeAcross="2"><Data ss:Type="String">' . htmlspecialchars('Total:', ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String">' . htmlspecialchars('₱' . number_format($billing_total, 2), ENT_XML1, 'UTF-8') . '</Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
+            echo '<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>' . "\n";
             echo '</Row>' . "\n";
             $rowNum++;
         }

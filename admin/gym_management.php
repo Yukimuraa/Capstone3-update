@@ -322,12 +322,15 @@ $total_rows = $total_result->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $per_page);
 
 // Get requests with user information - order by most recent first (created_at DESC, then date DESC)
-$requests_query = "SELECT b.*, u.name as user_name, u.email as user_email 
-                  FROM bookings b
-                  LEFT JOIN user_accounts u ON b.user_id = u.id
-                  $conditions_sql
-                  ORDER BY b.created_at DESC, b.date DESC
-                  LIMIT ?, ?";
+// Ensure status is always returned, defaulting to 'pending' if NULL
+$requests_query = "SELECT b.booking_id, b.user_id, b.facility_type, b.date, b.start_time, b.end_time, 
+                    b.purpose, b.attendees, COALESCE(b.status, 'pending') as status, b.additional_info, 
+                    b.created_at, b.updated_at, u.name as user_name, u.email as user_email 
+                    FROM bookings b
+                    LEFT JOIN user_accounts u ON b.user_id = u.id
+                    $conditions_sql
+                    ORDER BY b.created_at DESC, b.date DESC
+                    LIMIT ?, ?";
 $stmt = $conn->prepare($requests_query);
 if (!empty($query_params)) {
     $stmt->bind_param($param_types . "ii", ...[...$query_params, $offset, $per_page]);
@@ -529,25 +532,34 @@ $event_types_result = $conn->query($event_types_query);
                                     <?php if ($requests->num_rows > 0): ?>
                                         <?php while ($request = $requests->fetch_assoc()): ?>
                                             <?php 
-                                            $status_class = '';
-                                            $status_text = ucfirst($request['status']);
+                                            // Get status from request (query ensures it's never NULL)
+                                            $status_value = isset($request['status']) ? trim(strtolower($request['status'])) : 'pending';
+                                            $status_class = 'bg-gray-100 text-gray-800';
+                                            $status_text = 'Pending';
                                             
-                                            switch ($request['status']) {
+                                            switch ($status_value) {
                                                 case 'pending':
                                                     $status_class = 'bg-yellow-100 text-yellow-800';
+                                                    $status_text = 'Pending';
                                                     break;
                                                 case 'confirmed':
+                                                case 'approved':
                                                     $status_class = 'bg-green-100 text-green-800';
                                                     $status_text = 'Approved';
                                                     break;
                                                 case 'rejected':
                                                     $status_class = 'bg-red-100 text-red-800';
+                                                    $status_text = 'Rejected';
                                                     break;
                                                 case 'cancelled':
+                                                case 'canceled':
                                                     $status_class = 'bg-gray-100 text-gray-800';
+                                                    $status_text = 'Cancelled';
                                                     break;
                                                 default:
+                                                    // For any unknown status, default to Cancelled
                                                     $status_class = 'bg-gray-100 text-gray-800';
+                                                    $status_text = 'Cancelled';
                                                     break;
                                             }
                                             

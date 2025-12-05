@@ -689,7 +689,8 @@ include '../includes/header.php';
                 COUNT(*) as total,
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
                 SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
-                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
                 FROM bus_schedules";
             $count_result = $conn->query($count_sql);
             $schedule_stats = $count_result->fetch_assoc();
@@ -697,7 +698,12 @@ include '../includes/header.php';
             $total_pages = ceil($total_rows / $rows_per_page);
             
             // Get all schedules with billing info and user info
-            $list_sql = "SELECT bs.*, bst.total_amount, u.name as user_name, u.email as user_email, u.user_type, b.plate_number
+            // Ensure status is always returned, defaulting to 'pending' if NULL
+            $list_sql = "SELECT bs.id, bs.user_id, bs.user_type, bs.client, bs.destination, bs.purpose, 
+                         bs.date_covered, bs.vehicle, bs.bus_no, bs.no_of_days, bs.no_of_vehicles, 
+                         COALESCE(bs.status, 'pending') as status, bs.approval_document, bs.or_number,
+                         bs.created_at, bs.updated_at, bst.total_amount, u.name as user_name, 
+                         u.email as user_email, b.plate_number
                          FROM bus_schedules bs 
                          LEFT JOIN billing_statements bst ON bs.id = bst.schedule_id 
                          LEFT JOIN user_accounts u ON bs.user_id = u.id
@@ -794,7 +800,6 @@ include '../includes/header.php';
                             <th class="border px-4 py-2">Bus No.</th>
                             <th class="border px-4 py-2">No. of Days</th>
                             <th class="border px-4 py-2">No. of Vehicles</th>
-                            <th class="border px-4 py-2">Amount</th>
                             <th class="border px-4 py-2">Status</th>
                             <th class="border px-4 py-2">Actions</th>
                         </tr>
@@ -812,31 +817,38 @@ include '../includes/header.php';
                                     <td class="border px-4 py-2 text-center"><?php echo htmlspecialchars($row['no_of_days']); ?></td>
                                     <td class="border px-4 py-2 text-center"><?php echo htmlspecialchars($row['no_of_vehicles']); ?></td>
                                     <td class="border px-4 py-2 text-center">
-                                        <?php if ($row['total_amount']): ?>
-                                            <span class="font-semibold text-green-600">₱<?php echo number_format($row['total_amount'], 2); ?></span>
-                                        <?php else: ?>
-                                            <span class="text-gray-500">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="border px-4 py-2 text-center">
                                         <?php
+                                        $status_value = isset($row['status']) ? trim(strtolower($row['status'])) : 'pending';
                                         $status_class = '';
-                                        switch($row['status']) {
+                                        $status_text = 'Pending';
+                                        
+                                        switch ($status_value) {
                                             case 'pending':
                                                 $status_class = 'bg-yellow-100 text-yellow-800';
+                                                $status_text = 'Pending';
                                                 break;
                                             case 'approved':
                                                 $status_class = 'bg-green-100 text-green-800';
+                                                $status_text = 'Approved';
                                                 break;
                                             case 'rejected':
                                                 $status_class = 'bg-red-100 text-red-800';
+                                                $status_text = 'Rejected';
+                                                break;
+                                            case 'cancelled':
+                                            case 'canceled':
+                                                $status_class = 'bg-gray-100 text-gray-800';
+                                                $status_text = 'Cancelled';
                                                 break;
                                             default:
+                                                // For any unknown status, default to Cancelled
                                                 $status_class = 'bg-gray-100 text-gray-800';
+                                                $status_text = 'Cancelled';
+                                                break;
                                         }
                                         ?>
                                         <span class="px-2 py-1 rounded-full text-xs font-medium <?php echo $status_class; ?>">
-                                            <?php echo ucfirst($row['status']); ?>
+                                            <?php echo $status_text; ?>
                                         </span>
                                     </td>
                                     <td class="border px-4 py-2 text-center">
@@ -857,13 +869,6 @@ include '../includes/header.php';
                                                         title="Reject">
                                                     <i class="fas fa-times"></i>
                                                 </button>
-                                            <?php endif; ?>
-                                            <?php if ($row['total_amount']): ?>
-                                                <a href="print_bus_receipt.php?id=<?php echo $row['id']; ?>" 
-                                                   target="_blank" class="text-blue-600 hover:text-blue-900"
-                                                   title="Print Receipt">
-                                                    <i class="fas fa-print"></i>
-                                                </a>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -1322,10 +1327,6 @@ include '../includes/header.php';
                     <p id="view-user" class="text-base text-gray-900"></p>
                     <p id="view-user-email" class="text-sm text-gray-500"></p>
                 </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-500">Total Amount</p>
-                    <p id="view-amount" class="text-base font-semibold text-green-600"></p>
-                </div>
                 <div id="view-or-container" class="hidden">
                     <p class="text-sm font-medium text-gray-500">
                         <i class="fas fa-receipt text-green-600 mr-1"></i>OR Number
@@ -1387,10 +1388,6 @@ include '../includes/header.php';
             <button type="button" onclick="closeViewModal()" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                 Close
             </button>
-            <a id="view-print-link" href="#" 
-               target="_blank" class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 hidden">
-                <i class="fas fa-print mr-2"></i>Print Receipt
-            </a>
         </div>
     </div>
 </div>
@@ -1676,7 +1673,6 @@ function openViewModal(schedule) {
     document.getElementById('view-vehicles').textContent = schedule.no_of_vehicles || '-';
     document.getElementById('view-user').textContent = schedule.user_name || 'N/A';
     document.getElementById('view-user-email').textContent = schedule.user_email || '';
-    document.getElementById('view-amount').textContent = schedule.total_amount ? '₱' + parseFloat(schedule.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
     
     // Display OR Number if available
     const orContainer = document.getElementById('view-or-container');
@@ -1708,31 +1704,35 @@ function openViewModal(schedule) {
     
     // Set status with styling
     const statusElement = document.getElementById('view-status');
-    const status = schedule.status || 'unknown';
-    statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    const status = (schedule.status || 'unknown').toLowerCase();
+    let statusText = 'Pending';
+    
     statusElement.className = 'text-base px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full';
     switch(status) {
         case 'pending':
             statusElement.classList.add('bg-yellow-100', 'text-yellow-800');
+            statusText = 'Pending';
             break;
         case 'approved':
             statusElement.classList.add('bg-green-100', 'text-green-800');
+            statusText = 'Approved';
             break;
         case 'rejected':
             statusElement.classList.add('bg-red-100', 'text-red-800');
+            statusText = 'Rejected';
+            break;
+        case 'cancelled':
+        case 'canceled':
+            statusElement.classList.add('bg-gray-100', 'text-gray-800');
+            statusText = 'Cancelled';
             break;
         default:
+            // For any unknown status, default to Cancelled
             statusElement.classList.add('bg-gray-100', 'text-gray-800');
+            statusText = 'Cancelled';
+            break;
     }
-    
-    // Update print link if amount exists
-    const printLink = document.getElementById('view-print-link');
-    if (printLink && schedule.id && schedule.total_amount) {
-        printLink.href = 'print_bus_receipt.php?id=' + schedule.id;
-        printLink.classList.remove('hidden');
-    } else if (printLink) {
-        printLink.classList.add('hidden');
-    }
+    statusElement.textContent = statusText;
     
     // Handle approval document display
     const approvalSection = document.getElementById('approval-document-section');

@@ -309,6 +309,10 @@ if (!empty($params)) {
                            class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter === 'completed' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
                             <i class="fas fa-check-circle mr-1"></i>Completed
                         </a>
+                        <a href="orders.php?status=cancelled<?php echo !empty($search) ? '&search=' . urlencode($search) : ''; ?>" 
+                           class="px-4 py-2 rounded-md text-sm font-medium <?php echo $status_filter === 'cancelled' ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'; ?>">
+                            <i class="fas fa-ban mr-1"></i>Cancelled
+                        </a>
                     </div>
                     
                     <!-- Search Form -->
@@ -408,15 +412,35 @@ if (!empty($params)) {
                                                     </td>
                                                     <td class="px-6 py-4">
                                                         <?php
+                                                        $status_value = isset($first_item['status']) ? trim(strtolower($first_item['status'])) : 'pending';
                                                         $status_classes = [
                                                             'pending' => 'bg-yellow-100 text-yellow-800',
                                                             'completed' => 'bg-blue-100 text-blue-800',
-                                                            'cancelled' => 'bg-gray-100 text-gray-800'
+                                                            'cancelled' => 'bg-gray-100 text-gray-800',
+                                                            'canceled' => 'bg-gray-100 text-gray-800'
                                                         ];
-                                                        $status_class = $status_classes[$first_item['status']] ?? 'bg-gray-100 text-gray-800';
+                                                        $status_class = $status_classes[$status_value] ?? 'bg-gray-100 text-gray-800';
+                                                        
+                                                        // Set status text
+                                                        $status_text = 'Pending';
+                                                        switch ($status_value) {
+                                                            case 'pending':
+                                                                $status_text = 'Pending';
+                                                                break;
+                                                            case 'completed':
+                                                                $status_text = 'Completed';
+                                                                break;
+                                                            case 'cancelled':
+                                                            case 'canceled':
+                                                                $status_text = 'Cancelled';
+                                                                break;
+                                                            default:
+                                                                $status_text = 'Cancelled';
+                                                                break;
+                                                        }
                                                         ?>
                                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                            <?php echo ucfirst($first_item['status']); ?>
+                                                            <?php echo $status_text; ?>
                                                         </span>
                                                     </td>
                                                     <td class="px-6 py-4 text-sm">
@@ -430,12 +454,6 @@ if (!empty($params)) {
                                                                         class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
                                                                     <i class="fas fa-check mr-1"></i> Mark Complete
                                                                 </button>
-                                                            <?php else: ?>
-                                                                <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
-                                                                   class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                                   target="_blank">
-                                                                    <i class="fas fa-print mr-1"></i> Print
-                                                                </a>
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
@@ -481,15 +499,35 @@ if (!empty($params)) {
                                                     </td>
                                                     <td class="px-6 py-4">
                                                         <?php
+                                                        $status_value = isset($order['status']) ? trim(strtolower($order['status'])) : 'pending';
                                                         $status_classes = [
                                                             'pending' => 'bg-yellow-100 text-yellow-800',
                                                             'completed' => 'bg-blue-100 text-blue-800',
-                                                            'cancelled' => 'bg-gray-100 text-gray-800'
+                                                            'cancelled' => 'bg-gray-100 text-gray-800',
+                                                            'canceled' => 'bg-gray-100 text-gray-800'
                                                         ];
-                                                        $status_class = $status_classes[$order['status']] ?? 'bg-gray-100 text-gray-800';
+                                                        $status_class = $status_classes[$status_value] ?? 'bg-gray-100 text-gray-800';
+                                                        
+                                                        // Set status text
+                                                        $status_text = 'Pending';
+                                                        switch ($status_value) {
+                                                            case 'pending':
+                                                                $status_text = 'Pending';
+                                                                break;
+                                                            case 'completed':
+                                                                $status_text = 'Completed';
+                                                                break;
+                                                            case 'cancelled':
+                                                            case 'canceled':
+                                                                $status_text = 'Cancelled';
+                                                                break;
+                                                            default:
+                                                                $status_text = 'Cancelled';
+                                                                break;
+                                                        }
                                                         ?>
                                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                            <?php echo ucfirst($order['status']); ?>
+                                                            <?php echo $status_text; ?>
                                                         </span>
                                                     </td>
                                                     <td class="px-6 py-4 text-sm">
@@ -503,20 +541,6 @@ if (!empty($params)) {
                                                                         class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
                                                                     <i class="fas fa-check mr-1"></i> Mark Complete
                                                                 </button>
-                                                            <?php else: ?>
-                                                                <?php if (!empty($order['batch_id'])): ?>
-                                                                    <a href="print_batch_receipt.php?batch_id=<?php echo $order['batch_id']; ?>" 
-                                                                       class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                                       target="_blank">
-                                                                        <i class="fas fa-print mr-1"></i> Print
-                                                                    </a>
-                                                                <?php else: ?>
-                                                                    <a href="print_order_receipt.php?order_id=<?php echo $order['order_id']; ?>" 
-                                                                       class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                                       target="_blank">
-                                                                        <i class="fas fa-print mr-1"></i> Print
-                                                                    </a>
-                                                                <?php endif; ?>
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
@@ -549,15 +573,35 @@ if (!empty($params)) {
                                             </td>
                                             <td class="px-6 py-4">
                                                 <?php
+                                                $status_value = isset($first_item['status']) ? trim(strtolower($first_item['status'])) : 'pending';
                                                 $status_classes = [
                                                     'pending' => 'bg-yellow-100 text-yellow-800',
                                                     'completed' => 'bg-blue-100 text-blue-800',
-                                                    'cancelled' => 'bg-gray-100 text-gray-800'
+                                                    'cancelled' => 'bg-gray-100 text-gray-800',
+                                                    'canceled' => 'bg-gray-100 text-gray-800'
                                                 ];
-                                                $status_class = $status_classes[$first_item['status']] ?? 'bg-gray-100 text-gray-800';
+                                                $status_class = $status_classes[$status_value] ?? 'bg-gray-100 text-gray-800';
+                                                
+                                                // Set status text
+                                                $status_text = 'Pending';
+                                                switch ($status_value) {
+                                                    case 'pending':
+                                                        $status_text = 'Pending';
+                                                        break;
+                                                    case 'completed':
+                                                        $status_text = 'Completed';
+                                                        break;
+                                                    case 'cancelled':
+                                                    case 'canceled':
+                                                        $status_text = 'Cancelled';
+                                                        break;
+                                                    default:
+                                                        $status_text = 'Cancelled';
+                                                        break;
+                                                }
                                                 ?>
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full <?php echo $status_class; ?>">
-                                                    <?php echo ucfirst($first_item['status']); ?>
+                                                    <?php echo $status_text; ?>
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4 text-sm">
@@ -571,12 +615,6 @@ if (!empty($params)) {
                                                                 class="inline-flex items-center px-3 py-1 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
                                                             <i class="fas fa-check mr-1"></i> Mark Complete
                                                         </button>
-                                                    <?php else: ?>
-                                                        <a href="print_batch_receipt.php?batch_id=<?php echo $current_batch; ?>" 
-                                                           class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                                           target="_blank">
-                                                            <i class="fas fa-print mr-1"></i> Print
-                                                        </a>
                                                     <?php endif; ?>
                                                 </div>
                                             </td>
@@ -744,13 +782,14 @@ if (!empty($params)) {
                 <div class="mb-4">
                     <label for="or_number" class="block text-sm font-medium text-gray-700 mb-1">Official Receipt (OR) No:</label>
                     <input type="text" id="or_number" name="or_number" required
-                           pattern="[0-9]*"
+                           pattern="[0-9]{7}"
                            inputmode="numeric"
+                           maxlength="7"
                            onkeypress="return (event.charCode >= 48 && event.charCode <= 57)"
-                           oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 7)"
                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-500 focus:ring-opacity-50"
-                           placeholder="Enter OR Number (Numbers only)">
-                    <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier (Numbers only)</p>
+                           placeholder="Enter OR Number (7 digits)">
+                    <p class="mt-1 text-xs text-gray-500">Enter the OR number provided by the cashier (7 digits only)</p>
                 </div>
                 
                 <div class="flex justify-end space-x-3">
