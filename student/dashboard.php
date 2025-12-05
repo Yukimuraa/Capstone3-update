@@ -79,9 +79,43 @@ $recent_orders = $stmt->get_result();
 $inventory_query = "SELECT * FROM inventory WHERE in_stock = 1 LIMIT 6";
 $inventory_result = $conn->query($inventory_query);
 
+// Get gym booking statistics
+$gym_stats_query = "SELECT 
+                COUNT(*) as total_bookings,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_bookings,
+                SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as approved_bookings,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_bookings,
+                SUM(CASE WHEN status = 'cancelled' OR status = 'cancel' THEN 1 ELSE 0 END) as cancelled_bookings
+                FROM bookings
+                WHERE user_id = ?";
+$stmt = $conn->prepare($gym_stats_query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$gym_stats = $stmt->get_result()->fetch_assoc();
+
+// Get recent gym bookings
+$recent_gym_bookings_query = "SELECT * FROM bookings 
+                            WHERE user_id = ? 
+                            ORDER BY created_at DESC 
+                            LIMIT 5";
+$stmt = $conn->prepare($recent_gym_bookings_query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$recent_gym_bookings = $stmt->get_result();
+
+// Get upcoming gym bookings
+$upcoming_gym_bookings_query = "SELECT * FROM bookings 
+                              WHERE user_id = ? AND date >= CURDATE() AND (status = 'confirmed' OR status = 'pending')
+                              ORDER BY date ASC
+                              LIMIT 3";
+$stmt = $conn->prepare($upcoming_gym_bookings_query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$upcoming_gym_bookings = $stmt->get_result();
+
 // Get user profile picture
 $user_stmt = $conn->prepare("SELECT profile_pic FROM user_accounts WHERE id = ?");
-$user_stmt->bind_param("i", $_SESSION['user_id']);
+$user_stmt->bind_param("i", $user_id);
 $user_stmt->execute();
 $user_result = $user_stmt->get_result();
 $user_data = $user_result->fetch_assoc();
@@ -204,6 +238,180 @@ $profile_pic = $user_data['profile_pic'] ?? '';
                             <a href="inventory.php" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                                 View All Items
                             </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Gym Reservation Section -->
+                <div class="bg-white rounded-lg shadow mb-6">
+                    <div class="px-4 py-5 border-b border-gray-200 sm:px-6 flex justify-between items-center">
+                        <h2 class="text-xl font-bold text-gray-900">Gym Reservation</h2>
+                        <a href="gym.php" class="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Make Reservation</a>
+                    </div>
+                    
+                    <!-- Gym Stats Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 border-b border-gray-200">
+                        <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-blue-100 text-blue-500 mr-4">
+                                    <i class="fas fa-calendar-check text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-gray-500 text-sm">Total Bookings</p>
+                                    <h3 class="text-2xl font-semibold text-gray-800"><?php echo $gym_stats['total_bookings'] ?? 0; ?></h3>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-yellow-100 text-yellow-500 mr-4">
+                                    <i class="fas fa-clock text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-gray-500 text-sm">Pending</p>
+                                    <h3 class="text-2xl font-semibold text-gray-800"><?php echo $gym_stats['pending_bookings'] ?? 0; ?></h3>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-green-100 text-green-500 mr-4">
+                                    <i class="fas fa-check-circle text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-gray-500 text-sm">Approved</p>
+                                    <h3 class="text-2xl font-semibold text-gray-800"><?php echo $gym_stats['approved_bookings'] ?? 0; ?></h3>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-red-100 text-red-500 mr-4">
+                                    <i class="fas fa-times-circle text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-gray-500 text-sm">Rejected/Cancelled</p>
+                                    <h3 class="text-2xl font-semibold text-gray-800"><?php echo ($gym_stats['rejected_bookings'] ?? 0) + ($gym_stats['cancelled_bookings'] ?? 0); ?></h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Main Content Sections -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
+                        <!-- Recent Gym Bookings -->
+                        <div class="lg:col-span-2">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-xl font-bold text-gray-900">My Recent Reservations</h2>
+                                <a href="gym.php" class="text-emerald-600 hover:text-emerald-800 text-sm">View All</a>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Facility</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purpose</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <?php if ($recent_gym_bookings->num_rows > 0): ?>
+                                            <?php while ($booking = $recent_gym_bookings->fetch_assoc()): ?>
+                                                <tr>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        <?php echo htmlspecialchars($booking['facility_name'] ?? 'Gym Facility'); ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        <?php echo date('M d, Y', strtotime($booking['date'])); ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        <?php 
+                                                        if (!empty($booking['start_time']) && !empty($booking['end_time'])) {
+                                                            echo date('h:i A', strtotime($booking['start_time'])) . ' - ' . date('h:i A', strtotime($booking['end_time']));
+                                                        } elseif (!empty($booking['time_slot'])) {
+                                                            echo $booking['time_slot'];
+                                                        } else {
+                                                            echo 'N/A';
+                                                        }
+                                                        ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                        <?php echo htmlspecialchars($booking['purpose'] ?? 'N/A'); ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        <?php
+                                                        $status = strtolower($booking['status'] ?? 'pending');
+                                                        if ($status == 'pending'): ?>
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
+                                                        <?php elseif ($status == 'approved' || $status == 'confirmed'): ?>
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800"><?php echo ucfirst($status == 'approved' ? 'Approved' : 'Confirmed'); ?></span>
+                                                        <?php elseif ($status == 'rejected'): ?>
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Rejected</span>
+                                                        <?php else: ?>
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800"><?php echo ucfirst($status); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endwhile; ?>
+                                        <?php else: ?>
+                                            <tr>
+                                                <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">
+                                                    No recent reservations found. <a href="gym.php" class="text-emerald-600 hover:underline">Make a reservation</a>
+                                                </td>
+                                            </tr>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Upcoming Gym Bookings -->
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-900 mb-4">Upcoming Reservations</h2>
+                            <div class="space-y-4">
+                                <?php if ($upcoming_gym_bookings->num_rows > 0): ?>
+                                    <?php while ($booking = $upcoming_gym_bookings->fetch_assoc()): ?>
+                                        <div class="border rounded-lg p-4">
+                                            <div class="flex justify-between items-start">
+                                                <div>
+                                                    <h3 class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($booking['booking_id'] ?? 'Gym Reservation'); ?></h3>
+                                                    <p class="text-sm text-gray-500"><?php echo date('M d, Y', strtotime($booking['date'])); ?></p>
+                                                    <p class="text-sm text-gray-500">
+                                                        <?php 
+                                                        if (!empty($booking['start_time']) && !empty($booking['end_time'])) {
+                                                            echo date('h:i A', strtotime($booking['start_time'])) . ' - ' . date('h:i A', strtotime($booking['end_time']));
+                                                        } elseif (!empty($booking['time_slot'])) {
+                                                            echo $booking['time_slot'];
+                                                        } else {
+                                                            echo 'Time TBD';
+                                                        }
+                                                        ?>
+                                                    </p>
+                                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($booking['purpose'] ?? 'N/A'); ?></p>
+                                                </div>
+                                                <div class="text-right">
+                                                    <?php
+                                                    $status = strtolower($booking['status'] ?? 'pending');
+                                                    if ($status == 'pending'): ?>
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
+                                                    <?php elseif ($status == 'approved' || $status == 'confirmed'): ?>
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800"><?php echo ucfirst($status == 'approved' ? 'Approved' : 'Confirmed'); ?></span>
+                                                    <?php else: ?>
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800"><?php echo ucfirst($status); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endwhile; ?>
+                                <?php else: ?>
+                                    <p class="text-center text-gray-500">No upcoming reservations</p>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>

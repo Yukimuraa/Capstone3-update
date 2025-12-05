@@ -48,9 +48,9 @@ $logout_path .= 'logout.php?user_type=student';
         <a href="bus.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-bus mr-2"></i>Bus Schedule
         </a>
-        <!-- <a href="gym.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
-            <i class="fas fa-calendar-alt mr-2"></i>Gym Bookings
-        </a> -->
+        <a href="gym.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
+            <i class="fas fa-dumbbell mr-2"></i>Gym Reservation
+        </a>
         <a href="profile.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-emerald-700">
             <i class="fas fa-user mr-2"></i>My Profile
         </a>
